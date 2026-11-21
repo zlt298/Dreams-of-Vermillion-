@@ -1,0 +1,37 @@
+{
+  "id": "t3-tessellate-swarm",
+  "name": "Tessellate Swarm",
+  "faction": "Tessellate (xenofauna)",
+  "theme": "Crystalline predators that grew in the ruins of a terraforming plant.",
+  "tier": 3,
+  "designedFor": 4,
+  "kind": "standard",
+  "description": "Identity: a fast brood that floods melee while spitters shred armor from behind.",
+  "units": [
+    {
+      "name": "Tessellate Brood", "role": "Biological", "templates": ["Grunt"], "count": 6, "color": "#5fb3a1",
+      "features": [
+        { "type": "weapon", "name": "Rending Mandibles", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Kinetic", "val": "1d6+5" }] },
+        { "type": "trait", "name": "Skittering", "stats": { "speed": 1 } }
+      ]
+    },
+    {
+      "name": "Tessellate Spitter", "role": "Biological", "count": 2, "color": "#3e9c7c",
+      "features": [
+        { "type": "weapon", "name": "Acid Spit", "weaponType": "Launcher", "range": [{ "type": "Range", "val": 8 }, { "type": "Blast", "val": 1 }], "damage": [{ "type": "Energy", "val": "1d6+5" }], "tags": [{ "id": "tg_arcing" }], "onHit": [{ "do": "status", "status": "shredded", "save": "agi", "duration": "next_turn_end_target" }] },
+        { "type": "weapon", "name": "Raking Claws", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Kinetic", "val": "1d6+4" }] },
+        { "type": "trait", "name": "Lattice Hide", "stats": { "armor": 1 } }
+      ]
+    },
+    {
+      "name": "Tessellate Matriarch", "role": "Biological", "templates": ["Elite"], "color": "#2a7f6f",
+      "features": [
+        { "type": "weapon", "name": "Crushing Tail", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 2 }], "damage": [{ "type": "Kinetic", "val": "2d6+3" }], "onHit": [{ "do": "status", "status": "prone", "save": "hull", "duration": "until_cleared" }] },
+        { "type": "weapon", "name": "Spine Volley", "weaponType": "Launcher", "range": [{ "type": "Range", "val": 8 }], "damage": [{ "type": "Kinetic", "val": "1d6+4" }] },
+        { "type": "trait", "name": "Chitin Plates", "stats": { "armor": 1 }, "resist": ["Kinetic"] },
+        { "type": "reaction", "name": "Lashing Retort", "trigger": "hit_by_melee", "frequency": "1/round", "attackWith": "Crushing Tail" },
+        { "type": "trait", "name": "Brood Fury", "hooks": [{ "on": "ally_destroyed_nearby", "effects": [{ "do": "overshield", "val": 4 }] }] }
+      ]
+    }
+  ]
+}

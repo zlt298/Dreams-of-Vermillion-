@@ -16,7 +16,7 @@ for (const f of readdirSync(dir).filter(f => f.endsWith('.json'))) {
   const team = JSON.parse(readFileSync(join(dir, f), 'utf8'))
   let wins = 0, rounds = 0, lost = 0
   for (let s = 1; s <= N; s++) {
-    const squad = ['Vanguard', 'Assault', 'Sniper', 'Fire Support'].map(n => buildMechUnit(importPilots((pregens as any[]).find(p => p.name === n))[0]))
+    const squad = ['Vanguard', 'Assault', 'Sniper', 'Fire Support'].map(n => { const p = importPilots((pregens as any[]).find(p => p.name === n))[0]; p.level = (team.tier - 1) * 3; return buildMechUnit(p) })
     const enemies = buildTeam(team, 4)
     const map = generateMap(s * 977, { w: 18, h: 18 })
     squad.forEach((u, i) => (u.pos = map.deployPlayer[i]))
@@ -28,5 +28,5 @@ for (const f of readdirSync(dir).filter(f => f.endsWith('.json'))) {
     rounds += b.round
     lost += squad.filter(u => u.destroyed).length
   }
-  console.log(`${team.id.padEnd(28)} player win ${wins}/${N}  avg rounds ${(rounds / N).toFixed(1)}  mechs lost/fight ${(lost / N).toFixed(1)}`)
+  console.log(`${team.id.padEnd(28)} LL${(team.tier - 1) * 3} player win ${wins}/${N}  avg rounds ${(rounds / N).toFixed(1)}  mechs lost/fight ${(lost / N).toFixed(1)}`)
 }

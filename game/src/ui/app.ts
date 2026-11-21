@@ -10,7 +10,7 @@ import { catalog, teamsFor, validTeams } from '../enemies/catalog'
 import { generateMap } from '../run/mapgen'
 import {
   type RunState, type RunNode, newRun, availableNodes, nodeTier, sitrepFor, squadUnits, recordBattle, fullRepair,
-  repairOptions, applyRepair, rollRewards, applyReward, levelUp, replacePilots, chooseTeam, saveRun, loadRun, ACTS,
+  repairOptions, applyRepair, rollRewards, applyReward, levelUp, replacePilots, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT,
 } from '../run/run'
 import { BattleScreen } from './battle-ui'
 import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles } from './roster'
@@ -278,7 +278,7 @@ export class App {
     const run = this.run!
     this.clear()
     this.root.innerHTML = `<div class="screen center"><h2>Act ${run.act - 1} complete!</h2>
-      <p>Your pilots advance to <b>License Level ${Math.min(12, run.squad[0].level + 1)}</b>. Grit and HP increase automatically.</p>
+      <p>Your pilots advance to <b>License Level ${Math.min(12, run.squad[0].level + LL_PER_ACT)}</b>. Grit and HP increase automatically.</p>
       <p>To spend the new talent, license and core bonus points, level the pilots up in COMP/CON, export them, and use <i>Re-import pilots</i> on the campaign map (they're matched by id or callsign).</p>
       <button data-go="ok" class="primary">Continue to Act ${run.act}</button></div>`
     this.on('[data-go]', () => { levelUp(run); saveRun(run); this.runMap() })

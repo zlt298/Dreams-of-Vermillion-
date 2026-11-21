@@ -263,9 +263,12 @@ export function applyReward(run: RunState, id: string, pilotId?: string) {
   }
 }
 
-/** Level the squad up after an act boss: +1 LL (grit/HP). Talents/licenses come from re-importing. */
+/** License levels gained per act boss (act 2 ≈ LL3+, act 3 ≈ LL6+, matching NPC tiers). */
+export const LL_PER_ACT = 3
+
+/** Level the squad up after an act boss: +3 LL (grit/HP). Talents/licenses come from re-importing. */
 export function levelUp(run: RunState) {
-  for (const p of run.squad) p.level = Math.min(12, p.level + 1)
+  for (const p of run.squad) p.level = Math.min(12, p.level + LL_PER_ACT)
   for (const p of run.squad) run.condition[p.id] = freshCondition(p)
   run.pendingLevelUp = false
 }

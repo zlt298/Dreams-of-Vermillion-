@@ -1,0 +1,47 @@
+{
+  "id": "t3-black-tithe",
+  "name": "Knights of the Black Tithe",
+  "faction": "Black Tithe Order",
+  "theme": "A militant order of armored templars collecting a tithe in salvage and blood.",
+  "tier": 3,
+  "designedFor": 4,
+  "kind": "elite",
+  "description": "Identity: an aggressive shield-wall; the paladin anchors, templars charge, the inquisitor locks targets down.",
+  "units": [
+    {
+      "name": "Tithe Paladin", "role": "Defender", "templates": ["Elite", "Commander"], "color": "#5d6d7e",
+      "features": [
+        { "type": "weapon", "name": "Lance-Hammer", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 2 }], "damage": [{ "type": "Kinetic", "val": "2d6+2" }], "onHit": [{ "do": "status", "status": "prone", "save": "hull", "duration": "until_cleared" }] },
+        { "type": "weapon", "name": "Storm Bolter", "weaponType": "Cannon", "range": [{ "type": "Range", "val": 8 }], "damage": [{ "type": "Kinetic", "val": "1d6+4" }], "tags": [{ "id": "tg_reliable", "val": 2 }] },
+        { "type": "system", "name": "Bulwark Projector", "activation": "quick", "target": "ally", "range": 5, "effects": [{ "do": "overshield", "val": 6 }], "recharge": 5 },
+        { "type": "trait", "name": "Consecrated Plate", "stats": { "armor": 1 }, "resist": ["Explosive"] },
+        { "type": "reaction", "name": "Shield Wall", "trigger": "ally_attacked_adjacent", "frequency": "1/round", "effects": [{ "do": "status", "status": "impaired", "duration": "end_of_turn" }] }
+      ]
+    },
+    {
+      "name": "Tithe Templar", "role": "Striker", "templates": ["Veteran"], "count": 2, "color": "#922b21",
+      "features": [
+        { "type": "weapon", "name": "Penitent Blade", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Energy", "val": "1d6+6" }], "onHit": [{ "do": "status", "status": "shredded", "duration": "next_turn_end_target" }] },
+        { "type": "weapon", "name": "Flame Spitter", "weaponType": "CQB", "range": [{ "type": "Cone", "val": 3 }], "damage": [{ "type": "Energy", "val": "1d6+2" }], "tags": [{ "id": "tg_burn", "val": 2 }] },
+        { "type": "trait", "name": "Zeal", "stats": { "speed": 1 } },
+        { "type": "reaction", "name": "Riposte", "trigger": "hit_by_melee", "frequency": "1/round", "attackWith": "Penitent Blade" }
+      ]
+    },
+    {
+      "name": "Tithe Inquisitor", "role": "Controller", "templates": ["Elite"], "color": "#6c3483",
+      "features": [
+        { "type": "tech", "name": "Excommunicate", "kind": "quick", "onHit": [{ "do": "status", "status": "jammed", "save": "sys", "duration": "next_turn_end_target" }, { "do": "heat", "val": 3 }], "recharge": 5 },
+        { "type": "tech", "name": "Pinning Edict", "kind": "quick", "onHit": [{ "do": "status", "status": "immobilized", "save": "hull", "duration": "next_turn_end_target" }] },
+        { "type": "tech", "name": "Judgement", "kind": "full", "onHit": [{ "do": "status", "status": "stunned", "save": "sys", "duration": "next_turn_end_target" }], "recharge": 6 },
+        { "type": "weapon", "name": "Censure Pistol", "weaponType": "CQB", "range": [{ "type": "Range", "val": 6 }], "damage": [{ "type": "Kinetic", "val": "1d6+3" }], "smart": true },
+        { "type": "reaction", "name": "Feedback Loop", "trigger": "attacked_and_missed", "frequency": "1/round", "effects": [{ "do": "heat", "val": 3 }] }
+      ]
+    },
+    {
+      "name": "Tithe Serf", "role": "Striker", "templates": ["Grunt"], "count": 4, "color": "#7b241c",
+      "features": [
+        { "type": "weapon", "name": "Pike", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 2 }], "damage": [{ "type": "Kinetic", "val": "1d6+4" }] }
+      ]
+    }
+  ]
+}

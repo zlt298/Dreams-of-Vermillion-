@@ -1,0 +1,230 @@
+{
+  "id": "t2-boss-furnace-saint",
+  "name": "The Furnace Saint",
+  "faction": "Cult of the Vermillion Dream",
+  "theme": "A hovering cathedral-frame wreathed in plasma, attended by its choir.",
+  "tier": 2,
+  "designedFor": 4,
+  "kind": "boss",
+  "description": "Identity: an artillery boss that floods the field with fire while zealots screen it.",
+  "units": [
+    {
+      "name": "The Furnace Saint",
+      "role": "Artillery",
+      "templates": [
+        "Ultra"
+      ],
+      "color": "#ff7b29",
+      "description": "Its reactor never cools; it simply redistributes the heat to you.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Sunfall Mortar",
+          "weaponType": "Launcher",
+          "range": [
+            {
+              "type": "Range",
+              "val": 15
+            },
+            {
+              "type": "Blast",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "2d6"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_arcing"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "weapon",
+          "name": "Censer Cannon",
+          "weaponType": "Cannon",
+          "range": [
+            {
+              "type": "Range",
+              "val": 10
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+3"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_burn",
+              "val": 2
+            }
+          ]
+        },
+        {
+          "type": "system",
+          "name": "Pyre Wave",
+          "activation": "full",
+          "target": "self_burst",
+          "radius": 2,
+          "save": "eng",
+          "effects": [
+            {
+              "do": "damage",
+              "damage": [
+                {
+                  "type": "Energy",
+                  "val": "1d6+2"
+                }
+              ],
+              "saveHalf": true
+            },
+            {
+              "do": "burn",
+              "val": 2
+            }
+          ],
+          "recharge": 6
+        },
+        {
+          "type": "tech",
+          "name": "Searing Litany",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "heat",
+              "val": 4
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Holy Furnace",
+          "resist": [
+            "Energy",
+            "Burn"
+          ],
+          "hooks": [
+            {
+              "on": "turn_start",
+              "effects": [
+                {
+                  "do": "clear_heat",
+                  "val": 3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Pyre-Wing Hover",
+          "stats": {
+            "speed": 1
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Immolate",
+          "trigger": "hit_by_melee",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "burn",
+              "val": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ember Zealot",
+      "role": "Striker",
+      "count": 1,
+      "color": "#e0562b",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Brand-Lance",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+4"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_burn",
+              "val": 2
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Flare Pistol",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 5
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+2"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Fervor",
+          "stats": {
+            "speed": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ash Thrall",
+      "role": "Striker",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 4,
+      "color": "#9c4a35",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Cinder Claws",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+2"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
