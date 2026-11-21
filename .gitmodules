@@ -1,0 +1,3 @@
+[submodule "vendor/compcon"]
+	path = vendor/compcon
+	url = https://github.com/massif-press/compcon
