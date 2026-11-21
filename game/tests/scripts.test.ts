@@ -59,7 +59,7 @@ describe('effect script stress test', () => {
       if (u.destroyed || b.winner || b.activeId !== u.id) break
       try { b.activateCore(u) } catch (e) { if (e instanceof TypeError) throw e }
       if (b.activeId === u.id) b.endTurn(u)
-      if (b.currentSide === 'enemy') break
+      if ((b.currentSide as string) === 'enemy') break
     }
     autoBattle(b, 8)
     expect(aiErrors).toEqual([])
