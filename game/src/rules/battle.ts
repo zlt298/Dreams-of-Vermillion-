@@ -44,6 +44,8 @@ export interface Mine {
   save?: Stat
   saveHalf?: boolean
   name: string
+  /** extra effects applied to characters that fail the save */
+  effects?: Effect[]
 }
 
 export interface MoveOpts { mode: 'standard' | 'boost' | 'free' | 'disengage' | 'involuntary'; ignoreEngagement?: boolean; flyingOk?: boolean }
@@ -224,6 +226,7 @@ export class Battle {
     if (c === 'dangerzone' || c === 'danger_zone') return this.has(u, 'dangerzone')
     if (c === 'first_round') return this.round === 1
     if (c === 'flying') return u.flying
+    if (u.flags[c]) return true
     if (c === 'adjacent_ally') return this.alive().some(o => o !== u && !this.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc') && this.adjacent(u, o))
     return false
   }
@@ -640,13 +643,13 @@ export class Battle {
     let c = 1
     if (u.flying) return 1
     const fp = footprint(u, to)
-    const difficult = this.has(u, 'prone') || fp.some(p => {
+    const difficult = this.has(u, 'prone') || !u.flags.ignoreDifficult && fp.some(p => {
       const t = tileAt(this.map, p)
       return t?.kind === 'rubble' || t?.kind === 'water' || this.areas.some(a => a.kind === 'difficult' && a.tiles.some(q => q.x === p.x && q.y === p.y))
     })
     if (difficult) c *= 2
     const dh = elevationAt(this.map, u, to) - elevationAt(this.map, u, from)
-    if (dh > 1) c += dh - 1
+    if (dh > 1 && !u.flags.magClamps) c += dh - 1
     return c
   }
 
@@ -1134,7 +1137,8 @@ export class Battle {
       this.emit({ type: 'attack', attackerId: ctx.attacker.id, targetId: t.id, hit: false, crit: false, weapon: ctx.weapon?.name ?? 'tech', total: 0 })
       return
     }
-    if ((this.has(t, 'invisible') || ctx.forceInvisible) && this.rng.d(6) <= 3) {
+    const seesThrough = t.flags.trackedBy === ctx.attacker.id || (ctx.attacker.flags.horusUntil && this.round <= ctx.attacker.flags.horusUntil)
+    if ((this.has(t, 'invisible') || ctx.forceInvisible) && !seesThrough && this.rng.d(6) <= 3) {
       ctx.hit = false
       ctx.crit = false
       this.say(`  vs ${t.name}: misses (invisible).`)
@@ -1355,6 +1359,7 @@ export class Battle {
 
   /** Hide: needs to be out of LoS of all hostiles or in cover from them. */
   canHide(u: Unit): boolean {
+    if (u.flags.trackedBy && !this.unit(u.flags.trackedBy)?.destroyed) return false
     if (this.has(u, 'invisible')) return true
     return this.alive().filter(o => this.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc')).every(o => !this.los(o, u) || this.cover(o, u) !== 'none') && !this.isEngaged(u)
   }
@@ -1381,7 +1386,7 @@ export class Battle {
     const c = this.canSpend(u, 'quick')
     if (c !== true) throw new Error(c)
     if (!this.adjacent(u, t)) throw new Error('Must be adjacent')
-    if (t.stats.size > u.stats.size) throw new Error('Target is too large')
+    if (t.stats.size > u.stats.size && !u.flags.muscleNet) throw new Error('Target is too large')
     this.spend(u, 'quick')
     const ctx = this.newAttackCtx(u, t, { melee: true, ranged: false, mode: 'ram' })
     if (this.has(u, 'impaired')) ctx.difficulty++
@@ -1448,6 +1453,7 @@ export class Battle {
     if (c !== true) throw new Error(c)
     this.spend(u, 'quick')
     w.loaded = true
+    u.flags.reloaded = true
     this.say(`${u.name} reloads ${w.name}.`)
   }
 
@@ -1599,6 +1605,7 @@ export class Battle {
     const parts = m.damage.map(d => ({ type: d.type, amount: rollDice(this.rng, d.val).total }))
     for (const t of unitsOnTiles(this.alive(), tiles)) {
       const ok = m.save ? this.save(t, m.save, owner?.stats.save ?? 10) : false
+      if (!ok && m.effects?.length && owner) this.runEffects(owner, t, m.effects)
       if (ok && (!m.saveHalf || t.isGrunt)) continue
       this.applyDamage(t, ok ? parts.map(p => ({ ...p, amount: this.halfOnSave(t, p.amount) })) : parts, { source: owner })
     }

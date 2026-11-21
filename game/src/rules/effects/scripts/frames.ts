@@ -96,6 +96,7 @@ registerScripts([
   },
   {
     id: 'core:mf_drake',
+    partial: true,
     note: 'Fortress Protocol: immobilized, always in hard cover, immune to forced movement/prone (cover sections not modelled)',
     onCoreActivate(b, u) {
       u.flags.fortress = true
@@ -316,6 +317,7 @@ registerScripts([
   },
   {
     id: 'core:mf_mourning_cloak',
+    partial: true,
     note: 'Blinkspace Jump (teleport 3d6); Stabilize Singularity (teleporting moves: ignore engagement)',
     actions: (b, u) => [action({
       key: 'mc-blink', name: 'Blinkspace Jump', activation: 'full', target: 'tile', range: 18,
@@ -383,6 +385,7 @@ registerScripts([
   // ---------------- HORUS Goblin
   {
     id: 'frame:mf_goblin',
+    partial: true,
     note: 'Liturgicode & Fragile via bonuses; Reactive Code (auto: copy a tech action used on an ally, approximated as +1 accuracy to next tech)',
     afterAttack(b, self, ctx, role) { if (role === 'target' && ctx.tech && b.canSpend(self, 'reaction') === true && once(self, 'reactive')) { self.reactionsLeft--; self.flags.reactiveCode = true } },
     beforeAttack(b, self, ctx, role) { if (role === 'attacker' && ctx.tech && self.flags.reactiveCode) { ctx.accuracy++; delete self.flags.reactiveCode } },
@@ -526,6 +529,7 @@ registerScripts([
   // ---------------- HA Napoleon
   {
     id: 'frame:mf_napoleon',
+    partial: true,
     note: 'Flash Aegis (brace → damage 1); Heavy Shielding approximated in saves',
     init: u => { u.flags.flashAegis = true; u.flags.heavyShielding = true },
   },

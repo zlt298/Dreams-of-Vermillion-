@@ -17,16 +17,16 @@ for (const m of Lancer.mods.values()) sections.Mods.push({ id: m.id, name: m.nam
 for (const t of Lancer.talents.values()) t.ranks.forEach((r, i) => sections['Talent ranks'].push({ id: `${t.id}:${i + 1}`, name: `${t.name} ${i + 1} (${r.name})`, c: talentRankCoverage(t.id, i + 1) }))
 for (const c of Lancer.coreBonuses.values()) sections['Core bonuses'].push({ id: c.id, name: c.name, c: coreBonusCoverage(c.id) })
 
-let tot = 0, done = 0
+let tot = 0, done = 0, part = 0
 console.log('LANCER rules coverage (lancer-data 4.0.12)\n')
-console.log('section            scripted   auto  manual   done%')
+console.log('section            scripted partial   auto  manual   done%')
 for (const [name, rows] of Object.entries(sections)) {
-  const s = rows.filter(r => r.c === 'scripted').length, a = rows.filter(r => r.c === 'auto').length, m = rows.filter(r => r.c === 'manual').length
-  tot += rows.length; done += s + a
-  console.log(`${name.padEnd(18)} ${String(s).padStart(8)} ${String(a).padStart(6)} ${String(m).padStart(7)} ${String(Math.round(((s + a) / rows.length) * 100)).padStart(6)}%`)
+  const s = rows.filter(r => r.c === 'scripted').length, p = rows.filter(r => r.c === 'partial').length, a = rows.filter(r => r.c === 'auto').length, m = rows.filter(r => r.c === 'manual').length
+  tot += rows.length; done += s + a; part += p
+  console.log(`${name.padEnd(18)} ${String(s).padStart(8)} ${String(p).padStart(7)} ${String(a).padStart(6)} ${String(m).padStart(7)} ${String(Math.round(((s + a) / rows.length) * 100)).padStart(6)}%`)
 }
-console.log(`\nTOTAL ${done}/${tot} (${Math.round((done / tot) * 100)}%) executed by the engine; the rest log their rules text for manual resolution.`)
+console.log(`\nTOTAL ${done}/${tot} (${Math.round((done / tot) * 100)}%) fully executed by the engine, ${part} partially; the rest log their rules text for manual resolution.`)
 if (list) for (const [name, rows] of Object.entries(sections)) {
-  const m = rows.filter(r => r.c === 'manual')
-  if (m.length) console.log(`\n## ${name} — manual\n` + m.map(r => `  ${r.id}  ${r.name}`).join('\n'))
+  const m = rows.filter(r => r.c === 'manual' || r.c === 'partial')
+  if (m.length) console.log(`\n## ${name} — manual / partial\n` + m.map(r => `  [${r.c}] ${r.id}  ${r.name}`).join('\n'))
 }

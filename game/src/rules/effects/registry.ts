@@ -74,6 +74,8 @@ export interface ItemScript {
   id: string
   /** short note shown in the coverage report */
   note?: string
+  /** true when the script only approximates part of the item's rules */
+  partial?: boolean
   beforeAttack?(b: Battle, self: Unit, ctx: AttackCtx, role: 'attacker' | 'target'): void
   afterAttack?(b: Battle, self: Unit, ctx: AttackCtx, role: 'attacker' | 'target'): void
   onTurnStart?(b: Battle, self: Unit): void

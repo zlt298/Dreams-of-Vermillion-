@@ -3,9 +3,13 @@
 import { Lancer, type OnEffect } from '../../data/lancer'
 import type { Unit } from '../types'
 import { actionIsStructured } from './generic'
-import { getScript } from './registry'
+import { getScript as rawGet } from './registry'
 
-export type Coverage = 'scripted' | 'auto' | 'manual'
+/** 'scripted' when a full script exists, 'partial' when it only approximates */
+const getScript = (id: string) => rawGet(id)
+const sc = (id: string): Coverage | null => { const s = rawGet(id); return s ? (s.partial ? 'partial' : 'scripted') : null }
+
+export type Coverage = 'scripted' | 'partial' | 'auto' | 'manual'
 
 const SUPPORTED_TAGS = new Set([
   'tg_ap', 'tg_accurate', 'tg_inaccurate', 'tg_arcing', 'tg_seeking', 'tg_smart', 'tg_reliable', 'tg_knockback', 'tg_loading',
@@ -18,7 +22,7 @@ const SUPPORTED_TAGS = new Set([
 const structured = (e: string | OnEffect | undefined) => e == null || (typeof e !== 'string' && !!(e.add_status?.length || e.bonus_damage || e.damage?.length))
 
 export function weaponCoverage(id: string): Coverage {
-  if (getScript(id)) return 'scripted'
+  if (sc(id)) return sc(id)!
   const w = Lancer.weapons.get(id)
   if (!w) return 'manual'
   const profiles = w.profiles?.length ? w.profiles : [w]
@@ -32,7 +36,7 @@ export function weaponCoverage(id: string): Coverage {
 }
 
 export function systemCoverage(id: string): Coverage {
-  if (getScript(id)) return 'scripted'
+  if (sc(id)) return sc(id)!
   const s = Lancer.systems.get(id)
   if (!s) return 'manual'
   const acts = s.actions ?? []
@@ -44,7 +48,7 @@ export function systemCoverage(id: string): Coverage {
 }
 
 export function talentRankCoverage(id: string, rank: number): Coverage {
-  if (getScript(`${id}:${rank}`)) return 'scripted'
+  if (sc(`${id}:${rank}`)) return sc(`${id}:${rank}`)!
   const r = Lancer.talents.get(id)?.ranks[rank - 1]
   if (!r) return 'manual'
   if (r.actions?.length || (r as any).active_effects?.length || r.synergies?.length) return 'manual'
@@ -52,7 +56,7 @@ export function talentRankCoverage(id: string, rank: number): Coverage {
 }
 
 export function coreBonusCoverage(id: string): Coverage {
-  if (getScript(id)) return 'scripted'
+  if (sc(id)) return sc(id)!
   const c = Lancer.coreBonuses.get(id)
   if (!c) return 'manual'
   return c.bonuses?.length && !c.actions?.length ? 'auto' : 'manual'
@@ -61,22 +65,22 @@ export function coreBonusCoverage(id: string): Coverage {
 export function frameCoverage(id: string): { traits: Coverage; core: Coverage } {
   const f = Lancer.frames.get(id)
   if (!f) return { traits: 'manual', core: 'manual' }
-  const traits: Coverage = getScript(`frame:${id}`) ? 'scripted' : f.traits.every(t => t.bonuses?.length && !t.actions?.length && !(t as any).active_effects?.length) ? 'auto' : 'manual'
+  const traits: Coverage = sc(`frame:${id}`) ?? (f.traits.every(t => t.bonuses?.length && !t.actions?.length && !(t as any).active_effects?.length) ? 'auto' : 'manual')
   const cs = f.core_system
-  const core: Coverage = getScript(`core:${id}`) ? 'scripted' : cs.active_bonuses?.length && !cs.active_actions?.length && !cs.deployables?.length && !cs.passive_effect ? 'auto' : 'manual'
+  const core: Coverage = sc(`core:${id}`) ?? (cs.active_bonuses?.length && !cs.active_actions?.length && !cs.deployables?.length && !cs.passive_effect ? 'auto' : 'manual')
   return { traits, core }
 }
 
 export function modCoverage(id: string): Coverage {
-  if (getScript(id)) return 'scripted'
+  if (sc(id)) return sc(id)!
   const m = Lancer.mods.get(id)
   if (!m) return 'manual'
   return (m.added_tags?.length || m.added_range?.length || m.added_damage?.length) && !/when|on a hit|1\/round|as a/i.test(m.effect ?? '') ? 'auto' : 'manual'
 }
 
 /** Per-unit summary used by the hangar. */
-export function classify(u: Unit): { manual: string[]; scripted: string[]; auto: string[] } {
-  const out = { manual: [] as string[], scripted: [] as string[], auto: [] as string[] }
+export function classify(u: Unit): { manual: string[]; scripted: string[]; auto: string[]; partial: string[] } {
+  const out = { manual: [] as string[], scripted: [] as string[], auto: [] as string[], partial: [] as string[] }
   const add = (name: string, c: Coverage) => out[c].push(name)
   if (u.frameId) {
     const f = Lancer.frames.get(u.frameId)

@@ -35,7 +35,7 @@ registerScripts([
   },
   // ---------------- Bonded
   {
-    id: 't_bonded:1', note: 'Huckleberry: +1 acc on checks/saves when adjacent to an ally mech (bondmate approximated as nearest ally)',
+    id: 't_bonded:1', partial: true, note: 'Huckleberry: +1 acc on checks/saves when adjacent to an ally mech (bondmate approximated as nearest ally)',
     init: u => { u.bonuses.push({ id: 'check', accuracy: 1, condition: '{adjacent_ally}' }, { id: 'save', accuracy: 1, condition: '{adjacent_ally}' }) },
   },
   // ---------------- Brawler
@@ -66,7 +66,7 @@ registerScripts([
   },
   // ---------------- Brutal
   {
-    id: 't_brutal:1', note: 'Predator: natural 20 crits deal maximum damage (approximated: +50% bonus as extra damage)',
+    id: 't_brutal:1', partial: true, note: 'Predator: natural 20 crits deal maximum damage (approximated: +50% bonus as extra damage)',
     afterAttack(b, self, ctx, role) {
       if (role === 'attacker' && ctx.crit && ctx.roll === 20 && !ctx.target.destroyed && ctx.profile) {
         const max = ctx.profile.damage.reduce((a, d) => a + maxDice(d.val), 0)
@@ -107,7 +107,7 @@ registerScripts([
     },
   },
   {
-    id: 't_crack_shot:3', note: 'Watch This (auto: Limb Shot → Immobilized, or Body Shot → Prone)',
+    id: 't_crack_shot:3', partial: true, note: 'Watch This (auto: Limb Shot → Immobilized, or Body Shot → Prone)',
     afterAttack(b, self, ctx, role) {
       if (role !== 'attacker' || !ctx.crit || ctx.weapon?.type !== 'Rifle' || !self.flags.steady || ctx.target.destroyed || !once(self, 'watchthis')) return
       if (!b.save(ctx.target, 'hull', self.stats.save)) b.addStatus(ctx.target, 'immobilized', 'next_turn_end_target', self)
@@ -159,7 +159,7 @@ registerScripts([
     },
   },
   {
-    id: 't_duelist:2', note: 'Blademaster dice (auto-parry: +1 diff vs melee/ranged attacks while dice remain)',
+    id: 't_duelist:2', partial: true, note: 'Blademaster dice (auto-parry: +1 diff vs melee/ranged attacks while dice remain)',
     afterAttack(b, self, ctx, role) {
       if (role === 'attacker' && ctx.hit && ctx.melee && ctx.weapon?.size === 'Main' && once(self, 'blademaster')) self.flags.bladeDice = Math.min(3, (self.flags.bladeDice ?? 0) + 1)
     },
@@ -224,7 +224,7 @@ registerScripts([
   },
   // ---------------- Exemplar
   {
-    id: 't_exemplar:1', note: "Honorable Challenge (mark first target within 3; marked target attacking others within 3 of you takes +1 diff... simplified to Exemplar's Mark tracking)",
+    id: 't_exemplar:1', partial: true, note: "Honorable Challenge (mark first target within 3; marked target attacking others within 3 of you takes +1 diff... simplified to Exemplar's Mark tracking)",
     afterAttack(b, self, ctx, role) {
       if (role === 'attacker' && self.activeTurn && b.hostile(self, ctx.target) && b.distance(self, ctx.target) <= 3 && once(self, 'mark', 'turn')) {
         for (const o of b.units) if (o.flags.exemplarMarkBy === self.id) delete o.flags.exemplarMarkBy
@@ -306,7 +306,7 @@ registerScripts([
     })],
   },
   {
-    id: 't_hacker:3', note: 'Last Argument of Kings',
+    id: 't_hacker:3', partial: true, note: 'Last Argument of Kings',
     actions: (b, u) => [action({
       key: 'laok', name: 'Last Argument of Kings', activation: 'full_tech', target: 'enemy', range: u.stats.sensors,
       text: 'Tech attack: deal 1 damage per point of heat on the target... (target takes heat-equal energy damage).',
@@ -319,7 +319,7 @@ registerScripts([
   },
   // ---------------- Heavy Gunner
   {
-    id: 't_heavy_gunner:1', note: 'Covering Fire (target Impaired until it moves or the start of your next turn; auto-attack if it moves)',
+    id: 't_heavy_gunner:1', partial: true, note: 'Covering Fire (target Impaired until it moves or the start of your next turn; auto-attack if it moves)',
     actions: (b, u) => [action({
       key: 'coverfire', name: 'Covering Fire', activation: 'quick', target: 'enemy', range: 15,
       text: 'Pin a target with a Heavy ranged weapon: it is Impaired; if it moves 1+ spaces you may attack it as a reaction.',
@@ -385,7 +385,7 @@ registerScripts([
   },
   // ---------------- Leader (leadership dice: +1d6 to an ally's attack, auto)
   {
-    id: 't_leader:1', note: 'Field Commander (leadership dice: allies within sensors add +1d6 bonus damage once each)',
+    id: 't_leader:1', partial: true, note: 'Field Commander (leadership dice: allies within sensors add +1d6 bonus damage once each)',
     init: u => { u.flags.leaderDice = u.talents.find(t => t.id === 't_leader')!.rank >= 3 ? 6 : u.talents.find(t => t.id === 't_leader')!.rank >= 2 ? 5 : 3 },
     beforeAnyAttack(b, self, ctx) {
       if (ctx.attacker === self || b.hostile(self, ctx.attacker) || (self.flags.leaderDice ?? 0) <= 0 || ctx.tech) return
@@ -470,7 +470,7 @@ registerScripts([
     },
   },
   {
-    id: 't_stormbringer:2', note: 'Stormbending (auto: Lightning → push 3 on a failed hull save... simplified to knockback 3)',
+    id: 't_stormbringer:2', partial: true, note: 'Stormbending (auto: Lightning → push 3 on a failed hull save... simplified to knockback 3)',
     afterAttack(b, self, ctx, role) {
       if (role === 'attacker' && ctx.hit && ctx.weapon?.type === 'Launcher' && !ctx.target.destroyed && once(self, 'stormbend')) {
         b.forceMove(ctx.target, self, 3, 1)
@@ -530,7 +530,7 @@ registerScripts([
   },
   // ---------------- Walking Armory (Ammo Case: auto THUMPER = +knockback 1, +? …)
   {
-    id: 't_walking_armory:1', note: 'Armament: Ammo Case auto-uses THUMPER (knockback 1) / SHOCK (+energy) once per turn',
+    id: 't_walking_armory:1', partial: true, note: 'Armament: Ammo Case auto-uses THUMPER (knockback 1) / SHOCK (+energy) once per turn',
     beforeAttack(b, self, ctx, role) {
       if (role !== 'attacker' || ctx.weapon?.size !== 'Main' || !isRangedWeapon(b, ctx.weapon) || !once(self, 'ammo', 'turn')) return
       const sys = self.systems.find(s => s.dataId.startsWith('ms_walking_armory'))
