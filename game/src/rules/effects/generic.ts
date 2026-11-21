@@ -53,7 +53,8 @@ function rangeVal(a: { range?: { type: string; val: any }[] }, type: string): nu
 
 function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: SystemInst): CustomAction {
   const blast = rangeVal(a, 'Blast'), burst = rangeVal(a, 'Burst'), line = rangeVal(a, 'Line'), cone = rangeVal(a, 'Cone')
-  const range = rangeVal(a, 'Range') ?? rangeVal(a, 'Threat') ?? (a.activation === 'Invade' ? u.stats.sensors : 1)
+  let range = rangeVal(a, 'Range') ?? rangeVal(a, 'Threat') ?? (a.activation === 'Invade' ? u.stats.sensors : 1)
+  if (u.flags.assaultLauncher && sys && Lancer.systems.get(sys.dataId)?.tags?.some(t => t.id === 'tg_grenade')) range = Math.max(range, 15)
   const area = burst ? { shape: 'burst' as const, size: burst } : blast ? { shape: 'blast' as const, size: blast } : line ? { shape: 'line' as const, size: line } : cone ? { shape: 'cone' as const, size: cone } : undefined
   const isTech = a.activation === 'Invade' || a.activation === 'Quick Tech' || a.activation === 'Full Tech'
   return {
@@ -88,7 +89,7 @@ function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: 
         if (save) {
           const ok = bt.save(v, save, self.stats.save || 10)
           if (ok && (!parts[0].half || v.isGrunt)) continue
-          bt.applyDamage(v, parts.map(p => ({ type: p.type, amount: ok ? Math.ceil(p.amount / 2) : p.amount })), { source: self })
+          bt.applyDamage(v, parts.map(p => ({ type: p.type, amount: ok ? bt.halfOnSave(v, p.amount) : p.amount })), { source: self })
         } else {
           const ctx = isTech ? bt.techAttackRoll(self, v, a.name) : (() => {
             const c = bt.newAttackCtx(self, v, { mode: 'free', multiTarget: victims.length > 1 })
@@ -163,8 +164,8 @@ export function deployableUnit(owner: Unit, d: DeployableData, pos: Pos): Unit {
 
 function deployAction(b: Battle, u: Unit, d: DeployableData, keyBase: string, sys?: SystemInst, parentActivation?: string): CustomAction | null {
   const act = activationOf(d.activation ?? parentActivation ?? 'Quick') ?? 'quick'
-  const range = rangeVal(d, 'Range') ?? 5
   const isMine = d.type === 'Mine'
+  const range = isMine && u.flags.assaultLauncher ? 15 : rangeVal(d, 'Range') ?? 5
   const radius = rangeVal(d, 'Burst') ?? rangeVal(d, 'Blast') ?? 1
   const live = () => b.alive().filter(x => x.ownerId === u.id && x.flags.dataName === d.name).length
   return {

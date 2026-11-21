@@ -2,6 +2,7 @@
 import { Lancer, type BonusData, type OnEffect, type WeaponData, type WeaponProfile, type TagData } from '../data/lancer'
 import type { PilotBuild } from '../import/compcon'
 import type { Effect, Profile, Stats, StatusId, SystemInst, Unit, Weapon, WeaponSize, Duration, Stat } from './types'
+import { scriptsFor } from './effects/registry'
 
 let uidCounter = 0
 export const nextUid = (p = 'u') => `${p}${++uidCounter}`
@@ -216,7 +217,7 @@ export function buildMechUnit(p: PilotBuild, side: 'player' | 'enemy' = 'player'
   const immune: string[] = []
   for (const b of bonuses) if (b.id === 'immunity') immune.push(...(b.val as string[]).map(x => x.toLowerCase()))
   const extraReaction = bonuses.filter(b => b.id === 'extra_action' && b.val === 'reaction').length
-  return {
+  const unit: Unit = {
     id: nextUid('mech'),
     name: p.callsign,
     pilotName: p.name,
@@ -252,4 +253,6 @@ export function buildMechUnit(p: PilotBuild, side: 'player' | 'enemy' = 'player'
     destroyed: false,
     policies: defaultPolicies(),
   }
+  for (const sc of scriptsFor(unit)) sc.init?.(unit)
+  return unit
 }

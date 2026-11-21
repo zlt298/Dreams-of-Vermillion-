@@ -32,6 +32,15 @@ export interface AttackCtx {
   /** scripts may cancel the attack's normal damage */
   cancelDamage?: boolean
   mode: 'skirmish' | 'barrage' | 'overwatch' | 'free' | 'tech' | 'improvised' | 'ram' | 'grapple' | 'secondary'
+  /** reroll a missed attack once (Neurolink etc.) */
+  rerollOnMiss?: boolean
+  /** treat target as Invisible for this attack */
+  forceInvisible?: boolean
+  irreducible?: boolean
+  /** target gains resistance to all damage from this attack */
+  resistAll?: boolean
+  /** attack is prevented before the roll (counts as a miss) */
+  cancelled?: boolean
 }
 
 export type Activation = 'quick' | 'full' | 'protocol' | 'free' | 'reaction' | 'quick_tech' | 'full_tech'
@@ -80,6 +89,25 @@ export interface ItemScript {
   /** called for every living unit's scripts before/after any attack (auras, ally reactions) */
   beforeAnyAttack?(b: Battle, self: Unit, ctx: AttackCtx): void
   afterAnyAttack?(b: Battle, self: Unit, ctx: AttackCtx): void
+  /** one-time setup when the unit is built (static resistances, immunities, flags) */
+  init?(u: Unit): void
+  /** adjust the cover a target has against an attacker; called for every living unit */
+  adjustCover?(b: Battle, self: Unit, attacker: Unit, target: Unit, cover: 'none' | 'soft' | 'hard'): 'none' | 'soft' | 'hard'
+  /** return false to prevent forced movement (push/pull/knockback) of this unit */
+  canBeMoved?(b: Battle, self: Unit, source?: Unit): boolean
+  /** return true to block a status being applied to this unit */
+  blockStatus?(b: Battle, self: Unit, status: string, source?: Unit): boolean
+  /** this unit inflicted a status on someone */
+  onStatusInflicted?(b: Battle, self: Unit, target: Unit, status: string): void
+  /** after any attack roll is made (hit/miss known, damage not yet applied) */
+  afterAnyRoll?(b: Battle, self: Unit, ctx: AttackCtx): void
+  onAnyTurnStart?(b: Battle, self: Unit, unit: Unit): void
+  onAnyTurnEnd?(b: Battle, self: Unit, unit: Unit): void
+  onHeat?(b: Battle, self: Unit, amount: number): void
+  /** return true to cancel the normal overheat (stress) result */
+  beforeOverheat?(b: Battle, self: Unit): boolean
+  onStructureDamage?(b: Battle, self: Unit): void
+  onAnyMovementAction?(b: Battle, self: Unit, mover: Unit, kind: 'boost' | 'involuntary' | 'standard'): void
   /** when the owner activates its CORE power */
   onCoreActivate?(b: Battle, self: Unit): void
 }

@@ -125,8 +125,20 @@ export class Battle {
   }
   cover(attacker: Unit, target: Unit, from?: Pos): Cover {
     const m = this.effectiveMap()
-    // cover deployables shouldn't give cover to themselves
-    return coverBetween(m, attacker, target, this.areas, from)
+    let c = coverBetween(m, attacker, target, this.areas, from)
+    if (c !== 'hard') {
+      // Guardian / Colossus: adjacent allied frames provide hard cover if they are between
+      const ac = center(attacker, from ?? attacker.pos), tc = center(target)
+      const dx = ac.x - tc.x, dy = ac.y - tc.y, dl = Math.hypot(dx, dy) || 1
+      for (const g of this.alive()) {
+        if (g === target || g === attacker || !g.flags.guardian || this.hostile(g, target) || !this.adjacent(g, target)) continue
+        const gc = center(g)
+        const vx = gc.x - tc.x, vy = gc.y - tc.y, vl = Math.hypot(vx, vy) || 1
+        if ((vx * dx + vy * dy) / (vl * dl) >= 0.5) { c = 'hard'; break }
+      }
+    }
+    for (const o of this.alive()) for (const sc of scriptsFor(o)) if (sc.adjustCover) c = sc.adjustCover(this, o, attacker, target, c)
+    return c
   }
 
   // ------------------------------------------------------------------ statuses
@@ -149,6 +161,7 @@ export class Battle {
   addStatus(u: Unit, id: StatusId, duration: Duration = 'until_cleared', source?: Unit, data?: any): boolean {
     if (u.destroyed) return false
     if (u.immune.includes(id)) { this.say(`${u.name} is immune to ${id}.`, 'status'); return false }
+    for (const sc of scriptsFor(u)) if (sc.blockStatus?.(this, u, id, source)) { this.say(`${u.name} ignores ${id}.`, 'status'); return false }
     if (u.kind === 'deployable' && ['prone', 'slowed', 'immobilized', 'impaired', 'jammed'].includes(id) && u.stats.speed === 0) return false
     const inst: StatusInstance = { id, source: source?.id, data }
     if (duration === 'end_of_turn') { inst.clockUnit = this.activeId ?? u.id; inst.turnsLeft = 1 }
@@ -167,6 +180,7 @@ export class Battle {
     u.statuses.push(inst)
     this.emit({ type: 'status', unitId: u.id, status: id, added: true })
     this.say(`${u.name} is ${id.toUpperCase()}.`, 'status')
+    if (source && source !== u) for (const sc of scriptsFor(source)) sc.onStatusInflicted?.(this, source, u, id)
     if (id === 'stunned' || id === 'shutdown') { u.flags.wasStunned = true }
     return true
   }
@@ -209,6 +223,8 @@ export class Battle {
     if (c === 'exposed') return this.has(u, 'exposed')
     if (c === 'dangerzone' || c === 'danger_zone') return this.has(u, 'dangerzone')
     if (c === 'first_round') return this.round === 1
+    if (c === 'flying') return u.flying
+    if (c === 'adjacent_ally') return this.alive().some(o => o !== u && !this.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc') && this.adjacent(u, o))
     return false
   }
 
@@ -293,6 +309,7 @@ export class Battle {
       this.applyDamage(u, [{ type: 'Energy', amount: r.total }], { source: this.unit(a.ownerId) })
     }
     for (const s of scriptsFor(u)) s.onTurnStart?.(this, u)
+    for (const o of this.alive()) if (o !== u) for (const s of scriptsFor(o)) s.onAnyTurnStart?.(this, o, u)
     // drones/deployables owned by this unit act on its turn: refresh their flags
     for (const d of this.alive().filter(d => d.ownerId === u.id)) for (const k of Object.keys(d.flags)) if (k.startsWith('turn:')) delete d.flags[k]
   }
@@ -305,6 +322,7 @@ export class Battle {
       else { this.say(`${u.name} burns for ${u.burn}.`, 'damage'); this.applyDamage(u, [{ type: 'Burn-tick', amount: u.burn }], {}) }
     }
     for (const s of scriptsFor(u)) s.onTurnEnd?.(this, u)
+    for (const o of this.alive()) if (o !== u) for (const s of scriptsFor(o)) s.onAnyTurnEnd?.(this, o, u)
     // reactor meltdown / self destruct
     if (!u.destroyed && u.meltdownTurns != null) {
       u.meltdownTurns--
@@ -403,7 +421,9 @@ export class Battle {
     if (u.stats.heatcap <= 0) return // deployables etc.
     u.heat += amount
     this.emit({ type: 'damage', unitId: u.id, amount, kind: 'heat' })
+    for (const s of scriptsFor(u)) s.onHeat?.(this, u, amount)
     while (u.heat > u.stats.heatcap && !u.destroyed) {
+      if (scriptsFor(u).some(s => s.beforeOverheat?.(this, u))) break
       const excess = u.heat - u.stats.heatcap
       if (u.kind === 'npc' && u.stats.stress <= 1) {
         u.heat = 0
@@ -491,8 +511,13 @@ export class Battle {
       if (t === u) continue
       const ok = this.save(t, 'agi', u.stats.save || 10)
       if (ok && t.isGrunt) continue
-      this.applyDamage(t, [{ type: 'Explosive', amount: ok ? Math.ceil(dmg / 2) : dmg }], { source: u })
+      this.applyDamage(t, [{ type: 'Explosive', amount: ok ? this.halfOnSave(t, dmg) : dmg }], { source: u })
     }
+  }
+
+  /** Half damage on a successful save (Napoleon's Heavy Shielding reduces it to 1). */
+  halfOnSave(t: Unit, amount: number): number {
+    return t.flags.heavyShielding ? Math.min(1, amount) : Math.ceil(amount / 2)
   }
 
   destroy(u: Unit, why: string) {
@@ -502,6 +527,7 @@ export class Battle {
     this.emit({ type: 'destroyed', unitId: u.id })
     this.say(`${u.name} is DESTROYED (${why}).`, 'damage')
     for (const o of this.alive()) for (const s of scriptsFor(o)) s.onDestroyed?.(this, o, u)
+    for (const s of scriptsFor(u)) s.onDestroyed?.(this, u, u)
     // drones/deployables persist; owned drones of destroyed mechs remain until the scene ends
     if (u.id === this.activeId) {
       u.activeTurn = false
@@ -543,6 +569,7 @@ export class Battle {
     const dctx: DamageCtx = { source: opts.source, attack: opts.attack, amount: hpDmg, kind: 'hp' }
     for (const s of scriptsFor(t)) s.modifyIncoming?.(this, t, dctx)
     hpDmg = Math.max(0, dctx.amount)
+    if (burn > 0 && t.immune.includes('burn')) { this.say(`${t.name} is immune to burn.`); burn = 0 }
     if (burn > 0) {
       hpDmg += burn // burn deals its damage immediately, ignoring armor
       t.burn += burn
@@ -579,6 +606,7 @@ export class Battle {
       this.emit({ type: 'damage', unitId: t.id, amount: 1, kind: 'structure' })
       this.say(`${t.name} takes STRUCTURE damage (${t.structure} left).`, 'damage')
       t.hp = t.stats.hp - excess
+      for (const s of scriptsFor(t)) s.onStructureDamage?.(this, t)
       this.structureCheck(t)
     }
   }
@@ -649,7 +677,7 @@ export class Battle {
         if (!opts.ignoreEngagement && u.kind !== 'deployable') {
           for (const o of this.alive()) {
             if (!this.hostile(u, o) || startAdj.has(o.id) || (o.kind !== 'mech' && o.kind !== 'npc') || this.has(o, 'hidden')) continue
-            if (o.stats.size >= u.stats.size && this.adjacent(u, o, np)) { terminal = true; break }
+            if ((o.stats.size >= u.stats.size || o.flags.localizedMaze) && this.adjacent(u, o, np)) { terminal = true; break }
           }
         }
         dist.set(nk, { pos: np, cost: c, prev: k, terminal, stop: pass === 'ok' })
@@ -698,7 +726,7 @@ export class Battle {
     if (p.path.length <= 1) return true
     if (opts.mode === 'standard') u.moveLeft -= p.cost
     else if (u.flags.pendingMove != null) u.flags.pendingMove = Math.max(0, u.flags.pendingMove - p.cost)
-    if (opts.mode !== 'involuntary') u.actedThisTurn = true
+    if (opts.mode !== 'involuntary') { u.actedThisTurn = true; u.flags['turn:moved'] = true }
     // overwatch triggers at the start of voluntary movement
     if (opts.mode !== 'involuntary' && !u.flags['turn:disengaged']) this.triggerOverwatch(u)
     if (u.destroyed) return false
@@ -719,7 +747,7 @@ export class Battle {
       u.pos = step
       // mines
       for (const m of [...this.mines]) {
-        if (m.side === u.side) continue
+        if (m.side === u.side || u.flags.skeletonKey) continue
         if (footprint(u).some(q => chebyshev(q, m.pos) <= m.radius)) this.detonateMine(m)
       }
       // hazard tiles
@@ -747,6 +775,10 @@ export class Battle {
   forceMove(target: Unit, source: Unit | Pos, spaces: number, dir: 1 | -1) {
     if (target.destroyed || spaces <= 0) return
     if (target.kind === 'deployable' && target.stats.speed === 0) return
+    const srcUnit = 'stats' in (source as any) ? (source as Unit) : undefined
+    for (const s of scriptsFor(target)) if (s.canBeMoved && !s.canBeMoved(this, target, srcUnit)) { this.say(`${target.name} holds its ground.`); return }
+    for (const o of this.alive()) for (const s of scriptsFor(o)) s.onAnyMovementAction?.(this, o, target, 'involuntary')
+    if (target.destroyed) return
     const sc = 'stats' in (source as any) ? center(source as Unit) : { x: (source as Pos).x + 0.5, y: (source as Pos).y + 0.5 }
     const path: Pos[] = [target.pos]
     for (let i = 0; i < spaces; i++) {
@@ -837,9 +869,9 @@ export class Battle {
   weaponThreat(u: Unit, w: Weapon): number {
     const rs = this.ranges(u, w)
     const t = rs.find(r => r.type === 'Threat')
-    if (t) return Number(t.val)
-    if (this.isMelee(w)) return 1
-    return 0
+    let v = t ? Number(t.val) : this.isMelee(w) ? 1 : 0
+    if (u.flags.hyperReflex && !this.isMelee(w) && !this.isAoE(this.profile(w))) v = Math.max(v, 3)
+    return v
   }
   weaponReach(u: Unit, w: Weapon): number {
     const rs = this.ranges(u, w)
@@ -858,7 +890,7 @@ export class Battle {
     if (!w.loaded) return 'Needs reloading'
     if (w.usesLeft === 0) return 'No uses left'
     if (!w.charged) return 'Recharging'
-    if (this.has(u, 'jammed')) return 'Jammed'
+    if (this.has(u, 'jammed') && !(u.flags.shieldedMagazines && !this.isMelee(w))) return 'Jammed'
     const pr = this.profile(w)
     if (!pr.damage.length && !pr.onHit.length && !w.tech) {
       const d = w.dataId ? Lancer.weapons.get(w.dataId) : undefined
@@ -969,6 +1001,9 @@ export class Battle {
       ctx.reasons.push('Lock On +1')
       if (consume) this.removeStatus(target, 'lockon')
     }
+    for (const b of [...attacker.bonuses, ...w.bonuses]) {
+      if (b.id === 'attack' && typeof b.val === 'number' && !b.accuracy && this.bonusApplies(b, w)) { ctx.attackBonus += b.val; ctx.reasons.push(`+${b.val} attack`) }
+    }
     for (const b of attacker.bonuses) {
       if (b.id === 'attack' && b.accuracy) { if (!b.condition || this.evalCondition(attacker, b.condition)) { ctx.accuracy += b.accuracy; ctx.reasons.push(`Bonus +${b.accuracy}`) } }
       if (b.id === 'tech_attack' && b.accuracy && ctx.tech) ctx.accuracy += b.accuracy
@@ -1007,6 +1042,7 @@ export class Battle {
       targets = [t]
     }
     this.say(`${u.name} attacks with ${w.name}${pr.name !== w.name ? ` (${pr.name})` : ''}.`, 'attack')
+    u.flags['turn:attacked'] = true
     if (this.has(u, 'hidden')) this.removeStatus(u, 'hidden')
     // on_attack effects
     for (const e of pr.onAttack) if (e.do === 'text') this.say(`  ${stripHtml(e.text)}`)
@@ -1038,7 +1074,7 @@ export class Battle {
     for (const ctx of ctxs) {
       const t = ctx.target
       if (ctx.hit) {
-        const base = (ctx.crit ? dmgCrit : dmgNormal).map(x => ({ ...x }))
+        const base = (ctx.crit ? dmgCrit : dmgNormal).map(x => ({ ...x, amount: u.flags.halfDamage ? Math.ceil(x.amount / 2) : x.amount }))
         // bonus damage (halved vs multiple targets)
         for (const bd of ctx.bonusDamage) {
           let a = rollDice(this.rng, bd.val, { crit: ctx.crit }).total
@@ -1054,10 +1090,11 @@ export class Battle {
         if (burnTag) base.push({ type: 'Burn', amount: burnTag })
         const heatTag = tagVal(pr.tags, 'tg_heat_target')
         if (heatTag) base.push({ type: 'Heat', amount: heatTag })
-        let resistAll = false
-        if (!ctx.cancelDamage && t.policies.autoBrace && this.shouldBrace(t, base)) resistAll = this.brace(t)
+        let resistAll = !!ctx.resistAll
+        if (!ctx.cancelDamage && !resistAll && t.policies.autoBrace && this.shouldBrace(t, base)) resistAll = this.brace(t)
+        if (t.flags.flashAegis && resistAll && !ctx.resistAll) for (const p of base) p.amount = Math.min(p.amount, 1)
         if (!ctx.cancelDamage) ctx.damageDealt = this.applyDamage(t, base, {
-          source: u, attack: ctx, ap: hasTag(pr.tags, 'tg_ap'), irreducible: hasTag(pr.tags, 'tg_irreducible'), resistAll,
+          source: u, attack: ctx, ap: hasTag(pr.tags, 'tg_ap'), irreducible: hasTag(pr.tags, 'tg_irreducible') || ctx.irreducible, resistAll,
         })
         const kb = (tagVal(pr.tags, 'tg_knockback') ?? 0) + u.bonuses.filter(b => b.id === 'knockback' && this.bonusApplies(b, w)).reduce((a, b) => a + Number(b.val), 0)
         if (kb && !t.destroyed) this.forceMove(t, u, kb, 1)
@@ -1091,23 +1128,37 @@ export class Battle {
   rollToHit(ctx: AttackCtx) {
     const t = ctx.target
     const net = ctx.accuracy - ctx.difficulty
-    if (this.has(t, 'invisible') && this.rng.d(6) <= 3) {
+    if (ctx.cancelled) {
+      ctx.hit = false
+      ctx.crit = false
+      this.emit({ type: 'attack', attackerId: ctx.attacker.id, targetId: t.id, hit: false, crit: false, weapon: ctx.weapon?.name ?? 'tech', total: 0 })
+      return
+    }
+    if ((this.has(t, 'invisible') || ctx.forceInvisible) && this.rng.d(6) <= 3) {
       ctx.hit = false
       ctx.crit = false
       this.say(`  vs ${t.name}: misses (invisible).`)
       this.emit({ type: 'attack', attackerId: ctx.attacker.id, targetId: t.id, hit: false, crit: false, weapon: ctx.weapon?.name ?? 'tech', total: 0 })
       return
     }
-    const d20 = this.rng.d(20)
-    const acc = rollAccuracy(this.rng, net)
-    const total = d20 + ctx.attackBonus + acc.bonus
+    let d20 = this.rng.d(20)
+    let acc = rollAccuracy(this.rng, net)
+    let total = d20 + ctx.attackBonus + acc.bonus
     const def = this.defenseOf(t, ctx)
+    if (total < def && ctx.rerollOnMiss) {
+      this.say(`  ${ctx.attacker.name} rerolls (${total}).`)
+      d20 = this.rng.d(20)
+      acc = rollAccuracy(this.rng, net)
+      total = d20 + ctx.attackBonus + acc.bonus
+    }
     ctx.roll = d20
     ctx.total = total
     ctx.hit = total >= def
     ctx.crit = ctx.hit && total >= 20 && ctx.attacker.canCrit && !ctx.tech
     const accTxt = net ? ` ${net > 0 ? '+' : '-'}${Math.abs(net)}${net > 0 ? 'acc' : 'diff'}[${acc.dice.join(',')}]` : ''
     this.say(`  vs ${t.name}: ${total} (d20 ${d20} +${ctx.attackBonus}${accTxt}) vs ${ctx.tech || (ctx.weapon && (ctx.weapon.vsEdef || hasTag(this.profile(ctx.weapon).tags, 'tg_smart'))) ? 'E-DEF' : 'EVA'} ${def} — ${ctx.crit ? 'CRITICAL HIT' : ctx.hit ? 'HIT' : 'MISS'}`, 'attack')
+    for (const o of this.alive()) for (const sc of scriptsFor(o)) sc.afterAnyRoll?.(this, o, ctx)
+    if (!ctx.hit) ctx.crit = false
     this.emit({ type: 'attack', attackerId: ctx.attacker.id, targetId: t.id, hit: !!ctx.hit, crit: !!ctx.crit, weapon: ctx.weapon?.name ?? 'tech', total })
   }
 
@@ -1127,7 +1178,7 @@ export class Battle {
           break
         case 'damage': {
           const parts = e.damage.map(d => ({ type: d.type, amount: rollDice(this.rng, d.val).total }))
-          if (saved) { if (e.saveHalf && !who.isGrunt) this.applyDamage(who, parts.map(p => ({ ...p, amount: Math.ceil(p.amount / 2) })), { source: src, ap: e.ap }) }
+          if (saved) { if (e.saveHalf && !who.isGrunt) this.applyDamage(who, parts.map(p => ({ ...p, amount: this.halfOnSave(who, p.amount) })), { source: src, ap: e.ap }) }
           else this.applyDamage(who, parts, { source: src, ap: e.ap })
           break
         }
@@ -1242,6 +1293,8 @@ export class Battle {
     u.boostedThisTurn = true
     if (this.has(u, 'hidden')) this.removeStatus(u, 'hidden')
     this.say(`${u.name} BOOSTS (+${u.stats.speed + extra} move).`)
+    u.flags['round:boosted'] = true
+    for (const o of this.alive()) for (const s of scriptsFor(o)) s.onAnyMovementAction?.(this, o, u, 'boost')
   }
 
   standUp(u: Unit) {
@@ -1285,6 +1338,10 @@ export class Battle {
         const s = (clear?.status as StatusId) ?? tgt.statuses.find(x => ['impaired', 'slowed', 'immobilized', 'jammed', 'shredded', 'lockon'].includes(x.id))?.id
         if (s) this.removeStatus(tgt, s)
       }
+    }
+    if (u.flags.machineBond) for (const s of ['impaired', 'jammed', 'immobilized', 'slowed', 'lockon'] as const) {
+      const inst = u.statuses.find(x => x.id === s)
+      if (inst && inst.source !== u.id) this.removeStatus(u, s)
     }
   }
 
@@ -1543,7 +1600,7 @@ export class Battle {
     for (const t of unitsOnTiles(this.alive(), tiles)) {
       const ok = m.save ? this.save(t, m.save, owner?.stats.save ?? 10) : false
       if (ok && (!m.saveHalf || t.isGrunt)) continue
-      this.applyDamage(t, ok ? parts.map(p => ({ ...p, amount: Math.ceil(p.amount / 2) })) : parts, { source: owner })
+      this.applyDamage(t, ok ? parts.map(p => ({ ...p, amount: this.halfOnSave(t, p.amount) })) : parts, { source: owner })
     }
   }
   addArea(a: Omit<AreaEffect, 'id'>) {
