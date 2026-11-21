@@ -448,7 +448,9 @@ export class BattleView {
     })
   }
   private wait(ms: number) {
-    return new Promise<void>(r => setTimeout(r, ms / this.speed))
+    // catch up quickly when a long chain of events (e.g. an AI turn) has queued up
+    const backlog = this.animQueue.length > 24 ? 8 : 1
+    return new Promise<void>(r => setTimeout(r, ms / (this.speed * backlog)))
   }
   private async animateMove(id: string, path: Pos[]) {
     const u = this.battle.unit(id)

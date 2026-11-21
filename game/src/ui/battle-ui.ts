@@ -229,6 +229,10 @@ export class BattleScreen {
         if (sel) this.cmd(() => { this.b.beginTurn(sel); this.mode = { k: 'move' } })
         return
       case 'end': if (a) this.cmd(() => { this.b.endTurn(a); this.mode = { k: 'idle' } }, true); return
+      case 'auto':
+        if (a && a.side === 'player') this.cmd(() => { runAiTurn(this.b, a); this.mode = { k: 'idle' } }, true)
+        else if (sel && sel.side === 'player' && !this.b.activeId && sel.activationsLeft > 0 && this.b.currentSide === 'player') this.cmd(() => { runAiTurn(this.b, sel); this.mode = { k: 'idle' } }, true)
+        return
       case 'cancel': this.mode = a ? { k: 'move' } : { k: 'idle' }; this.render(); return
       case 'rotl': this.view.rotate(-1); return
       case 'rotr': this.view.rotate(1); return
@@ -411,7 +415,7 @@ export class BattleScreen {
     head += '</div>'
     const wcards = u.weapons.map(w => this.weaponCard(u, w, isActive)).join('')
     let actions = ''
-    if (mine && !isActive && b.currentSide === 'player' && !b.activeId && u.activationsLeft > 0) actions = `<div class="actions">${this.btn('activate', '▶ Activate', true, '', 'primary')}</div>`
+    if (mine && !isActive && b.currentSide === 'player' && !b.activeId && u.activationsLeft > 0) actions = `<div class="actions">${this.btn('activate', '▶ Activate', true, '', 'primary')}${this.btn('auto', 'Auto (AI turn)', true)}</div>`
     if (isActive && u.side === 'player') {
       const q = b.canSpend(u, 'quick'), fu = b.canSpend(u, 'full'), pr = b.canSpend(u, 'protocol')
       const qt = b.canQuickTech(u)
@@ -434,7 +438,7 @@ export class BattleScreen {
         ${b.has(u, 'shutdown') ? this.btn('bootup', 'Boot Up [F]', u.actionsLeft >= 2 ? true : 'Needs full action') : this.btn('shutdown', 'Shut Down [Q]', q)}
         ${fr ? this.btn('core', `CORE: ${esc(fr.core_system.active_name ?? fr.core_system.name)} [${actLabel((fr.core_system.activation ?? 'quick').toLowerCase())}]`, u.coreAvailable ? (fr.core_system.activation === 'Protocol' ? pr : fr.core_system.activation === 'Full' ? fu : q) : 'Core power spent', '', 'core') : ''}
         ${this.btn('selfdestruct', 'Self-Destruct', q, '', 'warn')}
-        ${this.btn('end', 'End Turn ⏎', true, '', 'primary')}
+        ${this.btn('auto', 'Auto (AI)', true)}${this.btn('end', 'End Turn ⏎', true, '', 'primary')}
       </div>
       ${custom.length ? `<div class="actions systems"><span class="eco">Systems & traits</span>${custom.map(c => `<button class="${c.usable(b, u) === true ? '' : 'disabled'}" data-act="custom" data-arg="${esc(c.key)}" title="${esc(c.text)}${c.usable(b, u) !== true ? ' — ' + esc(c.usable(b, u) as string) : ''}">${esc(c.name)} [${actLabel(c.activation)}]${c.text.startsWith('[manual]') ? '*' : ''}</button>`).join('')}</div>` : ''}`
       if (this.mode.k === 'barrage-pick') actions = `<div class="hint">Barrage: choose the second weapon below.</div>` + actions
