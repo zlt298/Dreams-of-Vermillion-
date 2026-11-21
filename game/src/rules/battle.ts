@@ -208,6 +208,7 @@ export class Battle {
     const c = cond.replace(/[{}]/g, '').toLowerCase()
     if (c === 'exposed') return this.has(u, 'exposed')
     if (c === 'dangerzone' || c === 'danger_zone') return this.has(u, 'dangerzone')
+    if (c === 'first_round') return this.round === 1
     return false
   }
 
@@ -954,7 +955,7 @@ export class Battle {
     const melee = this.isMelee(w)
     const ctx = this.newAttackCtx(attacker, target, { weapon: w, profile: pr, melee, ranged: !melee, mode, multiTarget: multi })
     if (w.attackBonus != null) ctx.attackBonus = w.attackBonus
-    if (w.tech) { ctx.tech = true; ctx.attackBonus = w.attackBonus ?? attacker.stats.techAttack }
+    if (w.tech) { ctx.tech = true; ctx.ignoreCover = true; ctx.ranged = false; ctx.attackBonus = w.attackBonus ?? attacker.stats.techAttack }
     if (w.accuracy) { if (w.accuracy > 0) ctx.accuracy += w.accuracy; else ctx.difficulty -= w.accuracy }
     if (hasTag(pr.tags, 'tg_accurate')) { ctx.accuracy++; ctx.reasons.push('Accurate +1') }
     if (hasTag(pr.tags, 'tg_inaccurate')) { ctx.difficulty++; ctx.reasons.push('Inaccurate -1') }
@@ -980,6 +981,7 @@ export class Battle {
     }
     for (const s of scriptsFor(attacker)) s.beforeAttack?.(this, attacker, ctx, 'attacker')
     for (const s of scriptsFor(target)) s.beforeAttack?.(this, target, ctx, 'target')
+    for (const o of this.alive()) for (const s of scriptsFor(o)) s.beforeAnyAttack?.(this, o, ctx)
     return ctx
   }
 
@@ -1070,6 +1072,10 @@ export class Battle {
       }
       for (const s of scriptsFor(u)) s.afterAttack?.(this, u, ctx, 'attacker')
       if (!t.destroyed) for (const s of scriptsFor(t)) s.afterAttack?.(this, t, ctx, 'target')
+      if (this.reactionDepth < 2) {
+        this.reactionDepth++
+        try { for (const o of this.alive()) for (const s of scriptsFor(o)) s.afterAnyAttack?.(this, o, ctx) } finally { this.reactionDepth-- }
+      }
     }
     // costs
     const heatSelf = tagVal(pr.tags, 'tg_heat_self')
@@ -1186,9 +1192,12 @@ export class Battle {
     if (c !== true) return { ctxs: [], ok: false, reason: c }
     const pre = this.weaponUsable(u, w)
     if (pre !== true) return { ctxs: [], ok: false, reason: pre }
+    if (this.firedThisTurn(u, w)) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
     this.spend(u, 'quick')
+    this.markFired(u, w)
     const r = this.weaponAttack(u, w, aim, 'skirmish')
-    if (aux && aux.weapon.size === 'Auxiliary' && aux.weapon !== w && aux.weapon.mountIndex === w.mountIndex && w.mountIndex >= 0 && !u.destroyed) {
+    if (aux && aux.weapon.size === 'Auxiliary' && aux.weapon !== w && aux.weapon.mountIndex === w.mountIndex && w.mountIndex >= 0 && !u.destroyed && !this.firedThisTurn(u, aux.weapon)) {
+      this.markFired(u, aux.weapon)
       const r2 = this.weaponAttack(u, aux.weapon, aux.aim, 'skirmish', { noBonusDamage: true })
       r.ctxs.push(...r2.ctxs)
     }
@@ -1199,6 +1208,11 @@ export class Battle {
     const c = this.canSpend(u, 'full')
     if (c !== true) return { ctxs: [], ok: false, reason: c }
     if (b && a.weapon === b.weapon) return { ctxs: [], ok: false, reason: 'Barrage needs two different weapons' }
+    if (this.firedThisTurn(u, a.weapon) || (b && this.firedThisTurn(u, b.weapon))) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
+    const ua = this.weaponUsable(u, a.weapon)
+    if (ua !== true) return { ctxs: [], ok: false, reason: ua }
+    this.markFired(u, a.weapon)
+    if (b) this.markFired(u, b.weapon)
     if (a.weapon.size !== 'Superheavy' && !b) {
       // allowed but wasteful: barrage with one weapon
     }
@@ -1209,6 +1223,13 @@ export class Battle {
       r.ctxs.push(...r2.ctxs)
     }
     return r
+  }
+
+  firedThisTurn(u: Unit, w: Weapon): boolean {
+    return (u.flags['turn:fired'] ?? []).includes(w.uid)
+  }
+  markFired(u: Unit, w: Weapon) {
+    u.flags['turn:fired'] = [...(u.flags['turn:fired'] ?? []), w.uid]
   }
 
   boost(u: Unit) {

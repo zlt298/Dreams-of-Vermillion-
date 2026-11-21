@@ -77,6 +77,9 @@ export interface ItemScript {
   onMove?(b: Battle, self: Unit, mover: Unit, path: Pos[]): void
   onDestroyed?(b: Battle, self: Unit, victim: Unit): void
   actions?(b: Battle, self: Unit): CustomAction[]
+  /** called for every living unit's scripts before/after any attack (auras, ally reactions) */
+  beforeAnyAttack?(b: Battle, self: Unit, ctx: AttackCtx): void
+  afterAnyAttack?(b: Battle, self: Unit, ctx: AttackCtx): void
   /** when the owner activates its CORE power */
   onCoreActivate?(b: Battle, self: Unit): void
 }
@@ -115,5 +118,5 @@ export function scriptIdsFor(u: Unit): string[] {
 }
 
 export function scriptsFor(u: Unit): ItemScript[] {
-  return scriptIdsFor(u).map(id => registry.get(id)).filter((x): x is ItemScript => !!x)
+  return [...new Set(scriptIdsFor(u))].map(id => registry.get(id)).filter((x): x is ItemScript => !!x)
 }

@@ -80,6 +80,8 @@ export interface Weapon {
   /** Smart / tech NPC attack: target E-Defense */
   vsEdef?: boolean
   tech?: boolean
+  /** NPC tech / heavy features: which action they cost */
+  activation?: 'quick' | 'full'
   recharge?: number       // NPC Recharge X+
   charged: boolean
   noBonusDamage?: boolean

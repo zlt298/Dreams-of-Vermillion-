@@ -1,0 +1,43 @@
+{
+  "id": "t1-checkpoint-garrison",
+  "name": "Checkpoint Garrison",
+  "faction": "Vermillion Colonial Guard",
+  "theme": "A disciplined roadblock crew dug in behind a shield-wall.",
+  "tier": 1,
+  "designedFor": 4,
+  "depth": [1, 4],
+  "kind": "standard",
+  "sitrep": "control",
+  "units": [
+    {
+      "name": "Bulwark",
+      "role": "Defender",
+      "color": "#7f8c8d",
+      "features": [
+        { "type": "weapon", "name": "Shield Bash", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Kinetic", "val": "1d6+2" }], "onHit": [{ "do": "push", "val": 2 }] },
+        { "type": "reaction", "name": "Interpose", "trigger": "ally_attacked_adjacent", "frequency": "1/round", "effects": [{ "do": "status", "status": "impaired", "duration": "end_of_turn" }], "text": "Throws its shield into the attacker's line of fire." },
+        { "type": "trait", "name": "Tower Shield", "resist": ["Kinetic"] }
+      ]
+    },
+    {
+      "name": "Guard Rifleman",
+      "role": "Striker",
+      "count": 2,
+      "color": "#c0392b",
+      "features": [
+        { "type": "weapon", "name": "Service Rifle", "weaponType": "Rifle", "range": [{ "type": "Range", "val": 10 }], "damage": [{ "type": "Kinetic", "val": "1d6+2" }], "tags": [{ "id": "tg_reliable", "val": 1 }] },
+        { "type": "weapon", "name": "Bayonet", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Kinetic", "val": "1d6+1" }] }
+      ]
+    },
+    {
+      "name": "Signals Officer",
+      "role": "Controller",
+      "color": "#9b59b6",
+      "features": [
+        { "type": "tech", "name": "Jamming Burst", "kind": "quick", "onHit": [{ "do": "status", "status": "jammed", "duration": "next_turn_end_target" }], "recharge": 5 },
+        { "type": "tech", "name": "Target Painter", "kind": "quick", "onHit": [{ "do": "status", "status": "lockon", "duration": "until_cleared" }, { "do": "status", "status": "shredded", "duration": "next_turn_end_target" }] },
+        { "type": "weapon", "name": "Sidearm", "weaponType": "CQB", "range": [{ "type": "Range", "val": 5 }], "damage": [{ "type": "Kinetic", "val": "1d3+1" }] }
+      ]
+    }
+  ]
+}

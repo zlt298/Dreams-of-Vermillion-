@@ -68,6 +68,7 @@ describe('combat', () => {
     let hits = 0
     for (let i = 0; i < 40; i++) {
       a.actionsLeft = 2
+      a.flags['turn:fired'] = []
       a.activeTurn = true
       b.activeId = a.id
       e.hp = e.stats.hp; e.structure = e.stats.structure; e.destroyed = false; e.statuses = []
