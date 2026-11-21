@@ -54,6 +54,9 @@ export interface AttackAim { targetId?: string; tile?: Pos }
 
 export interface AttackSummary { ctxs: AttackCtx[]; ok: boolean; reason?: string }
 
+/** weapons that can only fire through their own special rules */
+const NO_NORMAL_ATTACK = new Set(['mw_autogun', 'mw_lancaster_integrated', 'mw_autopod', 'mw_vorpal_gun', 'mw_barbarossa_integrated'])
+
 const NEGATIVE: StatusId[] = ['impaired', 'slowed', 'immobilized', 'jammed', 'lockon', 'shredded', 'stunned', 'exposed', 'prone']
 
 export class Battle {
@@ -438,6 +441,7 @@ export class Battle {
       u.heat = excess
       this.emit({ type: 'damage', unitId: u.id, amount: 1, kind: 'stress' })
       this.say(`${u.name} OVERHEATS — takes 1 stress (${u.stress} left).`, 'damage')
+      for (const s of scriptsFor(u)) s.onStressDamage?.(this, u)
       this.overheatCheck(u)
     }
   }
@@ -888,8 +892,9 @@ export class Battle {
   weaponReady(u: Unit, w: Weapon): boolean {
     return !w.destroyed && w.loaded && w.usesLeft !== 0 && w.charged
   }
-  weaponUsable(u: Unit, w: Weapon): true | string {
+  weaponUsable(u: Unit, w: Weapon, normalAttack = true): true | string {
     if (w.destroyed) return 'Destroyed'
+    if (normalAttack && w.dataId && NO_NORMAL_ATTACK.has(w.dataId)) return 'Cannot make normal attacks'
     if (!w.loaded) return 'Needs reloading'
     if (w.usesLeft === 0) return 'No uses left'
     if (!w.charged) return 'Recharging'
@@ -1025,7 +1030,7 @@ export class Battle {
 
   /** Main entry for weapon attacks (skirmish/barrage call this). Handles AoE, rolls and on-hit effects. */
   weaponAttack(u: Unit, w: Weapon, aim: AttackAim, mode: AttackCtx['mode'] = 'free', opts: { noBonusDamage?: boolean } = {}): AttackSummary {
-    const usable = this.weaponUsable(u, w)
+    const usable = this.weaponUsable(u, w, mode === 'skirmish' || mode === 'barrage' || mode === 'overwatch')
     if (usable !== true) return { ctxs: [], ok: false, reason: usable }
     const pr = this.profile(w)
     let targets: Unit[] = []
@@ -1130,7 +1135,7 @@ export class Battle {
 
   rollToHit(ctx: AttackCtx) {
     const t = ctx.target
-    const net = ctx.accuracy - ctx.difficulty
+    const net = ctx.accuracy - (ctx.ignoreDifficulty ? 0 : ctx.difficulty)
     if (ctx.cancelled) {
       ctx.hit = false
       ctx.crit = false
@@ -1330,6 +1335,7 @@ export class Battle {
       u.heat = 0
       this.removeStatus(u, 'exposed')
       this.say(`${u.name} STABILIZES: cools reactor.`)
+      if (u.flags.adaptiveReactor && u.stress < u.stats.stress && u.repairs >= 2) { u.repairs -= 2; u.stress++; this.say('  Adaptive Reactor repairs 1 stress.') }
     } else {
       u.repairs--
       u.hp = u.stats.hp

@@ -41,6 +41,8 @@ export interface AttackCtx {
   resistAll?: boolean
   /** attack is prevented before the roll (counts as a miss) */
   cancelled?: boolean
+  /** the attack roll ignores difficulty */
+  ignoreDifficulty?: boolean
 }
 
 export type Activation = 'quick' | 'full' | 'protocol' | 'free' | 'reaction' | 'quick_tech' | 'full_tech'
@@ -109,6 +111,7 @@ export interface ItemScript {
   /** return true to cancel the normal overheat (stress) result */
   beforeOverheat?(b: Battle, self: Unit): boolean
   onStructureDamage?(b: Battle, self: Unit): void
+  onStressDamage?(b: Battle, self: Unit): void
   onAnyMovementAction?(b: Battle, self: Unit, mover: Unit, kind: 'boost' | 'involuntary' | 'standard'): void
   /** when the owner activates its CORE power */
   onCoreActivate?(b: Battle, self: Unit): void

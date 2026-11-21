@@ -86,6 +86,7 @@ export interface Weapon {
   charged: boolean
   noBonusDamage?: boolean
   bonuses: BonusData[]    // core bonus / mount bonuses that apply to this weapon
+  flags?: Record<string, any>
 }
 
 export interface SystemInst {

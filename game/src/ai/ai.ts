@@ -1,6 +1,7 @@
 // Utility-based tactical AI. Evaluates reachable positions × available actions and executes the
 // best plan through the normal Battle API, so the AI obeys exactly the same rules as players.
 import type { Battle } from '../rules/battle'
+import { Lancer } from '../data/lancer'
 import { blastTiles, burstTiles, key, unitsOnTiles } from '../rules/grid'
 import type { Effect, Pos, Unit, Weapon } from '../rules/types'
 import type { CustomAction } from '../rules/effects/registry'
@@ -23,6 +24,7 @@ type Option =
   | { kind: 'lockon'; target: Unit; value: number; cost: 'quick' }
   | { kind: 'reload'; weapon: Weapon; value: number; cost: 'quick' }
   | { kind: 'stabilize'; value: number; cost: 'full' }
+  | { kind: 'core'; value: number; cost: 'quick' | 'full' | 'protocol' | 'free' }
 
 interface Plan { dest: Pos; boost: boolean; actions: Option[]; value: number }
 
@@ -253,6 +255,11 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
     }
   }
   if (u.stats.heatcap > 0 && (b.has(u, 'exposed') || u.heat >= u.stats.heatcap - 1)) opts.push({ kind: 'stabilize', value: 3 + (b.has(u, 'exposed') ? 4 : 0) + u.heat * 0.5, cost: 'full' })
+  if (u.kind === 'mech' && u.coreAvailable && u.frameId) {
+    const act = (Lancer.frames.get(u.frameId)?.core_system.activation ?? 'Quick').toLowerCase()
+    const near = hostiles.filter(h => (h.kind === 'mech' || h.kind === 'npc') && Math.max(Math.abs(h.pos.x - p.x), Math.abs(h.pos.y - p.y)) <= 10).length
+    if (near && b.round >= 2) opts.push({ kind: 'core', value: 4 + near, cost: act === 'protocol' ? 'protocol' : act === 'full' ? 'full' : act === 'free' ? 'free' : 'quick' })
+  }
   return opts
 }
 
@@ -314,6 +321,7 @@ function execute(b: Battle, u: Unit, o: Option) {
     case 'lockon': return b.lockOn(u, o.target)
     case 'reload': return b.reload(u, o.weapon)
     case 'stabilize': return b.stabilize(u, 'cool')
+    case 'core': return b.activateCore(u)
   }
 }
 
@@ -345,8 +353,14 @@ export function runAiTurn(b: Battle, u: Unit) {
   }
 }
 
+/** Programming errors raised while the AI acts (rule rejections are expected and ignored). */
+export const aiErrors: unknown[] = []
+
 function safe(f: () => unknown) {
-  try { f() } catch { /* invalid in the new situation: skip */ }
+  try { f() } catch (e) {
+    // invalid in the new situation: skip; but keep genuine bugs visible
+    if (e instanceof TypeError || e instanceof ReferenceError || e instanceof RangeError) { aiErrors.push(e); console.error(e) }
+  }
 }
 
 /** Pick which unit on `side` should activate next. */

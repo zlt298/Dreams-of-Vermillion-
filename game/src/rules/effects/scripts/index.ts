@@ -3,4 +3,5 @@ import '../npc'
 import './frames'
 import './talents'
 import './systems'
+import './weapons'
 export {}

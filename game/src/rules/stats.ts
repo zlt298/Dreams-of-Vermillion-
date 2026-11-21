@@ -189,6 +189,7 @@ export function buildMechUnit(p: PilotBuild, side: 'player' | 'enemy' = 'player'
     for (const s of m.slots) {
       if (!s.weaponId) continue
       const w = weaponFromData(s.weaponId, mi, { modId: s.modId, profile: s.profile, bonuses: mountBonuses, limitedBonus: stats.limitedBonus })
+      if (w && m.type === 'CB-Integrated') w.flags = { cbIntegrated: true }
       if (w) weapons.push(w)
     }
   })

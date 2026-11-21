@@ -213,8 +213,9 @@ export function genericActionsFor(b: Battle, u: Unit): CustomAction[] {
     const d = Lancer.systems.get(s.dataId)
     if (!d) continue
     ;(d.actions ?? []).forEach((a, i) => {
-      if (a.activation === 'Invade' || actionIsStructured(a)) out.push(damageAction(b, u, a, `${s.uid}:a${i}`, s))
-      else { const t = textAction(a, `${s.uid}:a${i}`, s); if (t) out.push(t) }
+      const named = { ...a, name: a.name ?? (d.actions!.length > 1 ? `${s.name} ${i + 1}` : s.name) }
+      if (a.activation === 'Invade' || actionIsStructured(a)) out.push(damageAction(b, u, named, `${s.uid}:a${i}`, s))
+      else { const t = textAction(named, `${s.uid}:a${i}`, s); if (t) out.push(t) }
     })
     ;(d.deployables ?? []).forEach((dep, i) => {
       const da = deployAction(b, u, dep, `${s.uid}:d${i}`, s, d.actions?.[0]?.activation)

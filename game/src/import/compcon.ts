@@ -53,7 +53,11 @@ function convertPilotData(d: any, mechIndex?: number): PilotBuild {
   for (const m of lo.mounts ?? []) mounts.push(mountFromV3(m))
   for (const extra of ['improved_armament', 'integratedWeapon', 'superheavy_mounting']) {
     const m = lo[extra]
-    if (m && (m.slots ?? []).some((s: any) => s.weapon)) mounts.push(mountFromV3(m))
+    if (m && (m.slots ?? []).some((s: any) => s.weapon)) {
+      const mb = mountFromV3(m)
+      if (extra === 'integratedWeapon') mb.type = 'CB-Integrated'
+      mounts.push(mb)
+    }
   }
   for (const m of lo.integratedMounts ?? []) {
     const w = m.weapon ?? m.slots?.[0]?.weapon
