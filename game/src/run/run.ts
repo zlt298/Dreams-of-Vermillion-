@@ -302,6 +302,35 @@ export function replacePilots(run: RunState, builds: PilotBuild[]): ReplaceRepor
   return report
 }
 
+/**
+ * Swap a squad pilot's build for one edited in the in-game builder (same id). Unlike a re-import this is
+ * not a repair: damage taken, spent Repairs, destroyed gear, used Limited charges and CORE use carry over.
+ */
+export function refitPilot(run: RunState, build: PilotBuild): boolean {
+  const i = run.squad.findIndex(p => p.id === build.id)
+  if (i < 0) return false
+  const old = run.squad[i]
+  const c = run.condition[old.id] ?? freshCondition(old)
+  const was = buildMechUnit(old).stats
+  run.squad[i] = build
+  const now = buildMechUnit(build).stats
+  const fresh = freshCondition(build)
+  run.condition[old.id] = {
+    ...fresh,
+    hp: c.destroyed ? fresh.hp : Math.max(1, Math.min(now.hp, now.hp - (was.hp - c.hp))),
+    structure: Math.min(now.structure, c.structure),
+    stress: Math.min(now.stress, c.stress),
+    repairs: Math.max(0, Math.min(now.repcap, now.repcap - (was.repcap - c.repairs))),
+    overchargeLevel: c.overchargeLevel,
+    destroyed: c.destroyed,
+    coreAvailable: c.coreAvailable,
+    destroyedWeapons: [...c.destroyedWeapons],
+    destroyedSystems: [...c.destroyedSystems],
+    limited: { ...c.limited },
+  }
+  return true
+}
+
 export function chooseTeam(run: RunState, node: RunNode, teams: EnemyTeam[]): EnemyTeam {
   const rng = new Rng(node.seed)
   const used = new Set(run.nodes.filter(n => n.cleared && n.teamId).map(n => n.teamId))

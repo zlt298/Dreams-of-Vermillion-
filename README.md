@@ -15,7 +15,23 @@ npm run dev                                     # open http://localhost:5173
 
 The four COMP/CON pregens are pre-loaded, so you can start a run straight away.
 
-## Building pilots in COMP/CON
+## Building pilots
+
+### In the game
+
+In the **Hangar**, choose **New pilot**, or **Edit** on any pilot card. The builder covers what the rules engine uses:
+- License Level
+- HASE
+- license ranks
+- talents and their ranks
+- core bonuses, including the mount-targeted and extra-mount ones
+- frame, weapons per mount, weapon mods and systems
+
+Every change is checked live against the LANCER build rules (`game/src/rules/legality.ts`), and a budget bar shows HASE, talents, licenses, core bonuses and SP. The pickers only offer gear that fits the mount and that your license ranks allow. A build with errors can't be saved. Unspent points only trigger a warning.
+
+During a run, each pilot on the campaign map has an **Edit build** button. It becomes **Level up** when the pilot has points to spend after an act boss. A refit keeps damage, spent Repairs, destroyed gear and used Limited charges.
+
+### In COMP/CON
 
 `vendor/compcon` is COMP/CON v3, a pinned git submodule kept for reference and for local use:
 
@@ -34,7 +50,7 @@ The importer accepts:
 - raw v3 or v2 pilot data
 - COMP/CON's pregen templates
 
-It uses the pilot's favourite mech and its active loadout: frame, weapons, mods, systems, talents and ranks, core bonuses, HASE and License Level. Content that isn't in `lancer-data` (LCP items) is flagged.
+It uses the pilot's favourite mech and its active loadout: frame, weapons, mods, systems, talents and ranks, core bonuses, license ranks, HASE and License Level. Imported pilots can be edited further in the in-game builder. Content that isn't in `lancer-data` (LCP items) is flagged.
 
 ## The game
 
@@ -49,7 +65,7 @@ It uses the pilot's favourite mech and its active loadout: frame, weapons, mods,
 - **Field overlays.** Smoke, terrain zones, drone fields, barriers and auras are tinted on the map by effect, and listed when you hover a tile. Press **V** to toggle.
 - **Persistent damage.** HP, structure, stress, repairs, destroyed gear, Limited uses and CORE power carry between fights.
 - **Recovery.** Spend Repairs at LANCER costs in field repairs. A rest is a full repair that reprints destroyed mechs.
-- **Progression.** Each act boss grants +5 License Levels (act 1 LL0, act 2 LL5, act 3 LL10, matching the core book NPC tiers), which raises grit and HP. Re-import updated COMP/CON builds to spend your talent, license and core-bonus points.
+- **Progression.** Each act boss grants +5 License Levels (act 1 LL0, act 2 LL5, act 3 LL10, matching the core book NPC tiers), which raises grit and HP. Spend the new talent, license and core-bonus points with **Level up** on the campaign map, or re-import updated COMP/CON builds.
 - **Battles:**
   - Initiative alternates between sides: pick any ready lancer to activate.
   - Every lancer action is supported. Standard move (it can be split), Boost, Skirmish (plus an aux on the same mount), Barrage, Quick/Full Tech (Invade, Lock On, Bolster, Scan), Overcharge, Stabilize, CORE power, Hide/Search, Ram/Grapple/Improvised, Disengage, Reload, Shut Down/Boot Up, Self-Destruct.

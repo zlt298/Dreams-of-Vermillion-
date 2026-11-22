@@ -81,6 +81,7 @@ export interface WeaponData extends WeaponProfile {
   source?: string
   license?: string
   license_level?: number
+  license_id?: string
   profiles?: WeaponProfile[]
   no_attack?: boolean
   no_mods?: boolean
@@ -104,8 +105,10 @@ export interface SystemData {
   ammo?: any[]
   counters?: any[]
   add_resist?: any
+  source?: string
   license?: string
   license_level?: number
+  license_id?: string
 }
 export interface FrameTrait { name: string; description: string; bonuses?: BonusData[]; actions?: ActionData[]; deployables?: DeployableData[]; use?: string }
 export interface CoreSystem {
@@ -140,7 +143,8 @@ export interface FrameData {
 export interface TalentRank { name: string; description: string; bonuses?: BonusData[]; actions?: ActionData[]; synergies?: any[]; integrated?: string[] }
 export interface TalentData { id: string; name: string; ranks: TalentRank[] }
 export interface CoreBonusData { id: string; name: string; source: string; effect: string; bonuses?: BonusData[]; actions?: ActionData[] }
-export interface ModData { id: string; name: string; sp: number; effect?: string; added_tags?: TagData[]; added_damage?: DamageData[]; added_range?: RangeData[]; bonuses?: BonusData[]; actions?: ActionData[]; allowed_types?: string[] }
+export interface ModData { id: string; name: string; sp: number; effect?: string; added_tags?: TagData[]; added_damage?: DamageData[]; added_range?: RangeData[]; bonuses?: BonusData[]; actions?: ActionData[]; allowed_types?: string[]
+  restricted_types?: string[]; allowed_sizes?: string[]; restricted_sizes?: string[]; source?: string; license?: string; license_level?: number; license_id?: string }
 
 function index<T extends { id: string }>(list: T[]): Map<string, T> {
   return new Map(list.map(x => [x.id, x]))

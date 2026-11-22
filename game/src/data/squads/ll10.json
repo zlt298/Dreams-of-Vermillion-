@@ -44,7 +44,24 @@
     "id": "cb_mount_retrofitting"
    }
   ],
-  "licenses": [],
+  "licenses": [
+   {
+    "id": "mf_drake",
+    "rank": 3
+   },
+   {
+    "id": "mf_tortuga",
+    "rank": 3
+   },
+   {
+    "id": "mf_blackbeard",
+    "rank": 3
+   },
+   {
+    "id": "mf_lancaster",
+    "rank": 1
+   }
+  ],
   "mechs": [
    {
     "id": "ll10-bastion-mech",
@@ -162,7 +179,24 @@
     "id": "cb_integrated_ammo_feeds"
    }
   ],
-  "licenses": [],
+  "licenses": [
+   {
+    "id": "mf_monarch",
+    "rank": 3
+   },
+   {
+    "id": "mf_deaths_head",
+    "rank": 3
+   },
+   {
+    "id": "mf_barbarossa",
+    "rank": 3
+   },
+   {
+    "id": "mf_black_witch",
+    "rank": 1
+   }
+  ],
   "mechs": [
    {
     "id": "ll10-kestrel-mech",
@@ -277,10 +311,27 @@
     "id": "cb_adaptive_reactor"
    },
    {
-    "id": "cb_the_lesson_of_disbelief"
+    "id": "cb_universal_compatibility"
    }
   ],
-  "licenses": [],
+  "licenses": [
+   {
+    "id": "mf_saladin",
+    "rank": 3
+   },
+   {
+    "id": "mf_lancaster",
+    "rank": 3
+   },
+   {
+    "id": "mf_barbarossa",
+    "rank": 3
+   },
+   {
+    "id": "mf_blackbeard",
+    "rank": 1
+   }
+  ],
   "mechs": [
    {
     "id": "ll10-warden-mech",
@@ -373,7 +424,24 @@
     "id": "cb_mount_retrofitting"
    }
   ],
-  "licenses": [],
+  "licenses": [
+   {
+    "id": "mf_blackbeard",
+    "rank": 3
+   },
+   {
+    "id": "mf_nelson",
+    "rank": 3
+   },
+   {
+    "id": "mf_drake",
+    "rank": 3
+   },
+   {
+    "id": "mf_lancaster",
+    "rank": 1
+   }
+  ],
   "mechs": [
    {
     "id": "ll10-lance-mech",
