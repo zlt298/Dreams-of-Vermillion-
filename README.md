@@ -39,6 +39,11 @@ It uses the pilot's favourite mech and its active loadout: frame, weapons, mods,
 ## The game
 
 - **Campaign.** Three acts with branching node maps. Node types are ⚔ combat, ☠ elite, ⬢ supply, ⛺ rest and ♛ boss. Act *n* uses tier-*n* enemies. Sitreps include Basic Combat, Control, Holdout, Extraction and Assassination.
+- **Three looks.**
+  - Act 1 is fought outside, where the lance is intercepted.
+  - Act 2 is inside an industrial park: warehouse rows, container stacks, pipe runs, steam vents, scrap and chemical spills, all under sodium light.
+  - Act 3 is a white cleanroom of lab modules and glass partitions, broken open by Martian regolith with dunes, rock outcrops, red dust and breaches.
+  - Quick skirmish picks the look from the enemy tier.
 - **Story.** In-universe Union documents bracket the campaign: a priority transmission at the start, an after-action report after act 1, an intercepted transmission after act 2 and a debrief after the final fight. They type out as a console readout. Hold any key or mouse button to skip; recovered documents can be replayed from **Title → Transmissions**. The final boss is always *The Voice of the Eye*, the Choir of the Second Dawn's prophet in the Cinnabar Annex casket vault. Texts: `game/src/data/story.ts`.
 - **Tag tooltips.** Hover any tag (AP, Reliable 2, Blast 2, Loading, Smart…) on weapon cards, Hangar weapon lines or the battle log to read its rules. System chips and weapon cards show their rules text on hover too.
 - **Field overlays.** Smoke, terrain zones, drone fields, barriers and auras are tinted on the map by effect, and listed when you hover a tile. Press **V** to toggle.

@@ -125,6 +125,13 @@ Useful commands, all run from `game/`:
   - The AI's "advance pull" brings units forward until they're in range.
   - Holdout lasts 8 rounds.
 
+### Act looks
+- Map themes (`run/mapgen.ts` and `render/scene.ts`), each with its own layout generator, palette, lighting and props:
+  - outskirts (act 1, unchanged)
+  - industrial park (act 2)
+  - cleanroom with Martian incursions (act 3)
+- Each theme's maps are tested to be connected from deployment to deployment.
+
 ### Tag tooltips
 - Every tag shown in the UI (weapon cards, Hangar weapon lines, the battle log) is a hoverable chip with lancer-data's rules text; one global tooltip (`ui/tags.ts`) serves the whole page.
 
@@ -259,7 +266,7 @@ Driven by `npm run coverage -- --list`.
 ### 5. Content, story and presentation
 1. More teams (S each).
 2. Sitrep variety (M).
-3. Map biomes and boss arenas (M).
+3. Boss arenas and more set pieces (M); the act themes are done.
 4. Campaign events (M).
 5. Story extras: a failed-run readout, Choir chatter, act-boss flavour (S each).
 6. Model polish, effects, terrain, audio (M).

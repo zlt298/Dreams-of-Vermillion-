@@ -7,7 +7,7 @@ import { buildMechUnit, mechSP } from '../rules/stats'
 import { scriptIdsFor, getScript } from '../rules/effects/registry'
 import { buildTeam } from '../enemies/build'
 import { catalog, teamsFor, validTeams } from '../enemies/catalog'
-import { generateMap } from '../run/mapgen'
+import { generateMap, themeForAct } from '../run/mapgen'
 import {
   type RunState, type RunNode, newRun, availableNodes, nodeTier, sitrepFor, squadUnits, recordBattle, fullRepair,
   repairOptions, applyRepair, rollRewards, applyReward, levelUp, replacePilots, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
@@ -216,7 +216,7 @@ export class App {
     this.on('[data-team]', el => {
       const team = teams.find(t => t.id === el.dataset.team)!
       const seed = Math.floor(Math.random() * 1e6)
-      const map = generateMap(seed)
+      const map = generateMap(seed, { theme: themeForAct(team.tier) })
       const units = squad.map(p => buildMechUnit(p))
       const enemies = buildTeam(team, units.length)
       units.forEach((u, i) => (u.pos = map.deployPlayer[i]))
@@ -293,7 +293,7 @@ export class App {
     const finale = n.kind === 'boss' && n.act === ACTS ? validTeams().find(t => t.id === FINAL_BOSS) : undefined
     const team = finale ?? (useOfficial ? generateOfficialTeam(official, tier, kind, run.squad.length, n.seed) : chooseTeam(run, n, teamsFor(tier, kind, n.layer + 1)))
     n.teamId = team.id
-    const map = generateMap(n.seed)
+    const map = generateMap(n.seed, { theme: themeForAct(n.act) })
     const units = squadUnits(run)
     const enemies = buildTeam(team, units.length)
     units.forEach((u, i) => (u.pos = map.deployPlayer[i]))

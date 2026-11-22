@@ -2,7 +2,8 @@
 import type { Pos, Unit } from './types'
 
 export type TileKind = 'ground' | 'block' | 'forest' | 'rubble' | 'water' | 'hazard'
-export interface Tile { h: number; kind: TileKind }
+/** `skin` only changes how a tile looks (e.g. 'mars': regolith breaking through a cleanroom floor). */
+export interface Tile { h: number; kind: TileKind; skin?: 'mars' }
 
 export interface GridMap {
   w: number
@@ -11,7 +12,11 @@ export interface GridMap {
   deployPlayer: Pos[]
   deployEnemy: Pos[]
   zones?: { name: string; tiles: Pos[] }[]
+  /** visual theme (and layout style): act 1 outskirts, act 2 industrial park, act 3 cleanroom */
+  theme?: MapTheme
 }
+
+export type MapTheme = 'outskirts' | 'industrial' | 'cleanroom'
 
 /** Short-lived area effects (smoke clouds, fire...). */
 export interface AreaEffect {

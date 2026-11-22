@@ -2,7 +2,7 @@
 // camera rotation/zoom/pan, picking and event-driven animation.
 import * as THREE from 'three'
 import type { Battle, BattleEvent } from '../rules/battle'
-import { footprintSize, tileAt, elevationAt, type GridMap } from '../rules/grid'
+import { footprintSize, tileAt, elevationAt, type GridMap, type MapTheme } from '../rules/grid'
 import type { Pos, Unit } from '../rules/types'
 import { buildUnitModel, MODEL_GEOMETRIES } from './models'
 
@@ -19,12 +19,37 @@ const SHARED = {
   rubble: new THREE.BoxGeometry(0.22, 0.14, 0.18),
   window: new THREE.BoxGeometry(1.01, 0.08, 1.01),
   wreck: new THREE.BoxGeometry(0.6, 0.15, 0.5),
+  rock: new THREE.DodecahedronGeometry(1, 0),
 }
 const SHARED_GEOMETRIES = new Set<THREE.BufferGeometry>(Object.values(SHARED))
 
 const KIND_COLOR: Record<string, number> = {
   ground: 0x5d6b52, block: 0x7d7f86, forest: 0x3e6b3a, rubble: 0x6e5f4e, water: 0x2f5d7c, hazard: 0x8a3b1e,
 }
+
+/** Per-act look: palette, lighting and props. */
+interface ThemeLook {
+  colors: Record<string, number>
+  mars?: Record<string, number>
+  background: number; fog: number; hemiSky: number; hemiGround: number; hemi: number; sun: number; sunIntensity: number
+  grid: number; gridOpacity: number; hazardGlow: number
+}
+const THEMES: Record<MapTheme, ThemeLook> = {
+  // act 1: intercepted outside (the original look)
+  outskirts: { colors: KIND_COLOR, background: 0x14161c, fog: 0x14161c, hemiSky: 0xcfd8ff, hemiGround: 0x3a2a20, hemi: 0.9, sun: 0xffe2c0, sunIntensity: 1.6, grid: 0x000000, gridOpacity: 0.18, hazardGlow: 0x5a1800 },
+  // act 2: inside the industrial park — concrete, rust, sodium light
+  industrial: {
+    colors: { ground: 0x5a5d61, block: 0x5f574d, forest: 0x4a4844, rubble: 0x5b4a3a, water: 0x2f4d5c, hazard: 0x5e6e14 },
+    background: 0x0e0c0a, fog: 0x17120d, hemiSky: 0xffd2a0, hemiGround: 0x2a2018, hemi: 0.75, sun: 0xffb36b, sunIntensity: 1.35, grid: 0x000000, gridOpacity: 0.22, hazardGlow: 0x3d5a00,
+  },
+  // act 3: the cleanroom, with Martian regolith breaking through
+  cleanroom: {
+    colors: { ground: 0xd3d9df, block: 0xe9eef2, forest: 0xc3d1da, rubble: 0xc9cfd5, water: 0x8fb8cc, hazard: 0x2a8fb0 },
+    mars: { ground: 0xa14a2b, block: 0x7c3922, forest: 0xb0552f, rubble: 0x8c3d24, water: 0x7a3a26, hazard: 0xd2581a },
+    background: 0x0b1016, fog: 0x101820, hemiSky: 0xeef7ff, hemiGround: 0x7d8894, hemi: 1.05, sun: 0xffffff, sunIntensity: 1.25, grid: 0x1d2a36, gridOpacity: 0.16, hazardGlow: 0x0a4a66,
+  },
+}
+const CONTAINER_COLORS = [0x8a3b2a, 0x2f5d7c, 0x8a7428, 0x3f6b4a, 0x6b6f74]
 
 export interface Highlight { tiles: Pos[]; color: number; opacity?: number }
 
@@ -84,11 +109,12 @@ export class BattleView {
     this.overlay.className = 'world-overlay'
     container.appendChild(this.overlay)
     this.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, -200, 400)
-    this.scene.background = new THREE.Color(0x14161c)
-    this.scene.fog = new THREE.Fog(0x14161c, 60, 140)
-    const hemi = new THREE.HemisphereLight(0xcfd8ff, 0x3a2a20, 0.9)
+    const look = THEMES[this.map.theme ?? 'outskirts']
+    this.scene.background = new THREE.Color(look.background)
+    this.scene.fog = new THREE.Fog(look.fog, 60, 140)
+    const hemi = new THREE.HemisphereLight(look.hemiSky, look.hemiGround, look.hemi)
     this.scene.add(hemi)
-    const sun = new THREE.DirectionalLight(0xffe2c0, 1.6)
+    const sun = new THREE.DirectionalLight(look.sun, look.sunIntensity)
     sun.position.set(-20, 40, 15)
     sun.castShadow = true
     sun.shadow.mapSize.set(this.map.h > 24 || this.map.w > 24 ? 4096 : 2048, this.map.h > 24 || this.map.w > 24 ? 4096 : 2048)
@@ -222,13 +248,23 @@ export class BattleView {
   // --------------------------------------------------------------- terrain
   private buildTerrain() {
     const geo = new THREE.BoxGeometry(1, 1, 1)
+    const theme = this.map.theme ?? 'outskirts'
+    const look = THEMES[theme]
     for (let y = 0; y < this.map.h; y++) for (let x = 0; x < this.map.w; x++) {
       const t = tileAt(this.map, { x, y })!
       const height = 0.4 + t.h * LEVEL
-      const base = new THREE.Color(KIND_COLOR[t.kind] ?? 0x666666)
-      const jitter = ((x * 928371 + y * 1237) % 17) / 17 - 0.5
-      base.offsetHSL(0, 0, jitter * 0.05 + ((x + y) % 2 ? 0.015 : -0.015))
-      const mat = new THREE.MeshStandardMaterial({ color: base, roughness: 0.95, metalness: t.kind === 'block' ? 0.15 : 0, emissive: t.kind === 'hazard' ? 0x5a1800 : 0x000000 })
+      const mars = t.skin === 'mars' && look.mars
+      const hash = (x * 928371 + y * 1237) % 17
+      let color = (mars ? look.mars! : look.colors)[t.kind] ?? 0x666666
+      // industrial: low blocks are shipping containers in assorted colours
+      if (theme === 'industrial' && t.kind === 'block' && t.h <= 2) color = CONTAINER_COLORS[(x * 3 + y * 7) % CONTAINER_COLORS.length]
+      const base = new THREE.Color(color)
+      const jitter = hash / 17 - 0.5
+      base.offsetHSL(0, 0, jitter * (theme === 'cleanroom' && !mars ? 0.02 : 0.05) + ((x + y) % 2 ? 0.015 : -0.015))
+      const mat = new THREE.MeshStandardMaterial({
+        color: base, roughness: theme === 'cleanroom' && !mars ? 0.55 : 0.95, metalness: t.kind === 'block' ? (theme === 'industrial' ? 0.35 : 0.15) : 0,
+        emissive: t.kind === 'hazard' ? look.hazardGlow : 0x000000,
+      })
       const m = new THREE.Mesh(geo, mat)
       m.scale.set(1, height, 1)
       m.position.set(x + 0.5, height / 2 - 0.4, y + 0.5)
@@ -238,29 +274,7 @@ export class BattleView {
       this.scene.add(m)
       this.tileMeshes.push(m)
       const top = this.topY({ x, y })
-      if (t.kind === 'forest') {
-        const n = 1 + ((x * 7 + y * 3) % 2)
-        for (let i = 0; i < n; i++) {
-          const tree = new THREE.Mesh(SHARED.tree, this.standard(0x2f5a2c))
-          tree.position.set(x + 0.3 + i * 0.4, top + 0.45, y + 0.35 + ((x + i) % 2) * 0.3)
-          tree.castShadow = true
-          this.scene.add(tree)
-        }
-      }
-      if (t.kind === 'rubble') {
-        for (let i = 0; i < 3; i++) {
-          const r = new THREE.Mesh(SHARED.rubble, this.standard(0x80705c))
-          r.position.set(x + 0.25 + (i * 0.27), top + 0.07, y + 0.3 + ((i * 37) % 5) * 0.1)
-          r.rotation.y = i
-          this.scene.add(r)
-        }
-      }
-      if (t.kind === 'block' && t.h >= 2) {
-        // window strips on buildings
-        const win = new THREE.Mesh(SHARED.window, this.basic(0xffc46b))
-        win.position.set(x + 0.5, top - 0.35, y + 0.5)
-        this.scene.add(win)
-      }
+      this.decorate(theme, t, x, y, top, !!mars)
     }
     // grid lines
     const pts: THREE.Vector3[] = []
@@ -268,8 +282,76 @@ export class BattleView {
       const yy = this.topY({ x, y }) + 0.005
       pts.push(new THREE.Vector3(x, yy, y), new THREE.Vector3(x + 1, yy, y), new THREE.Vector3(x, yy, y), new THREE.Vector3(x, yy, y + 1))
     }
-    const lines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18 }))
+    const lines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: look.grid, transparent: true, opacity: look.gridOpacity }))
     this.scene.add(lines)
+  }
+
+  /** Props on top of a tile, by theme: trees and windows outside; vents, scrap, lane paint and hazard
+   *  stripes in the industrial park; glass partitions, light strips, red rock and dust in the cleanroom. */
+  private decorate(theme: MapTheme, t: { h: number; kind: string }, x: number, y: number, top: number, mars: boolean) {
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, px: number, py: number, pz: number, sx = 1, sy = 1, sz = 1, ry = 0, shadow = false) => {
+      const m = new THREE.Mesh(geo, mat)
+      m.position.set(px, py, pz); m.scale.set(sx, sy, sz); m.rotation.y = ry
+      m.castShadow = shadow
+      this.scene.add(m)
+    }
+    const k = t.kind
+    if (theme === 'outskirts') {
+      if (k === 'forest') {
+        const n = 1 + ((x * 7 + y * 3) % 2)
+        for (let i = 0; i < n; i++) add(SHARED.tree, this.standard(0x2f5a2c), x + 0.3 + i * 0.4, top + 0.45, y + 0.35 + ((x + i) % 2) * 0.3, 1, 1, 1, 0, true)
+      }
+      if (k === 'rubble') for (let i = 0; i < 3; i++) add(SHARED.rubble, this.standard(0x80705c), x + 0.25 + i * 0.27, top + 0.07, y + 0.3 + ((i * 37) % 5) * 0.1, 1, 1, 1, i)
+      if (k === 'block' && t.h >= 2) add(SHARED.window, this.basic(0xffc46b), x + 0.5, top - 0.35, y + 0.5)
+      return
+    }
+    if (theme === 'industrial') {
+      if (k === 'forest') { // steam vent: grating plus a plume
+        add(SHARED.box, this.standard(0x2e2d2b), x + 0.5, top + 0.03, y + 0.5, 0.6, 0.06, 0.6)
+        add(SHARED.sphere, this.translucent(0xd8d4cc, 0.28), x + 0.5, top + 0.55, y + 0.5, 0.32, 0.45, 0.32)
+        add(SHARED.sphere, this.translucent(0xd8d4cc, 0.18), x + 0.45, top + 1.05, y + 0.55, 0.4, 0.4, 0.4)
+      }
+      if (k === 'rubble') { // scrap: rusted plates and a pipe stub
+        for (let i = 0; i < 3; i++) add(SHARED.rubble, this.standard(i % 2 ? 0x8a4a22 : 0x5a5650, 0.8), x + 0.25 + i * 0.25, top + 0.07, y + 0.3 + ((i * 37) % 5) * 0.1, 1.3, 1, 1, i * 0.7)
+        add(SHARED.box, this.standard(0x6b6f74, 0.6), x + 0.5, top + 0.08, y + 0.6, 0.7, 0.1, 0.1, 0.5)
+      }
+      if (k === 'block' && t.h >= 3) { // warehouse: hazard stripe and a sodium window band
+        add(SHARED.window, this.basic(0xd9a400), x + 0.5, top - 0.06, y + 0.5)
+        add(SHARED.window, this.basic(0xff9a3c), x + 0.5, top - 0.5, y + 0.5, 1, 0.6, 1)
+      }
+      if (k === 'block' && t.h <= 2) add(SHARED.box, this.standard(0x2b2b2b), x + 0.5, top + 0.01, y + 0.5, 0.9, 0.02, 0.1) // container ribbing
+      if (k === 'hazard') add(SHARED.box, this.translucent(0xb8e02a, 0.45), x + 0.5, top + 0.01, y + 0.5, 0.85, 0.02, 0.85) // chemical sheen
+      if (k === 'ground' && t.h === 0 && (y % 9 === 4 || x % 6 === 0) && (x + y) % 2 === 0) // lane paint
+        add(SHARED.box, this.basic(0xc9a227), x + 0.5, top + 0.006, y + 0.5, y % 9 === 4 ? 0.7 : 0.1, 0.01, y % 9 === 4 ? 0.1 : 0.7)
+      return
+    }
+    // cleanroom
+    if (mars) {
+      if (k === 'rubble') for (let i = 0; i < 3; i++) add(SHARED.rock, this.standard(i % 2 ? 0x7a3420 : 0x9c4a2c), x + 0.28 + i * 0.24, top + 0.08, y + 0.3 + ((i * 37) % 5) * 0.1, 0.16 + (i % 2) * 0.06, 0.12, 0.15, i)
+      if (k === 'forest') { // red dust haze
+        add(SHARED.sphere, this.translucent(0xc8673a, 0.3), x + 0.5, top + 0.35, y + 0.5, 0.48, 0.32, 0.48)
+        add(SHARED.sphere, this.translucent(0xd98a55, 0.18), x + 0.4, top + 0.75, y + 0.6, 0.38, 0.28, 0.38)
+      }
+      if (k === 'block') add(SHARED.rock, this.standard(0x6e2f1c), x + 0.5, top + 0.12, y + 0.5, 0.45, 0.3, 0.4, x + y, true) // jagged crest
+      if (k === 'ground' && (x * 13 + y * 7) % 5 === 0) add(SHARED.rock, this.standard(0x8e3f26), x + 0.3 + ((x * 3) % 4) * 0.12, top + 0.04, y + 0.35, 0.08, 0.06, 0.08, x)
+      if (k === 'hazard') add(SHARED.sphere, this.translucent(0xff7a2a, 0.35), x + 0.5, top + 0.05, y + 0.5, 0.4, 0.08, 0.4) // glowing breach
+      return
+    }
+    if (k === 'forest') { // frosted-glass partition
+      const along = (x + y) % 2 === 0
+      add(SHARED.box, this.translucent(0xd6eef8, 0.42), x + 0.5, top + 0.45, y + 0.5, along ? 0.92 : 0.06, 0.9, along ? 0.06 : 0.92)
+      add(SHARED.box, this.standard(0x9fb2bf, 0.4), x + 0.5, top + 0.02, y + 0.5, along ? 0.95 : 0.1, 0.04, along ? 0.1 : 0.95)
+    }
+    if (k === 'block') add(SHARED.window, this.basic(t.h >= 2 ? 0x7ff3ff : 0x9fd8ff), x + 0.5, top - (t.h >= 2 ? 0.25 : 0.12), y + 0.5, 1, 0.5, 1) // light strip
+    if (k === 'rubble') for (let i = 0; i < 2; i++) add(SHARED.box, this.standard(0xf2f4f6, 0.5), x + 0.3 + i * 0.4, top + 0.12, y + 0.45 + i * 0.1, 0.28, 0.24, 0.28, i) // equipment crates
+    if (k === 'hazard') add(SHARED.box, this.translucent(0x5fd0ff, 0.4), x + 0.5, top + 0.01, y + 0.5, 0.85, 0.02, 0.85) // coolant spill
+  }
+
+  private translucent(color: number, opacity: number): THREE.MeshStandardMaterial {
+    const k = `t:${color}:${opacity}`
+    let m = this.materials.get(k) as THREE.MeshStandardMaterial | undefined
+    if (!m) { m = new THREE.MeshStandardMaterial({ color, transparent: true, opacity, depthWrite: false, roughness: 0.3 }); this.materials.set(k, m) }
+    return m
   }
 
   private buildZones() {
