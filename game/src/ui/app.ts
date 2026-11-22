@@ -13,6 +13,8 @@ import {
   repairOptions, applyRepair, rollRewards, applyReward, levelUp, replacePilots, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
 } from '../run/run'
 import { BattleScreen } from './battle-ui'
+import { rangeChip, tagChip } from './tags'
+import type { Weapon } from '../rules/types'
 import { featureAutomated, loadPacks, readLcp, removePack, storePack, officialClasses } from '../import/lcp'
 import { generateOfficialTeam } from '../enemies/official'
 import { Rng } from '../rules/rng'
@@ -404,6 +406,13 @@ export class App {
   }
 }
 
+/** Weapon name with hoverable range and tag chips (Hangar). */
+function weaponLine(w: Weapon): string {
+  const pr = w.profiles[w.profileIndex]
+  const bits = [...pr.range.map(r => rangeChip(r.type, r.val)), ...pr.tags.map(t => tagChip(t.id, t.val))]
+  return `${esc(w.name)}${bits.length ? ` <span class="muted">(${bits.join(', ')})</span>` : ''}`
+}
+
 function pilotCard(p: PilotBuild, picked: boolean): string {
   const f = Lancer.frames.get(p.mech.frameId)
   let u
@@ -416,7 +425,7 @@ function pilotCard(p: PilotBuild, picked: boolean): string {
       <span><button data-pick="${esc(p.id)}" class="${picked ? 'primary' : ''}">${picked ? '✓ In squad' : 'Add to squad'}</button><button data-remove="${esc(p.id)}" class="warn small">✕</button></span></div>
     <div><b>${esc(p.mech.name)}</b> — ${esc(f ? `${f.source} ${f.name}` : p.mech.frameId)} · HASE ${p.mechSkills.join('/')} · SP ${sp.used}/${sp.max}</div>
     ${u ? `<div class="muted small">HP ${u.stats.hp} · ARM ${u.stats.armor} · EVA ${u.stats.evasion} · E-DEF ${u.stats.edef} · HEAT ${u.stats.heatcap} · SPD ${u.stats.speed} · Structure ${u.stats.structure} · Stress ${u.stats.stress}</div>
-    <div class="small">⚔ ${u.weapons.map(w => esc(w.name)).join(', ')}</div><div class="small">⚙ ${u.systems.map(s => esc(s.name)).join(', ') || '—'}</div>
+    <div class="small">⚔ ${u.weapons.map(w => weaponLine(w)).join(' · ')}</div><div class="small">⚙ ${u.systems.map(s => esc(s.name)).join(', ') || '—'}</div>
     <div class="small muted">Talents: ${p.talents.map(t => `${esc(Lancer.talents.get(t.id)?.name ?? t.id)} ${t.rank}`).join(', ') || '—'}${p.coreBonuses.length ? ` · Core bonuses: ${p.coreBonuses.map(c => esc(Lancer.coreBonuses.get(c)?.name ?? c)).join(', ')}` : ''}</div>` : '<div class="bad">Frame not in lancer-data — cannot fly this mech.</div>'}
     ${p.unknown.length ? `<div class="bad small">Unknown content (LCP?): ${p.unknown.map(esc).join(', ')}</div>` : ''}
     ${cov.manual.length ? `<div class="warn small" title="${esc(cov.manual.join(', '))}">${cov.manual.length} rule(s) resolved manually</div>` : ''}

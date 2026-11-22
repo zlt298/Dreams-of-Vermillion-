@@ -2,6 +2,7 @@
 // Battle API (same rules as the AI); the enemy side is driven by the tactical AI.
 import { Lancer } from '../data/lancer'
 import { pickNextUnit, runAiTurn } from '../ai/ai'
+import { annotateTags, rangeChip, tagChip, tagInfo } from './tags'
 import { type Battle, stripHtml } from '../rules/battle'
 import { blastTiles, burstTiles, coneTiles, key, lineTiles, footprint } from '../rules/grid'
 import type { CustomAction } from '../rules/effects/registry'
@@ -459,7 +460,7 @@ export class BattleScreen {
       </div>`
     }).join('')
     const left = `<div class="panel left"><h4>Lancers</h4>${roster('player')}<h4>Hostiles</h4>${roster('enemy')}</div>`
-    const log = `<div class="panel log">${b.log.slice(-60).map(l => `<div class="l ${l.kind ?? ''}">${esc(l.text)}</div>`).join('')}</div>`
+    const log = `<div class="panel log">${b.log.slice(-60).map(l => `<div class="l ${l.kind ?? ''}">${annotateTags(esc(l.text))}</div>`).join('')}</div>`
     const bottom = `<div class="panel bottom">${sel ? this.unitPanel(sel) : '<span class="muted">Select a unit.</span>'}</div>`
     this.hud.innerHTML = top + this.initiativeBar() + left + log + bottom
     const lg = this.hud.querySelector('.log')
@@ -534,16 +535,16 @@ export class BattleScreen {
       if (this.mode.k === 'custom') actions = `<div class="hint">${esc(this.mode.action.name)}: ${esc(this.mode.action.text)}</div>` + actions
       if (this.mode.k === 'melee') actions = `<div class="hint">Choose an adjacent target to ${this.mode.what}.</div>` + actions
     }
-    const sysList = u.systems.length ? `<div class="syslist">${u.systems.map(s => `<span class="sys ${s.destroyed ? 'destroyed' : ''}" title="${esc(sysText(s))}">${esc(s.name)}${s.usesLeft != null ? ` (${s.usesLeft})` : ''}${!s.charged ? ' ⌛' : ''}</span>`).join('')}</div>` : ''
+    const sysList = u.systems.length ? `<div class="syslist">${u.systems.map(s => `<span class="sys ${s.destroyed ? 'destroyed' : ''}" data-tip="${esc(sysText(s))}">${esc(s.name)}${s.usesLeft != null ? ` (${s.usesLeft})` : ''}${!s.charged ? ' ⌛' : ''}</span>`).join('')}</div>` : ''
     return head + actions + `<div class="weapons">${wcards}</div>` + sysList
   }
 
   private weaponCard(u: Unit, w: Weapon, active: boolean): string {
     const b = this.b
     const pr = b.profile(w)
-    const ranges = b.ranges(u, w).map(r => `${r.type} ${r.val}`).join(', ')
+    const ranges = b.ranges(u, w).map(r => rangeChip(r.type, r.val)).join(', ')
     const dmg = pr.damage.map(d => `${d.val} ${d.type}`).join(' + ')
-    const tags = pr.tags.map(t => `${TAG_NAMES[t.id] ?? t.id.replace('tg_', '')}${t.val != null && t.val !== '' ? ' ' + t.val : ''}`).join(', ')
+    const tags = pr.tags.filter(t => !['tg_npc_weapon', 'tg_npc_trait', 'tg_npc_system'].includes(t.id)).map(t => tagChip(t.id, t.val, `${TAG_NAMES[t.id] ?? tagInfo(t.id, t.val).name}${TAG_NAMES[t.id] && t.val != null && t.val !== '' ? ' ' + t.val : ''}`)).join(', ')
     const usable = b.weaponUsable(u, w)
     const fired = b.firedThisTurn(u, w) ? 'Already attacked this turn' : true
     const q = b.canSpend(u, 'quick'), fu = b.canSpend(u, 'full')
@@ -558,9 +559,10 @@ export class BattleScreen {
       }
     }
     const fx = [pr.onHit, pr.onCrit].flat().map(e => (e.do === 'text' ? stripHtml(e.text) : e.do === 'status' ? `${e.status}${e.save ? ` (${e.save} save)` : ''}` : e.do)).join('; ')
-    return `<div class="wcard ${w.destroyed ? 'destroyed' : ''} ${usable !== true ? 'unusable' : ''}" title="${esc((pr.text ? stripHtml(pr.text) + ' ' : '') + fx)}">
+    const note = (pr.text ? stripHtml(pr.text) + ' ' : '') + fx
+    return `<div class="wcard ${w.destroyed ? 'destroyed' : ''} ${usable !== true ? 'unusable' : ''}"${note.trim() ? ` data-tip="${esc(note)}"` : ''}>
       <div class="nm">${esc(w.name)}${w.profiles.length > 1 ? ` <span class="muted">[${esc(pr.name)}]</span>` : ''} <span class="muted">${esc(w.size)} ${esc(w.type)}</span>${w.usesLeft != null ? ` <span class="uses">${w.usesLeft} uses</span>` : ''}${!w.loaded ? ' <span class="bad">UNLOADED</span>' : ''}${!w.charged ? ' <span class="bad">recharging</span>' : ''}${w.destroyed ? ' <span class="bad">DESTROYED</span>' : ''}</div>
-      <div class="row">${esc(ranges)} · <b>${esc(dmg || '—')}</b>${tags ? ` · <span class="muted">${esc(tags)}</span>` : ''}</div>
+      <div class="row">${ranges} · <b>${esc(dmg || '—')}</b>${tags ? ` · <span class="muted">${tags}</span>` : ''}</div>
       ${btns ? `<div class="wbtns">${btns}</div>` : ''}</div>`
   }
 }

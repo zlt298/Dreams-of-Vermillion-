@@ -125,6 +125,9 @@ Useful commands, all run from `game/`:
   - The AI's "advance pull" brings units forward until they're in range.
   - Holdout lasts 8 rounds.
 
+### Tag tooltips
+- Every tag shown in the UI (weapon cards, Hangar weapon lines, the battle log) is a hoverable chip with lancer-data's rules text; one global tooltip (`ui/tags.ts`) serves the whole page.
+
 ### Drones and deployables
 - A framework in `rules/effects/scripts/drones.ts`:
   - deploy, recall, redeploy and move
