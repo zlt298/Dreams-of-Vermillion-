@@ -12,8 +12,14 @@ Each item is sized:
 
 Sprite art is shelved for now; Milestone 6 replaces it with procedural models.
 
+✅ marks finished items. Notes on how they were done:
+- **M1.1 rulings:** checked against COMP/CON's own combat code in `vendor/compcon`, which encodes the core book. Changes: armor now applies per damage type; Skirmish is limited to once per turn; reaching 0 stress schedules a meltdown at the end of the next turn instead of an instant explosion; Grunts are destroyed by external heat; Ultra NPCs refresh reactions every turn. Each ruling has a test.
+- **M1.2 performance:** caches for the map, line of sight and cover, plus per-unit script lists and a single pathfinding pass. Mean AI turn went from 29 ms to about 17–20 ms (`npm run bench`). The p95 is still around 50 ms.
+- **M2.1 reactions:** each mech has a per-reaction policy of auto, ask or off. "Ask" currently uses a synchronous browser confirm dialog, because the engine resolves attacks synchronously.
+- **M2.4 previews:** attack previews now run inside a state sandbox. This also fixed a bug where hovering an attack or running AI evaluation triggered script side effects, such as Shrike Armor damage or consuming once-per-round bonuses.
+
 ### Milestone 1: Correctness and stability (do first)
-1. **Verify rules rulings against the core book (M).** These are assumptions I made while building that need confirming:
+1. ✅ **Verify rules rulings against the core book (M).** These are assumptions I made while building that need confirming:
    - excess heat and excess damage carry over after stress/structure
    - Resistance rounds up
    - each weapon attacks once per turn
@@ -23,13 +29,13 @@ Sprite art is shelved for now; Milestone 6 replaces it with procedural models.
    - stand-up rules for Prone
 
    Each ruling becomes a named test in `tests/rules.test.ts`, with the logic in `game/src/rules/battle.ts`.
-2. **Performance hotspots (M).**
+2. ✅ **Performance hotspots (M).**
    - `Battle.effectiveMap()` copies the whole tile array on every line-of-sight and cover call. Cache it and invalidate the cache only when cover deployables spawn or are destroyed.
    - `cover()` loops over every unit's scripts. Precompute which units have `adjustCover`.
    - AI `planFor` evaluates around 120 positions × targets. Cache line of sight per position and turn.
    - Target: under 50 ms per AI turn on an 18×18 map.
-3. **Animation pacing (S).** The backlog catch-up in `render/scene.ts` `wait()` works, but long AI turns still lag. Add a "skip animations" toggle and cap each turn's queue time.
-4. **Battle-end robustness (S).** `BattleScreen.advance()` depends on `busy` and `view.idle()`. Add a timeout fallback so the debrief always appears. Add a Playwright regression test based on the scratchpad `run.cjs`.
+3. ✅ **Animation pacing (S).** The backlog catch-up in `render/scene.ts` `wait()` works, but long AI turns still lag. Add a "skip animations" toggle and cap each turn's queue time.
+4. ✅ **Battle-end robustness (S).** `BattleScreen.advance()` depends on `busy` and `view.idle()`. Add a timeout fallback so the debrief always appears. Add a Playwright regression test based on the scratchpad `run.cjs`.
 5. **Save migration (S).** `run/run.ts` saves to `dov.run.v1` with no migration. Add `version` handling and wipe incompatible saves gracefully.
 6. **Import edge cases (S).**
    - Pilots are currently matched on re-import by id *or* callsign, which can collide. Prefer id and confirm when matching by callsign.
@@ -37,10 +43,10 @@ Sprite art is shelved for now; Milestone 6 replaces it with procedural models.
    - Test against real COMP/CON exports from the user.
 
 ### Milestone 2: Playability and UX
-1. **Reaction prompts (M).** Brace, Overwatch and the chosen talent/system reactions are currently auto-policy only. Add an optional "ask me" mode: the engine pauses with a pending-reaction state, and the HUD shows a yes/no prompt. Files: `battle.ts`, `ui/battle-ui.ts`.
-2. **Undo the last move (S),** allowed only if nothing was revealed or triggered. Store the position and moveLeft before each standard move.
-3. **Turn-order and initiative bar (S).** Show which units have activated and which are still ready on each side.
-4. **Attack-preview polish (S).** Show the damage range, the crit chance, and whether the attack would kill the target or cause structure damage. Do this before committing to the attack.
+1. ✅ **Reaction prompts (M).** Brace, Overwatch and the chosen talent/system reactions are currently auto-policy only. Add an optional "ask me" mode: the engine pauses with a pending-reaction state, and the HUD shows a yes/no prompt. Files: `battle.ts`, `ui/battle-ui.ts`.
+2. ✅ **Undo the last move (S),** allowed only if nothing was revealed or triggered. Store the position and moveLeft before each standard move.
+3. ✅ **Turn-order and initiative bar (S).** Show which units have activated and which are still ready on each side.
+4. ✅ **Attack-preview polish (S).** Show the damage range, the crit chance, and whether the attack would kill the target or cause structure damage. Do this before committing to the attack.
 5. **Threat overlay (M).** A toggle that shades every tile hostiles can hit next turn, using reach plus speed and overwatch threat.
 6. **Campaign map edges (S).** Draw connection lines between nodes and show sitrep and enemy-tier previews on hover (`ui/app.ts`).
 7. **Hangar quality of life (S):** sort and filter the roster, a mech sheet modal, an SP-overflow warning, and highlighting of LCP content.

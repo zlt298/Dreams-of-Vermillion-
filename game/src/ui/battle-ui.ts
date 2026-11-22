@@ -51,6 +51,8 @@ export class BattleScreen {
     this.view.onTileClick = (p, e) => this.clickTile(p, e)
     this.view.onUnitClick = (u, e) => this.clickUnit(u, e)
     this.view.onTileHover = p => { this.hoverTile = p; this.updateHover() }
+    // 'ask' reaction policies: the engine needs a synchronous answer mid-attack
+    b.decide = q => window.confirm(q.text)
     this.hud.addEventListener('click', e => this.onHudClick(e))
     this.hud.addEventListener('mouseover', e => this.onHudHover(e))
     window.addEventListener('keydown', this.onKey)
@@ -73,6 +75,7 @@ export class BattleScreen {
       if (ready.length) { const i = ready.indexOf(this.selected!); this.select(ready[(i + 1) % ready.length]) }
     }
     if (e.key === 'Enter' && this.b.active?.side === 'player') this.cmd(() => this.b.endTurn(this.b.active!), true)
+    if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && this.b.active?.side === 'player' && this.b.canUndoMove(this.b.active)) { e.preventDefault(); this.cmd(() => this.b.undoMove(this.b.active!)) }
   }
 
   // ------------------------------------------------------------------ flow
@@ -231,6 +234,7 @@ export class BattleScreen {
         if (sel) this.cmd(() => { this.b.beginTurn(sel); this.mode = { k: 'move' } })
         return
       case 'end': if (a) this.cmd(() => { this.b.endTurn(a); this.mode = { k: 'idle' } }, true); return
+      case 'undo': if (a) this.cmd(() => this.b.undoMove(a)); return
       case 'auto':
         if (a && a.side === 'player') this.cmd(() => { runAiTurn(this.b, a); this.mode = { k: 'idle' } }, true)
         else if (sel && sel.side === 'player' && !this.b.activeId && sel.activationsLeft > 0 && this.b.currentSide === 'player') this.cmd(() => { runAiTurn(this.b, sel); this.mode = { k: 'idle' } }, true)
@@ -240,7 +244,13 @@ export class BattleScreen {
       case 'rotr': this.view.rotate(1); return
       case 'speed': { const order = [1, 2, 4, 0]; this.view.setSpeed(order[(order.indexOf(this.view.speed) + 1) % order.length]); this.render(); return }
       case 'finish': if (this.b.winner && !this.ended) { this.ended = true; this.onEnd(this.b.winner as 'player' | 'enemy') } return
-      case 'policy': if (sel && arg) { (sel.policies as any)[arg] = !(sel.policies as any)[arg]; this.render() } return
+      case 'policy':
+        if (sel && (arg === 'brace' || arg === 'overwatch')) {
+          const order = ['auto', 'ask', 'off'] as const
+          sel.policies[arg] = order[(order.indexOf(sel.policies[arg]) + 1) % order.length]
+          this.render()
+        }
+        return
     }
     if (!a) return
     const w = a.weapons.find(w => w.uid === arg)
@@ -354,7 +364,15 @@ export class BattleScreen {
       if (v !== true) html = `<b>${esc(t.name)}</b><br><span class="bad">${esc(v)}</span>`
       else {
         const p = this.b.previewAttack(a, this.mode.weapon, t)
-        html = `<b>${esc(t.name)}</b> — <span class="big">${Math.round(p.chance * 100)}%</span> to hit<br>cover: ${p.cover}${p.ctx.reasons.length ? '<br>' + p.ctx.reasons.map(esc).join('<br>') : ''}<br>expected dmg ≈ ${p.expectedDamage.toFixed(1)}`
+        const d = this.b.previewDetail(a, this.mode.weapon, t)
+        const pct = (x: number) => `${Math.round(x * 100)}%`
+        const lethal = d.lethal > 0
+          ? `<br><span class="${d.lethal >= 0.5 ? 'good' : 'warnc'}">${d.lethalLabel === 'destroy' ? 'Destroys target' : 'Causes STRUCTURE damage'}: ${pct(d.lethal)}</span>`
+          : ''
+        html = `<b>${esc(t.name)}</b> — <span class="big">${pct(p.chance)}</span> to hit · crit ${pct(d.critChance)}
+          <br>damage on hit <b>${d.minDmg}–${d.maxDmg}</b> (avg ${d.avgDmg.toFixed(1)})${d.heat ? ` + ${d.heat.toFixed(1)} heat` : ''}${d.reliable ? ` · ${d.reliable} on a miss (Reliable)` : ''}
+          <br><span class="muted">target HP ${t.hp}/${t.stats.hp}${t.overshield ? ` +${t.overshield} OS` : ''} · ARM ${t.stats.armor}${t.resist.length ? ` · resists ${esc(t.resist.join('/'))}` : ''}</span>${lethal}
+          <br>cover: ${p.cover}${p.ctx.reasons.length ? '<br>' + p.ctx.reasons.map(esc).join('<br>') : ''}`
       }
     } else if (a && t && this.mode.k === 'tech' && this.mode.tech === 'invade') {
       const chance = Math.max(0, Math.min(1, (21 - (t.stats.edef - a.stats.techAttack)) / 20))
@@ -393,9 +411,24 @@ export class BattleScreen {
     const left = `<div class="panel left"><h4>Lancers</h4>${roster('player')}<h4>Hostiles</h4>${roster('enemy')}</div>`
     const log = `<div class="panel log">${b.log.slice(-60).map(l => `<div class="l ${l.kind ?? ''}">${esc(l.text)}</div>`).join('')}</div>`
     const bottom = `<div class="panel bottom">${sel ? this.unitPanel(sel) : '<span class="muted">Select a unit.</span>'}</div>`
-    this.hud.innerHTML = top + left + log + bottom
+    this.hud.innerHTML = top + this.initiativeBar() + left + log + bottom
     const lg = this.hud.querySelector('.log')
     if (lg) lg.scrollTop = lg.scrollHeight
+  }
+
+  /** Who has acted this round, who is ready, who is acting now. */
+  private initiativeBar(): string {
+    const b = this.b
+    const chip = (u: Unit) => {
+      const state = u.destroyed ? 'dead' : u.activeTurn ? 'acting' : u.activationsLeft > 0 ? 'ready' : 'done'
+      const short = u.name.length > 14 ? u.name.slice(0, 13) + '…' : u.name
+      const pips = u.stats.activations > 1 && !u.destroyed ? `<span class="pips">${'●'.repeat(u.activationsLeft)}${'○'.repeat(Math.max(0, u.stats.activations - u.activationsLeft - (u.activeTurn ? 1 : 0)))}</span>` : ''
+      const tip = `${u.name}: ${state === 'ready' ? 'ready to activate' : state === 'acting' ? 'acting now' : state === 'done' ? 'already activated this round' : 'destroyed'}`
+      return `<span class="chip ${u.side} ${state} ${u === this.selected ? 'sel' : ''}" data-act="select" data-arg="${u.id}" title="${esc(tip)}">${esc(short)}${pips}</span>`
+    }
+    const side = (s: 'player' | 'enemy') => b.units.filter(u => u.side === s && (u.kind === 'mech' || u.kind === 'npc')).sort((x, y) => Number(x.destroyed) - Number(y.destroyed)).map(chip).join('')
+    const turn = b.winner ? '' : b.currentSide === 'player' ? '◀ your side acts' : 'enemy acts ▶'
+    return `<div class="initiative"><div class="side player">${side('player')}</div><div class="turnmark ${b.currentSide}">R${b.round}<br>${turn}</div><div class="side enemy">${side('enemy')}</div></div>`
   }
 
   private btn(act: string, label: string, ok: true | string, arg = '', extra = '') {
@@ -414,7 +447,7 @@ export class BattleScreen {
     let head = `<div class="uhead"><div><b>${esc(u.name)}</b> ${f ? `<span class="muted">${esc(u.pilotName ?? '')} · ${esc(f.source)} ${esc(f.name)}</span>` : `<span class="muted">${u.kind === 'npc' ? `Tier ${u.tier} ${esc(u.role ?? '')} ${esc((u.templates ?? []).join(' '))}` : esc(u.kind)}</span>`}
       <div class="stats">HP ${u.hp}/${st.hp} · ARM ${st.armor} · EVA ${st.evasion} · E-DEF ${st.edef} · HEAT ${u.heat}/${st.heatcap} · SPD ${st.speed} · SENS ${st.sensors} · SAVE ${st.save}${u.kind === 'mech' ? ` · TECH +${st.techAttack} · GRIT +${st.grit} · REP ${u.repairs}` : ` · ATK +${st.attackBonus}`} · H${st.hull} A${st.agi} S${st.sys} E${st.eng}</div>
       ${statusTxt.length ? `<div class="statuses">${statusTxt.map(s => `<span class="status">${esc(s)}</span>`).join('')}</div>` : ''}</div>`
-    if (mine) head += `<div class="policies"><label class="${u.policies.autoBrace ? 'on' : ''}" data-act="policy" data-arg="autoBrace">auto-Brace</label><label class="${u.policies.autoOverwatch ? 'on' : ''}" data-act="policy" data-arg="autoOverwatch">auto-Overwatch</label></div>`
+    if (mine) head += `<div class="policies" title="Reaction policy (click to cycle): auto = decided for you, ask = prompt when it matters, off = never">${(['brace', 'overwatch'] as const).map(k => `<label class="${u.policies[k]}" data-act="policy" data-arg="${k}">${k === 'brace' ? 'Brace' : 'Overwatch'}: ${u.policies[k]}</label>`).join('')}</div>`
     head += '</div>'
     const wcards = u.weapons.map(w => this.weaponCard(u, w, isActive)).join('')
     let actions = ''
@@ -441,7 +474,7 @@ export class BattleScreen {
         ${b.has(u, 'shutdown') ? this.btn('bootup', 'Boot Up [F]', u.actionsLeft >= 2 ? true : 'Needs full action') : this.btn('shutdown', 'Shut Down [Q]', q)}
         ${fr ? this.btn('core', `CORE: ${esc(fr.core_system.active_name ?? fr.core_system.name)} [${actLabel((fr.core_system.activation ?? 'quick').toLowerCase())}]`, u.coreAvailable ? (fr.core_system.activation === 'Protocol' ? pr : fr.core_system.activation === 'Full' ? fu : q) : 'Core power spent', '', 'core') : ''}
         ${this.btn('selfdestruct', 'Self-Destruct', q, '', 'warn')}
-        ${this.btn('auto', 'Auto (AI)', true)}${this.btn('end', 'End Turn ⏎', true, '', 'primary')}
+        ${this.b.canUndoMove(u) ? this.btn('undo', '↶ Undo move', true) : ''}${this.btn('auto', 'Auto (AI)', true)}${this.btn('end', 'End Turn ⏎', true, '', 'primary')}
       </div>
       ${custom.length ? `<div class="actions systems"><span class="eco">Systems & traits</span>${custom.map(c => `<button class="${c.usable(b, u) === true ? '' : 'disabled'}" data-act="custom" data-arg="${esc(c.key)}" title="${esc(c.text)}${c.usable(b, u) !== true ? ' — ' + esc(c.usable(b, u) as string) : ''}">${esc(c.name)} [${actLabel(c.activation)}]${c.text.startsWith('[manual]') ? '*' : ''}</button>`).join('')}</div>` : ''}`
       if (this.mode.k === 'barrage-pick') actions = `<div class="hint">Barrage: choose the second weapon below.</div>` + actions

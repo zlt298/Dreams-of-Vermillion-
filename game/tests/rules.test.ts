@@ -267,3 +267,88 @@ describe('rulings cross-checked against COMP/CON', () => {
     expect(a.moveLeft).toBe(0)
   })
 })
+
+describe('reaction policies', () => {
+  it("'ask' brace consults Battle.decide; 'off' never braces", () => {
+    const { a, e, b } = duel()
+    const asked: string[] = []
+    b.decide = q => { asked.push(q.kind); return true }
+    e.policies.brace = 'ask'
+    e.hp = 3
+    const rifle = a.weapons.find(w => w.dataId === 'mw_assault_rifle')!
+    b.beginTurn(a)
+    a.stats.attackBonus = 40
+    b.skirmish(a, rifle, { targetId: e.id })
+    expect(asked).toContain('brace')
+    expect(b.has(e, 'braced')).toBe(true)
+  })
+  it("'off' overwatch never triggers; 'ask' declines when decide says no", () => {
+    const { a, e, b } = duel()
+    e.pos = { x: 3, y: 5 } // Sniper is hostile; Assault starts adjacent-ish
+    a.pos = { x: 1, y: 5 }
+    e.weapons.forEach(w => (w.profiles[w.profileIndex].range = [{ type: 'Threat', val: 3 }]))
+    e.policies.overwatch = 'off'
+    b.beginTurn(a)
+    b.move(a, { x: 1, y: 3 })
+    expect(b.events.filter(ev => ev.type === 'attack').length).toBe(0)
+  })
+})
+
+describe('undo move', () => {
+  it('restores position and movement after a clean move', () => {
+    const { a, b } = duel()
+    b.beginTurn(a)
+    const start = { ...a.pos }
+    b.move(a, { x: 3, y: 5 })
+    expect(b.canUndoMove(a)).toBe(true)
+    b.undoMove(a)
+    expect(a.pos).toEqual(start)
+    expect(a.moveLeft).toBe(a.stats.speed)
+    expect(a.actedThisTurn).toBe(false)
+  })
+  it('is not allowed once something else happened', () => {
+    const { a, e, b } = duel()
+    b.beginTurn(a)
+    b.move(a, { x: 3, y: 5 })
+    b.lockOn(a, e)
+    expect(b.canUndoMove(a)).toBe(false)
+    expect(() => b.undoMove(a)).toThrow()
+  })
+  it('is not allowed if the move provoked overwatch', () => {
+    const { a, e, b } = duel()
+    e.pos = { x: 3, y: 5 }
+    e.weapons.forEach(w => (w.profiles[w.profileIndex].range = [{ type: 'Threat', val: 3 }]))
+    b.beginTurn(a)
+    b.move(a, { x: 1, y: 3 })
+    expect(b.canUndoMove(a)).toBe(false)
+  })
+})
+
+describe('previews are side-effect free', () => {
+  it('previewAttack does not consume rng, flags, statuses or HP', () => {
+    const { a, e, b } = duel()
+    b.beginTurn(a)
+    b.addStatus(e, 'lockon')
+    const rifle = a.weapons.find(w => w.dataId === 'mw_assault_rifle')!
+    const before = { rng: b.rng.state, hp: a.hp, ehp: e.hp, log: b.log.length, flags: JSON.stringify(a.flags) }
+    b.previewAttack(a, rifle, e)
+    b.previewDetail(a, rifle, e)
+    expect(b.rng.state).toBe(before.rng)
+    expect(a.hp).toBe(before.hp)
+    expect(e.hp).toBe(before.ehp)
+    expect(b.log.length).toBe(before.log)
+    expect(JSON.stringify(a.flags)).toBe(before.flags)
+    expect(b.has(e, 'lockon')).toBe(true)
+  })
+  it('previewDetail reports sensible ranges', () => {
+    const { a, e, b } = duel()
+    const rifle = a.weapons.find(w => w.dataId === 'mw_assault_rifle')!
+    const d = b.previewDetail(a, rifle, e)
+    expect(d.chance).toBeGreaterThan(0)
+    expect(d.minDmg).toBeGreaterThanOrEqual(0)
+    expect(d.maxDmg).toBeGreaterThanOrEqual(d.minDmg)
+    expect(d.critChance).toBeLessThanOrEqual(d.chance)
+    e.hp = 1
+    expect(b.previewDetail(a, rifle, e).lethal).toBeGreaterThan(0.2)
+  })
+})

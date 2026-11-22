@@ -81,6 +81,21 @@ code { background: #1d222c; padding: 1px 4px; }
 .hud > * { pointer-events: auto; }
 .topbar { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: linear-gradient(#000c, #0000); }
 .panel { position: absolute; background: var(--panel); border: 1px solid var(--line); }
+.initiative { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 600px); }
+.initiative .side { display: flex; flex-wrap: wrap; gap: 3px; }
+.initiative .side.player { justify-content: flex-end; }
+.initiative .turnmark { font-size: 10px; text-align: center; color: var(--muted); min-width: 92px; }
+.initiative .turnmark.player { color: var(--blue); }
+.initiative .turnmark.enemy { color: var(--bad); }
+.chip { font-size: 10px; padding: 2px 6px; border: 1px solid var(--line); background: #151922e6; cursor: pointer; white-space: nowrap; }
+.chip.player { border-left: 3px solid var(--blue); }
+.chip.enemy { border-right: 3px solid var(--bad); }
+.chip.ready { color: var(--text); }
+.chip.acting { background: #3a2a10; border-color: var(--accent2); color: #fff; box-shadow: 0 0 8px #f2a33a88; }
+.chip.done { opacity: 0.45; }
+.chip.dead { opacity: 0.25; text-decoration: line-through; }
+.chip.sel { outline: 1px solid var(--accent2); }
+.chip .pips { margin-left: 4px; color: var(--accent2); letter-spacing: -1px; }
 .panel.left { top: 44px; left: 8px; width: 230px; bottom: 268px; overflow: auto; padding: 6px; }
 .panel.log { top: 44px; right: 8px; width: 310px; height: 28vh; background: rgba(18, 21, 28, 0.78); overflow: auto; padding: 6px; font-size: 11px; }
 .log .l { padding: 1px 0; border-bottom: 1px solid #ffffff08; }
@@ -103,7 +118,9 @@ code { background: #1d222c; padding: 1px 4px; }
 .uhead .stats { font-size: 11px; color: var(--muted); }
 .statuses .status { background: #3a2a4a; padding: 0 5px; margin-right: 3px; font-size: 11px; }
 .policies label { cursor: pointer; border: 1px solid var(--line); padding: 2px 6px; margin-left: 4px; font-size: 11px; color: var(--muted); }
-.policies label.on { color: var(--good); border-color: #2e7a4e; }
+.policies label.auto { color: var(--good); border-color: #2e7a4e; }
+.policies label.ask { color: var(--accent2); border-color: #7a5a1e; }
+.policies label.off { color: var(--muted); text-decoration: line-through; }
 .actions { margin: 4px 0; }
 .actions button { padding: 3px 7px; font-size: 12px; }
 .actions .eco { color: var(--accent2); margin-right: 8px; font-size: 12px; }
@@ -118,7 +135,9 @@ code { background: #1d222c; padding: 1px 4px; }
 .syslist { margin-top: 4px; font-size: 11px; }
 .sys { border: 1px solid var(--line); padding: 1px 5px; margin-right: 3px; display: inline-block; }
 .sys.destroyed { text-decoration: line-through; color: var(--bad); }
-.tooltip { position: absolute; top: 48px; left: 50%; transform: translateX(-50%); background: #000d; border: 1px solid var(--accent2); padding: 6px 10px; pointer-events: none; display: none; max-width: 420px; font-size: 12px; }
+.tooltip { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); background: #000d; border: 1px solid var(--accent2); padding: 6px 10px; pointer-events: none; display: none; max-width: 420px; font-size: 12px; }
+.tooltip .good { color: var(--good); }
+.tooltip .warnc { color: var(--accent2); }
 .tooltip .big { font-size: 18px; color: var(--accent2); }
 .toast { position: absolute; top: 90px; left: 50%; transform: translateX(-50%); background: #3a1410; border: 1px solid var(--accent); padding: 8px 16px; z-index: 10; }
 .log.small { max-height: 40vh; overflow: auto; text-align: left; margin: 12px; }

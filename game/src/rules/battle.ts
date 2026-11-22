@@ -25,6 +25,13 @@ export type BattleEvent =
   | { type: 'end'; winner: Side }
   | { type: 'text'; unitId?: string; text: string }
 
+export interface ReactionQuestion {
+  kind: 'brace' | 'overwatch'
+  unit: Unit
+  other: Unit
+  text: string
+}
+
 export interface Sitrep {
   id: 'standard' | 'holdout' | 'control' | 'extraction' | 'assassination'
   name: string
@@ -73,6 +80,8 @@ export class Battle {
   winner: Side | null = null
   sitrep: Sitrep
   listeners: ((e: BattleEvent) => void)[] = []
+  /** UI hook for reactions whose policy is 'ask'. Must answer synchronously. */
+  decide?: (q: ReactionQuestion) => boolean
   /** prevents infinite reaction chains */
   private reactionDepth = 0
 
@@ -777,6 +786,10 @@ export class Battle {
     const p = this.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' })
     if (!p) throw new Error('Unreachable')
     if (p.path.length <= 1) return true
+    const snapshot = opts.mode === 'standard'
+      ? { unitId: u.id, pos: { ...u.pos }, moveLeft: u.moveLeft, acted: u.actedThisTurn, moved: !!u.flags['turn:moved'], round: this.round, startEvents: this.events.length, endEvents: -1 }
+      : null
+    this.lastMove = null
     if (opts.mode === 'standard') u.moveLeft -= p.cost
     else if (u.flags.pendingMove != null) u.flags.pendingMove = Math.max(0, u.flags.pendingMove - p.cost)
     if (opts.mode !== 'involuntary') { u.actedThisTurn = true; u.flags['turn:moved'] = true }
@@ -785,7 +798,36 @@ export class Battle {
     if (u.destroyed) return false
     if (this.has(u, 'stunned') || this.has(u, 'immobilized')) return false
     this.followPath(u, p.path)
+    // undo is only allowed if the move revealed/triggered nothing: its sole event is the move itself
+    if (snapshot) {
+      const added = this.events.slice(snapshot.startEvents)
+      if (added.length === 1 && added[0].type === 'move' && added[0].unitId === u.id && !u.destroyed) {
+        snapshot.endEvents = this.events.length
+        this.lastMove = snapshot
+      }
+    }
     return true
+  }
+
+  /** Last undoable standard move (cleared as soon as anything else happens). */
+  lastMove: { unitId: string; pos: Pos; moveLeft: number; acted: boolean; moved: boolean; round: number; startEvents: number; endEvents: number } | null = null
+
+  canUndoMove(u: Unit): boolean {
+    const m = this.lastMove
+    return !!m && m.unitId === u.id && u.activeTurn && m.round === this.round && this.events.length === m.endEvents
+  }
+
+  undoMove(u: Unit) {
+    if (!this.canUndoMove(u)) throw new Error('Nothing to undo (or the move triggered something)')
+    const m = this.lastMove!
+    this.lastMove = null
+    const from = { ...u.pos }
+    u.pos = m.pos
+    u.moveLeft = m.moveLeft
+    u.actedThisTurn = m.acted
+    if (!m.moved) delete u.flags['turn:moved']
+    this.say(`${u.name} reconsiders its move.`)
+    this.emit({ type: 'move', unitId: u.id, path: [from, m.pos] })
   }
 
   private followPath(u: Unit, path: Pos[]) {
@@ -861,10 +903,12 @@ export class Battle {
     if (this.reactionDepth > 0) return
     for (const o of this.alive()) {
       if (mover.destroyed) return
-      if (!this.hostile(o, mover) || !o.policies.autoOverwatch) continue
+      if (!this.hostile(o, mover) || o.policies.overwatch === 'off') continue
       if (this.canSpend(o, 'reaction') !== true) continue
       const w = this.bestThreatWeapon(o, mover)
       if (!w) continue
+      if (!this.wantsReaction(o, 'overwatch', true, mover,
+        `OVERWATCH? ${mover.name} is moving within threat of ${o.name}'s ${w.name} (${this.distance(o, mover)} spaces). Spend ${o.name}'s reaction to attack it now?`)) continue
       this.say(`${o.name} takes OVERWATCH on ${mover.name}!`, 'attack')
       o.reactionsLeft--
       this.reactionDepth++
@@ -1007,8 +1051,131 @@ export class Battle {
     }
   }
 
-  /** Compute accuracy/difficulty and the to-hit chance for previews and the AI (no randomness consumed). */
+  /**
+   * Run `fn` and then roll back every piece of mutable battle state it touched (units, statuses,
+   * flags, equipment, areas, mines, rng, log/events). Object identity is preserved and render
+   * listeners are muted, so previews and AI lookahead can safely call script hooks.
+   */
+  sandbox<T>(fn: () => T): T {
+    const listeners = this.listeners
+    this.listeners = []
+    const rng = this.rng.state, logLen = this.log.length, evLen = this.events.length, nUnits = this.units.length
+    const areas = this.areas.slice(), mines = this.mines.slice(), lastMove = this.lastMove
+    const snap = this.units.map(u => ({
+      u,
+      v: {
+        hp: u.hp, heat: u.heat, structure: u.structure, stress: u.stress, overshield: u.overshield, burn: u.burn, repairs: u.repairs,
+        coreAvailable: u.coreAvailable, coreActive: u.coreActive, overchargeLevel: u.overchargeLevel, reactionsLeft: u.reactionsLeft,
+        actionsLeft: u.actionsLeft, moveLeft: u.moveLeft, activationsLeft: u.activationsLeft, destroyed: u.destroyed, flying: u.flying,
+        meltdownTurns: u.meltdownTurns, selfDestructTurns: u.selfDestructTurns, actedThisTurn: u.actedThisTurn, overchargedThisTurn: u.overchargedThisTurn,
+      },
+      pos: { ...u.pos },
+      flags: { ...u.flags },
+      statuses: u.statuses.map(s => ({ ...s })),
+      bonuses: u.bonuses.slice(), resist: u.resist.slice(), immune: u.immune.slice(),
+      weapons: u.weapons.map(w => ({ w, loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex })),
+      systems: u.systems.map(s => ({ s, destroyed: s.destroyed, usesLeft: s.usesLeft, charged: s.charged })),
+      stats: { ...u.stats },
+    }))
+    try {
+      return fn()
+    } finally {
+      for (const x of snap) {
+        Object.assign(x.u, x.v)
+        x.u.pos = x.pos
+        x.u.flags = x.flags
+        x.u.statuses = x.statuses
+        x.u.bonuses = x.bonuses; x.u.resist = x.resist; x.u.immune = x.immune
+        Object.assign(x.u.stats, x.stats)
+        for (const w of x.weapons) Object.assign(w.w, { loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex })
+        for (const s of x.systems) Object.assign(s.s, { destroyed: s.destroyed, usesLeft: s.usesLeft, charged: s.charged })
+      }
+      this.units.length = nUnits
+      this.areas = areas
+      this.mines = mines
+      this.lastMove = lastMove
+      this.rng.state = rng
+      this.log.length = logLen
+      this.events.length = evLen
+      this.listeners = listeners
+    }
+  }
+
+  /** Compute accuracy/difficulty and the to-hit chance for previews and the AI (no state is changed). */
   previewAttack(attacker: Unit, w: Weapon, target: Unit, from: Pos = attacker.pos, mode: AttackCtx['mode'] = 'skirmish'): { ctx: AttackCtx; chance: number; cover: Cover; expectedDamage: number } {
+    return this.sandbox(() => this.previewAttackRaw(attacker, w, target, from, mode))
+  }
+
+  /**
+   * Detailed hover preview: Monte Carlo over the real attack math with a private RNG.
+   * Damage figures are after Exposed, armor (per type) and resistance; heat is reported separately.
+   */
+  previewDetail(attacker: Unit, w: Weapon, target: Unit, samples = 1200): {
+    chance: number; critChance: number; minDmg: number; maxDmg: number; avgDmg: number; heat: number
+    lethal: number; lethalLabel: 'destroy' | 'structure'; reliable: number
+  } {
+    return this.sandbox(() => {
+      const ctx = this.buildWeaponCtx(attacker, w, target, 'skirmish', false)
+      const pr = this.profile(w)
+      const def = this.defenseOf(target, ctx)
+      const net = ctx.accuracy - (ctx.ignoreDifficulty ? 0 : ctx.difficulty)
+      const rng = new Rng(0x5eed ^ target.hp ^ (attacker.hp << 8))
+      const ap = hasTag(pr.tags, 'tg_ap') || this.has(target, 'shredded')
+      const irreducible = hasTag(pr.tags, 'tg_irreducible') || !!ctx.irreducible
+      const resists = (type: string) => !irreducible && !this.has(target, 'shredded') && (!!ctx.resistAll || target.resist.includes(type) || target.resist.includes('all'))
+      const exposed = this.has(target, 'exposed')
+      const pool = target.hp + target.overshield
+      const destroyOnPool = target.isGrunt || target.kind === 'deployable' || target.kind === 'drone' || target.stats.structure <= 1 || target.structure <= 1
+      const rel = tagVal(pr.tags, 'tg_reliable') ?? 0
+      let hits = 0, crits = 0, lethal = 0, sum = 0, min = Infinity, max = 0, heat = 0
+      const reduce = (parts: { type: string; amount: number }[]) => {
+        const byType = new Map<string, number>()
+        let total = 0
+        for (const p of parts) {
+          if (p.type === 'Heat') continue
+          if (p.type === 'Burn') { total += resists('Burn') ? Math.ceil(p.amount / 2) : p.amount; continue }
+          byType.set(p.type, (byType.get(p.type) ?? 0) + (exposed ? p.amount * 2 : p.amount))
+        }
+        for (const [type, amt] of byType) {
+          let a = Math.max(0, amt - (ap || irreducible ? 0 : target.stats.armor))
+          if (resists(type)) a = Math.ceil(a / 2)
+          total += a
+        }
+        return total
+      }
+      for (let i = 0; i < samples; i++) {
+        const acc = rollAccuracy(rng, net)
+        const total = rng.d(20) + ctx.attackBonus + acc.bonus
+        const invisible = this.has(target, 'invisible') || ctx.forceInvisible
+        const hit = !(invisible && rng.d(6) <= 3) && total >= def
+        if (!hit) {
+          if (rel && !target.isGrunt) { const d = reduce([{ type: pr.damage[0]?.type ?? 'Kinetic', amount: rel }]); if (d >= pool) lethal++ }
+          continue
+        }
+        hits++
+        const crit = total >= 20 && attacker.canCrit && !ctx.tech
+        if (crit) crits++
+        const parts: { type: string; amount: number }[] = []
+        for (const d of pr.damage) parts.push({ type: d.type, amount: Math.max(0, rollDice(rng, d.val, { crit }).total + this.flatDamageBonus(attacker, w, d.type)) })
+        for (const bd of ctx.bonusDamage) parts.push({ type: bd.type, amount: rollDice(rng, bd.val, { crit }).total })
+        for (const e of [...pr.onHit, ...(crit ? pr.onCrit : [])]) if (e.do === 'bonus_damage') parts.push({ type: e.type ?? pr.damage[0]?.type ?? 'Kinetic', amount: rollDice(rng, e.val, { crit }).total })
+        const burnTag = tagVal(pr.tags, 'tg_burn')
+        if (burnTag) parts.push({ type: 'Burn', amount: burnTag })
+        for (const p of parts) if (p.type === 'Heat') heat += p.amount
+        const dmg = reduce(parts)
+        sum += dmg
+        min = Math.min(min, dmg)
+        max = Math.max(max, dmg)
+        if (dmg >= pool) lethal++
+      }
+      return {
+        chance: hits / samples, critChance: crits / samples, minDmg: hits ? min : 0, maxDmg: max, avgDmg: hits ? sum / hits : 0,
+        heat: hits ? heat / hits : 0, lethal: lethal / samples, lethalLabel: destroyOnPool ? 'destroy' : 'structure', reliable: rel,
+      }
+    })
+  }
+
+  private previewAttackRaw(attacker: Unit, w: Weapon, target: Unit, from: Pos, mode: AttackCtx['mode']): { ctx: AttackCtx; chance: number; cover: Cover; expectedDamage: number } {
     const saved = attacker.pos
     attacker.pos = from
     try {
@@ -1145,7 +1312,7 @@ export class Battle {
         const heatTag = tagVal(pr.tags, 'tg_heat_target')
         if (heatTag) base.push({ type: 'Heat', amount: heatTag })
         let resistAll = !!ctx.resistAll
-        if (!ctx.cancelDamage && !resistAll && t.policies.autoBrace && this.shouldBrace(t, base)) resistAll = this.brace(t)
+        if (!ctx.cancelDamage && !resistAll && this.braceWanted(t, u, base, ctx)) resistAll = this.brace(t)
         if (t.flags.flashAegis && resistAll && !ctx.resistAll) for (const p of base) p.amount = Math.min(p.amount, 1)
         if (!ctx.cancelDamage) ctx.damageDealt = this.applyDamage(t, base, {
           source: u, attack: ctx, ap: hasTag(pr.tags, 'tg_ap'), irreducible: hasTag(pr.tags, 'tg_irreducible') || ctx.irreducible, resistAll,
@@ -1275,12 +1442,36 @@ export class Battle {
     }
   }
 
-  // ------------------------------------------------------------------ brace
+  // ------------------------------------------------------------------ brace & reaction policies
+  /** Rough incoming HP damage before resistance (for brace decisions and prompts). */
+  estimateIncoming(t: Unit, parts: { type: string; amount: number }[]): number {
+    return Math.max(0, parts.filter(p => p.type !== 'Heat').reduce((a, p) => a + p.amount, 0) * (this.has(t, 'exposed') ? 2 : 1) - t.stats.armor)
+  }
   shouldBrace(t: Unit, parts: { type: string; amount: number }[]): boolean {
     if (t.kind !== 'mech' && !(t.kind === 'npc' && t.stats.structure > 1)) return false
     if (this.canSpend(t, 'reaction') !== true) return false
-    const est = parts.filter(p => p.type !== 'Heat').reduce((a, p) => a + p.amount, 0) * (this.has(t, 'exposed') ? 2 : 1) - t.stats.armor
+    const est = this.estimateIncoming(t, parts)
     return est >= t.hp + t.overshield && t.structure <= Math.max(2, t.stats.structure - 1)
+  }
+  private braceWanted(t: Unit, attacker: Unit, parts: { type: string; amount: number }[], ctx: AttackCtx): boolean {
+    if (t.policies.brace === 'off' || (t.kind !== 'mech' && !(t.kind === 'npc' && t.stats.structure > 1))) return false
+    if (this.canSpend(t, 'reaction') !== true) return false
+    const est = this.estimateIncoming(t, parts)
+    if (t.policies.brace === 'ask') {
+      // only bother the player when the hit actually matters
+      if (est < Math.min(t.hp + t.overshield, Math.ceil(t.stats.hp / 2))) return false
+      const structureHit = est >= t.hp + t.overshield
+      return this.wantsReaction(t, 'brace', true, attacker,
+        `BRACE? ${attacker.name} ${ctx.crit ? 'CRITS' : 'hits'} ${t.name} for about ${est} damage (HP ${t.hp}/${t.stats.hp}${t.overshield ? ` +${t.overshield} OS` : ''}, structure ${t.structure})${structureHit ? ' — this will cause STRUCTURE damage' : ''}.\n\nBracing halves the damage, but next turn ${t.name} gets only one quick action and no reactions.`)
+    }
+    return this.shouldBrace(t, parts)
+  }
+  /** Resolve a reaction decision under the unit's policy. */
+  wantsReaction(u: Unit, kind: ReactionQuestion['kind'], heuristic: boolean, other: Unit, text: string): boolean {
+    const p = u.policies[kind]
+    if (p === 'off') return false
+    if (p === 'ask' && this.decide) return this.decide({ kind, unit: u, other, text })
+    return heuristic
   }
   brace(t: Unit): boolean {
     if (this.canSpend(t, 'reaction') !== true) return false

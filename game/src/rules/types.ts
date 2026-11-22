@@ -124,9 +124,12 @@ export interface Stats {
   activations: number
 }
 
+/** auto = engine decides, ask = prompt the player (via Battle.decide), off = never */
+export type ReactionPolicy = 'auto' | 'ask' | 'off'
+
 export interface UnitPolicies {
-  autoBrace: boolean
-  autoOverwatch: boolean
+  brace: ReactionPolicy
+  overwatch: ReactionPolicy
 }
 
 export type UnitKind = 'mech' | 'npc' | 'deployable' | 'drone'

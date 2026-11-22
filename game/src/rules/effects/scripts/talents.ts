@@ -520,7 +520,7 @@ registerScripts([
   {
     id: 't_vanguard:3', note: 'Semper Vigilo (CQB overwatch when hostiles enter threat)',
     onMove(b, self, mover, path) {
-      if (!b.hostile(self, mover) || mover.destroyed || b.canSpend(self, 'reaction') !== true || !self.policies.autoOverwatch) return
+      if (!b.hostile(self, mover) || mover.destroyed || b.canSpend(self, 'reaction') !== true || self.policies.overwatch === 'off') return
       const w = self.weapons.find(w => w.type === 'CQB' && b.weaponReady(self, w) && b.weaponThreat(self, w) >= b.distance(self, mover) && b.validTarget(self, w, mover) === true)
       if (!w || path.length < 2) return
       self.reactionsLeft--

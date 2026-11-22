@@ -74,9 +74,9 @@ export class App {
       <ul>
         <li>On your side's turn, pick any ready lancer and <b>Activate</b> it (initiative alternates between sides, as in LANCER).</li>
         <li>Click blue tiles to move (moves can be split). <b>Skirmish</b>/<b>Barrage</b> on a weapon card, then click a target; hover for hit chance, cover and accuracy breakdown.</li>
-        <li>Tech, systems, core powers, stabilize, overcharge, ram/grapple, hide/search… are on the action bar. <b>Enter</b> ends the turn, <b>Esc</b> cancels, <b>Tab</b> cycles lancers.</li>
+        <li>Tech, systems, core powers, stabilize, overcharge, ram/grapple, hide/search… are on the action bar. <b>Enter</b> ends the turn, <b>Ctrl+Z</b> undoes a move that revealed nothing, <b>Esc</b> cancels, <b>Tab</b> cycles lancers.</li>
         <li>Camera: <b>Q/E</b> rotate, <b>WASD</b>/right-drag pan, wheel zoom.</li>
-        <li>Brace and Overwatch are reactions; toggle the auto-policies per mech.</li>
+        <li>Brace and Overwatch are reactions. Each mech has a policy per reaction: <b>auto</b> (decided for you), <b>ask</b> (you're prompted when it matters) or <b>off</b>.</li>
         <li>Actions marked * are text-only: their rules are logged for you to resolve by hand (see the coverage report).</li>
       </ul>
       <button data-go="back" class="primary">Back</button></div>`
