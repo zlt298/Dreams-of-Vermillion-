@@ -156,8 +156,25 @@ Every CORE system is now executed (`rules/effects/scripts/cores.ts`):
 - **Barbarossa, Apocalypse Rail:** the Apocalypse Die counts down; three firing profiles leave clouds, a burning storm or a crater.
 - **Sherman, SOLIDCORE:** charges and COREBURN.
 
+### Talent ranks
+All 21 talent ranks that used to be resolved by hand now have scripts (`scripts/talents2.ts`):
+- Ace 3: Supersonic
+- Bonded 2–3: Intercede, Cover Me!
+- Centimane 3: Tidal Suppression
+- Exemplar 3: To the Death
+- Heavy Gunner 2–3: Hammerbeat, Bracketing Fire
+- Infiltrator 1 and 3: Prowl, Mastermind
+- Juggernaut 2–3: Kinetic Mass Transfer, Unstoppable Force
+- Leader 2–3: Open Channels, Inspiring Presence
+- Siege Specialist 1: Jackhammer
+- Spotter 2–3: Panopticon, Bentham/Foucault
+- Stormbringer 3: Torrent
+- Grease Monkey 1 and 3, Technophile 1–2: no in-combat effect (noted as narrative)
+
+Two engine additions support these: an `onStatusRemoved` hook and Prowl movement and hiding rules.
+
 ### Rules fidelity snapshot
-Out of the 392 items in lancer-data, 285 (73%) are fully executed and 44 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
+Out of the 392 items in lancer-data, 298 (76%) are fully executed and 52 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
 
 | section | scripted | partial | auto | manual |
 |---|---|---|---|---|
@@ -166,7 +183,7 @@ Out of the 392 items in lancer-data, 285 (73%) are fully executed and 44 are app
 | Weapons | 19 | 5 | 53 | 8 |
 | Systems | 69 | 19 | 4 | 32 |
 | Mods | 2 | 1 | 3 | 2 |
-| Talent ranks | 50 | 10 | 6 | 21 |
+| Talent ranks | 63 | 18 | 6 | 0 |
 | Core bonuses | 9 | 4 | 17 | 0 |
 
 ---
@@ -193,10 +210,7 @@ Driven by `npm run coverage -- --list`.
    - charges (Flash, Mesmer, Grounding, Roller, Clamp Bombs, BB)
    - NHPs (SEKHMET, TLALOC, ATHENA, SISYPHUS, NOAH)
    - Armor-Lock, FADE Cloak, Tesseract, Blinkshield and the rest
-3. **The 22 manual talent ranks:**
-   - Heavy Gunner, Leader, Juggernaut, Spotter, Infiltrator
-   - Technophile, Exemplar, Stormbringer, Grease Monkey
-   - the others
+3. ✅ **Talent ranks:** every rank is now executed; 18 are approximations (see `npm run coverage -- --list`).
 4. **Manual weapons and mods:**
    - Vorpal Gun, Mimic Gun, Siege Cannon, Autopod
    - prototype weapons

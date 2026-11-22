@@ -77,9 +77,9 @@ Core systems             26       3      0       0     90%
 Weapons                  19       5     53       8     85%
 Systems                  69      19      4      32     59%
 Mods                      2       1      3       2     63%
-Talent ranks             50      10      6      21     64%
+Talent ranks             63      18      6       0     79%
 Core bonuses              9       4     17       0     87%
-TOTAL 285/392 (73%) fully executed by the engine, 44 partially
+TOTAL 298/392 (76%) fully executed by the engine, 52 partially
 ```
 
 - **auto**: fully described by structured data (bonuses, damage, ranges, tags, on-hit statuses).

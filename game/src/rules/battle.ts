@@ -259,6 +259,7 @@ export class Battle {
     if (u.statuses.length !== before) {
       this.emit({ type: 'status', unitId: u.id, status: id, added: false })
       this.say(`${u.name} is no longer ${id}.`, 'status')
+      for (const s of scriptsFor(u)) s.onStatusRemoved?.(this, u, id)
     }
   }
   private tickStatuses(clock: Unit, atStart: boolean) {
@@ -391,6 +392,8 @@ export class Battle {
   endTurn(u: Unit = this.active!) {
     if (!u || u.id !== this.activeId) throw new Error('Not the active unit')
     if (this.has(u, 'hidden') && this.inRevealField(u)) this.removeStatus(u, 'hidden')
+    // Prowl ends with the turn: lose Hidden if exposed now
+    if (u.flags.prowl && this.has(u, 'hidden')) { u.activeTurn = false; const ok = this.canHide(u); u.activeTurn = true; if (!ok) this.removeStatus(u, 'hidden') }
     // dangerous terrain: ending a turn in it also requires the (once per round) Engineering check
     if (!u.destroyed && !u.flying && !u.flags.ignoreHazard && !u.flags['round:hazard'] && footprint(u).some(q => tileAt(this.map, q)?.kind === 'hazard')) {
       u.flags['round:hazard'] = true
@@ -772,7 +775,8 @@ export class Battle {
       if (o.kind === 'deployable' && !o.flags.isCover && o.stats.size < 1) continue
       if (o.flags.isCover || o.kind === 'deployable') return 'blocked'
       // obstructed by hostile characters the same SIZE or larger; smaller ones (and allies) can be passed through
-      if (this.hostile(u, o) && !this.has(o, 'hidden') && o.stats.size >= u.stats.size) return 'blocked'
+      // Prowl (Infiltrator): pass freely through enemy spaces during your own turn
+      if (this.hostile(u, o) && !this.has(o, 'hidden') && o.stats.size >= u.stats.size && !(u.flags.prowl && u.activeTurn)) return 'blocked'
       res = 'pass' // may pass through, but not end the move here
     }
     return res
@@ -942,7 +946,7 @@ export class Battle {
       this.applyDamage(u, [{ type: 'Kinetic', amount: dmg }], { ap: true })
     }
     // hidden is lost if no longer in cover / out of sight
-    if (this.has(u, 'hidden') && !this.canHide(u)) this.removeStatus(u, 'hidden')
+    if (this.has(u, 'hidden') && !(u.flags.prowl && u.activeTurn) && !this.canHide(u)) this.removeStatus(u, 'hidden')
     this.updateEngagementTerminal(u)
   }
   private updateEngagementTerminal(_u: Unit) {}
@@ -1714,6 +1718,8 @@ export class Battle {
     if (u.flags.trackedBy && !this.unit(u.flags.trackedBy)?.destroyed) return false
     if (this.inRevealField(u)) return false
     if (this.has(u, 'invisible')) return true
+    // Prowl (Infiltrator): Hide even in plain sight during your own turn
+    if (u.flags.prowl && u.activeTurn && !this.isEngaged(u)) return true
     if (this.isEngaged(u)) return false
     const insideSoft = footprint(u).every(p => tileAt(this.map, p)?.kind === 'forest' || this.areas.some(a => a.kind === 'soft_cover' && a.tiles.some(t => t.x === p.x && t.y === p.y)))
     return this.alive().filter(o => this.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc')).every(o => {

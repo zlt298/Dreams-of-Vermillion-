@@ -117,6 +117,7 @@ registerScripts([
   {
     id: 't_centimane:1', note: 'Ten Thousand Teeth',
     afterAttack(b, self, ctx, role) {
+      if (self.talents.some(t => t.id === 't_centimane' && t.rank >= 3)) return // replaced by Tidal Suppression
       if (role !== 'attacker' || !ctx.crit || ctx.weapon?.type !== 'Nexus' || ctx.target.destroyed || !once(self, 'teeth')) return
       if (!b.save(ctx.target, 'sys', self.stats.save)) { b.addStatus(ctx.target, 'impaired', 'next_turn_end_target', self); b.addStatus(ctx.target, 'slowed', 'next_turn_end_target', self) }
     },
@@ -225,6 +226,7 @@ registerScripts([
   {
     id: 't_exemplar:1', partial: true, note: "Honorable Challenge (mark first target within 3; marked target attacking others within 3 of you takes +1 diff... simplified to Exemplar's Mark tracking)",
     afterAttack(b, self, ctx, role) {
+      if (self.flags.duel) return // To the Death: no new marks
       if (role === 'attacker' && self.activeTurn && b.hostile(self, ctx.target) && b.distance(self, ctx.target) <= 3 && once(self, 'mark', 'turn')) {
         for (const o of b.units) if (o.flags.exemplarMarkBy === self.id) delete o.flags.exemplarMarkBy
         ctx.target.flags.exemplarMarkBy = self.id
@@ -327,9 +329,17 @@ registerScripts([
         const target = t as Unit
         const w = self.weapons.find(w => w.size === 'Heavy' && isRangedWeapon(bt, w) && bt.validTarget(self, w, target) === true)
         if (!w) throw new Error('No Heavy ranged weapon in range')
-        target.flags.coveredBy = self.id
-        target.flags.coveredWeapon = w.uid
-        bt.addStatus(target, 'impaired', 'next_turn_end_source', self, { covering: true })
+        const cover = (x: Unit, wp: Weapon) => {
+          x.flags.coveredBy = self.id
+          x.flags.coveredWeapon = wp.uid
+          bt.addStatus(x, 'impaired', 'next_turn_end_source', self, { covering: true })
+        }
+        cover(target, w)
+        // Bracketing Fire (rank 3): a second target
+        if (self.talents.some(t => t.id === 't_heavy_gunner' && t.rank >= 3)) {
+          const second = bt.alive().filter(o => o !== target && bt.hostile(self, o) && (o.kind === 'mech' || o.kind === 'npc') && bt.validTarget(self, w, o) === true).sort((x, y) => bt.distance(target, x) - bt.distance(target, y))[0]
+          if (second) cover(second, w)
+        }
       },
     })],
     onMove(b, self, mover) {
