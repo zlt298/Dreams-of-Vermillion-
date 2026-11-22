@@ -69,7 +69,7 @@ describe('combat', () => {
     for (let i = 0; i < 40; i++) {
       a.actionsLeft = 2
       a.flags['turn:fired'] = []
-      a.flags['turn:skirmished'] = false
+      a.flags['turn:quickUsed'] = []
       a.activeTurn = true
       b.activeId = a.id
       e.hp = e.stats.hp; e.structure = e.stats.structure; e.destroyed = false; e.statuses = []
@@ -231,7 +231,40 @@ describe('rulings cross-checked against COMP/CON', () => {
     expect(b.skirmish(a, w1, { targetId: e.id }).ok).toBe(true)
     const r = b.skirmish(a, w2, { targetId: e.id })
     expect(r.ok).toBe(false)
-    expect(r.reason).toMatch(/once per turn/)
+    expect(r.reason).toMatch(/already taken this turn/)
+  })
+  it('a quick action can be repeated when paid with a free-action quick (Overcharge)', () => {
+    const { a, e, b } = duel()
+    e.pos = { x: 2, y: 5 } // adjacent, so both the rifle and the melee weapon can reach
+    b.beginTurn(a)
+    const [w1, w2] = a.weapons.filter(w => !b.isAoE(b.profile(w)))
+    expect(b.skirmish(a, w1, { targetId: e.id }).ok).toBe(true)
+    e.destroyed = false; e.hp = e.stats.hp; e.structure = e.stats.structure; e.pos = { x: 2, y: 5 }
+    b.overcharge(a)
+    expect(b.skirmish(a, w2, { targetId: e.id }).ok).toBe(true)
+    // the repeat came out of the overcharge quick, so one normal action remains
+    expect(a.actionsLeft).toBe(1)
+    expect(a.flags.bonusQuick).toBe(0)
+  })
+  it('Everest Initiative allows a second Boost; the Power Up free boost does not consume an action', () => {
+    const { a, b } = duel()
+    b.beginTurn(a)
+    b.boost(a)
+    expect(() => b.boost(a)).toThrow(/already taken/)
+    const init = b.customActions(a).find(c => c.name === 'Initiative')!
+    b.useCustom(a, init)
+    b.boost(a)
+    expect(a.actionsLeft).toBe(1)
+    a.coreActive = true
+    const free = b.customActions(a).find(c => c.name === 'Boost (Power Up)')!
+    b.useCustom(a, free)
+    expect(a.actionsLeft).toBe(1)
+  })
+  it('a second plain quick tech in a turn is refused', () => {
+    const { a, e, b } = duel()
+    b.beginTurn(a)
+    b.lockOn(a, e)
+    expect(() => b.lockOn(a, e)).toThrow(/already taken/)
   })
   it('reaching 0 stress schedules a meltdown at the end of the next turn', () => {
     const { e, b } = duel()

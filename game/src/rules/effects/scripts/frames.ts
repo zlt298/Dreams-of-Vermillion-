@@ -44,7 +44,7 @@ registerScripts([
     actions: (b, u) => u.coreActive ? [action({
       key: 'everest-freeboost', name: 'Boost (Power Up)', activation: 'free', target: 'none', text: '1/turn, Boost as a free action.',
       usable: (bt, self) => (self.flags['turn:freeboost'] ? 'Once per turn' : bt.has(self, 'slowed') || bt.has(self, 'immobilized') ? 'Slowed/immobilized' : true),
-      run: (bt, self) => { self.flags['turn:freeboost'] = true; self.flags.bonusQuick = (self.flags.bonusQuick ?? 0) + 1; bt.boost(self) },
+      run: (bt, self) => { self.flags['turn:freeboost'] = true; self.flags.bonusQuick = (self.flags.bonusQuick ?? 0) + 1; self.flags.payWithBonus = true; bt.boost(self) },
     })] : [],
   },
   // ---------------- IPS-N Blackbeard

@@ -446,7 +446,14 @@ export class Battle {
   }
 
   // ------------------------------------------------------------------ action economy
-  canSpend(u: Unit, cost: 'quick' | 'full' | 'protocol' | 'free' | 'reaction' | 'move'): true | string {
+  /**
+   * Quick actions can't be repeated in a turn from the normal action pool, but a repeat can be
+   * paid with a free-action quick (Overcharge, Everest Initiative, ASURA...).
+   */
+  quickUsed(u: Unit, action: string): boolean {
+    return (u.flags['turn:quickUsed'] ?? []).includes(action)
+  }
+  canSpend(u: Unit, cost: 'quick' | 'full' | 'protocol' | 'free' | 'reaction' | 'move', action?: string): true | string {
     if (u.destroyed) return 'Destroyed'
     if (cost === 'reaction') {
       if (u.reactionsLeft <= 0) return 'No reactions left'
@@ -461,18 +468,25 @@ export class Battle {
     if (this.has(u, 'shutdown')) return 'Shut down'
     if (cost === 'protocol') return u.actedThisTurn ? 'Protocols must be used at the start of a turn' : true
     if (cost === 'free') return true
-    if (cost === 'quick') return u.actionsLeft >= 1 || (u.flags.bonusQuick ?? 0) > 0 ? true : 'No actions left'
+    if (cost === 'quick') {
+      if (action && this.quickUsed(u, action)) return (u.flags.bonusQuick ?? 0) > 0 ? true : `${actionLabel(action)} already taken this turn (repeat it via Overcharge or another free action)`
+      return u.actionsLeft >= 1 || (u.flags.bonusQuick ?? 0) > 0 ? true : 'No actions left'
+    }
     if (cost === 'full') return u.actionsLeft >= 2 && !this.has(u, 'bracing_recovery') ? true : 'Needs a full action'
     return true
   }
-  spend(u: Unit, cost: 'quick' | 'full' | 'protocol' | 'free' | 'reaction') {
-    const ok = this.canSpend(u, cost)
+  spend(u: Unit, cost: 'quick' | 'full' | 'protocol' | 'free' | 'reaction', action?: string) {
+    const ok = this.canSpend(u, cost, action)
     if (ok !== true) throw new Error(ok)
     if (cost === 'reaction') { u.reactionsLeft--; return }
     if (cost !== 'protocol') u.actedThisTurn = true
     if (cost === 'quick') {
-      if (u.actionsLeft >= 1) u.actionsLeft--
+      // a repeated action must be paid from the free-action pool
+      if ((action && this.quickUsed(u, action)) || (u.flags.payWithBonus && (u.flags.bonusQuick ?? 0) > 0)) u.flags.bonusQuick--
+      else if (u.actionsLeft >= 1) u.actionsLeft--
       else u.flags.bonusQuick--
+      delete u.flags.payWithBonus
+      if (action) u.flags['turn:quickUsed'] = [...(u.flags['turn:quickUsed'] ?? []), action]
     } else if (cost === 'full') u.actionsLeft -= 2
   }
 
@@ -1496,14 +1510,12 @@ export class Battle {
   // ------------------------------------------------------------------ standard actions
   skirmish(u: Unit, w: Weapon, aim: AttackAim, aux?: { weapon: Weapon; aim: AttackAim }): AttackSummary {
     if (w.size === 'Superheavy') return { ctxs: [], ok: false, reason: 'Superheavy weapons require Barrage' }
-    const c = this.canSpend(u, 'quick')
+    const c = this.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish')
     if (c !== true) return { ctxs: [], ok: false, reason: c }
     const pre = this.weaponUsable(u, w)
     if (pre !== true) return { ctxs: [], ok: false, reason: pre }
-    if (u.flags['turn:skirmished'] && !w.tech) return { ctxs: [], ok: false, reason: 'Skirmish can only be taken once per turn' }
     if (this.firedThisTurn(u, w)) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
-    this.spend(u, 'quick')
-    if (!w.tech) u.flags['turn:skirmished'] = true
+    this.spend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish')
     this.markFired(u, w)
     const r = this.weaponAttack(u, w, aim, 'skirmish')
     if (aux && aux.weapon.size === 'Auxiliary' && aux.weapon !== w && aux.weapon.mountIndex === w.mountIndex && w.mountIndex >= 0 && !u.destroyed && !this.firedThisTurn(u, aux.weapon)) {
@@ -1543,10 +1555,10 @@ export class Battle {
   }
 
   boost(u: Unit) {
-    const c = this.canSpend(u, 'quick')
+    const c = this.canSpend(u, 'quick', 'boost')
     if (c !== true) throw new Error(c)
     if (this.has(u, 'slowed') || this.has(u, 'immobilized')) throw new Error('Cannot boost while slowed/immobilized')
-    this.spend(u, 'quick')
+    this.spend(u, 'quick', 'boost')
     const extra = u.bonuses.filter(b => b.id === 'boost').reduce((a, b) => a + Number(b.val), 0)
     u.moveLeft += u.stats.speed + extra
     u.boostedThisTurn = true
@@ -1620,16 +1632,16 @@ export class Battle {
     return this.alive().filter(o => this.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc')).every(o => !this.los(o, u) || this.cover(o, u) !== 'none') && !this.isEngaged(u)
   }
   hide(u: Unit) {
-    const c = this.canSpend(u, 'quick')
+    const c = this.canSpend(u, 'quick', 'hide')
     if (c !== true) throw new Error(c)
     if (!this.canHide(u)) throw new Error('Need cover or to be out of sight of all hostiles')
-    this.spend(u, 'quick')
+    this.spend(u, 'quick', 'hide')
     this.addStatus(u, 'hidden')
   }
   search(u: Unit) {
-    const c = this.canSpend(u, 'quick')
+    const c = this.canSpend(u, 'quick', 'search')
     if (c !== true) throw new Error(c)
-    this.spend(u, 'quick')
+    this.spend(u, 'quick', 'search')
     for (const o of this.alive()) {
       if (!this.hostile(u, o) || !this.has(o, 'hidden') || this.distance(u, o) > u.stats.sensors) continue
       const roll = this.rng.d(20) + u.stats.sys
@@ -1639,11 +1651,11 @@ export class Battle {
   }
 
   ram(u: Unit, t: Unit) {
-    const c = this.canSpend(u, 'quick')
+    const c = this.canSpend(u, 'quick', 'ram')
     if (c !== true) throw new Error(c)
     if (!this.adjacent(u, t)) throw new Error('Must be adjacent')
     if (t.stats.size > u.stats.size && !u.flags.muscleNet) throw new Error('Target is too large')
-    this.spend(u, 'quick')
+    this.spend(u, 'quick', 'ram')
     const ctx = this.newAttackCtx(u, t, { melee: true, ranged: false, mode: 'ram' })
     if (this.has(u, 'impaired')) ctx.difficulty++
     if (this.has(t, 'prone')) ctx.accuracy++
@@ -1658,10 +1670,10 @@ export class Battle {
   }
 
   grapple(u: Unit, t: Unit) {
-    const c = this.canSpend(u, 'quick')
+    const c = this.canSpend(u, 'quick', 'grapple')
     if (c !== true) throw new Error(c)
     if (!this.adjacent(u, t)) throw new Error('Must be adjacent')
-    this.spend(u, 'quick')
+    this.spend(u, 'quick', 'grapple')
     const ctx = this.newAttackCtx(u, t, { melee: true, ranged: false, mode: 'grapple' })
     if (this.has(u, 'impaired')) ctx.difficulty++
     this.say(`${u.name} attempts to GRAPPLE ${t.name}.`, 'attack')
@@ -1673,11 +1685,11 @@ export class Battle {
     }
   }
   breakGrapple(u: Unit) {
-    const c = this.canSpend(u, 'quick')
+    const c = this.canSpend(u, 'quick', 'break_grapple')
     if (c !== true) throw new Error(c)
     const g = u.statuses.find(s => s.id === 'grappled')
     if (!g) throw new Error('Not grappled')
-    this.spend(u, 'quick')
+    this.spend(u, 'quick', 'break_grapple')
     const other = this.unit(g.data?.by === u.id ? g.data?.with : g.data?.by)
     const mine = this.rng.d(20) + u.stats.hull
     const theirs = other ? this.rng.d(20) + other.stats.hull : 0
@@ -1705,18 +1717,18 @@ export class Battle {
   }
 
   reload(u: Unit, w: Weapon) {
-    const c = this.canSpend(u, 'quick')
+    const c = this.canSpend(u, 'quick', 'reload')
     if (c !== true) throw new Error(c)
-    this.spend(u, 'quick')
+    this.spend(u, 'quick', 'reload')
     w.loaded = true
     u.flags.reloaded = true
     this.say(`${u.name} reloads ${w.name}.`)
   }
 
   shutDown(u: Unit) {
-    const c = this.canSpend(u, 'quick')
+    const c = this.canSpend(u, 'quick', 'shut_down')
     if (c !== true) throw new Error(c)
-    this.spend(u, 'quick')
+    this.spend(u, 'quick', 'shut_down')
     u.heat = 0
     this.removeStatus(u, 'exposed')
     this.removeStatus(u, 'lockon')
@@ -1733,9 +1745,9 @@ export class Battle {
     this.say(`${u.name} boots up.`)
   }
   selfDestruct(u: Unit) {
-    const c = this.canSpend(u, 'quick')
+    const c = this.canSpend(u, 'quick', 'self_destruct')
     if (c !== true) throw new Error(c)
-    this.spend(u, 'quick')
+    this.spend(u, 'quick', 'self_destruct')
     u.selfDestructTurns = 2
     this.say(`${u.name} initiates SELF-DESTRUCT! It will explode at the end of its next turn.`, 'warn')
   }
@@ -1752,11 +1764,11 @@ export class Battle {
   }
   private spendTech(u: Unit) {
     if ((u.flags.fullTechLeft ?? 0) > 0) { u.flags.fullTechLeft--; u.actedThisTurn = true; return }
-    this.spend(u, 'quick')
+    this.spend(u, 'quick', 'quick_tech')
   }
   canQuickTech(u: Unit): true | string {
     if ((u.flags.fullTechLeft ?? 0) > 0) return true
-    return this.canSpend(u, 'quick')
+    return this.canSpend(u, 'quick', 'quick_tech')
   }
   /** Full Tech: two quick tech actions. */
   fullTech(u: Unit) {
@@ -1831,9 +1843,9 @@ export class Battle {
     const f = Lancer.frames.get(u.frameId)!
     const act = (f.core_system.activation ?? 'Quick').toLowerCase() as any
     const cost = act === 'protocol' ? 'protocol' : act === 'full' ? 'full' : act === 'free' ? 'free' : 'quick'
-    const c = this.canSpend(u, cost)
+    const c = this.canSpend(u, cost, cost === 'quick' ? 'core' : undefined)
     if (c !== true) throw new Error(c)
-    this.spend(u, cost)
+    this.spend(u, cost, cost === 'quick' ? 'core' : undefined)
     u.coreAvailable = false
     u.coreActive = true
     this.say(`${u.name} activates CORE POWER: ${f.core_system.active_name ?? f.core_system.name}!`, 'warn')
@@ -1892,7 +1904,7 @@ export class Battle {
       if (this.has(u, 'jammed')) throw new Error('Jammed')
       this.spendTech(u)
     } else if (cost === 'reaction') this.spend(u, 'reaction')
-    else this.spend(u, cost as any)
+    else this.spend(u, cost as any, cost === 'quick' ? `custom:${a.key}` : undefined)
     if (a.heat) this.addHeat(u, a.heat)
     this.say(`${u.name} uses ${a.name}.`, 'attack')
     a.run(this, u, target)
@@ -1927,4 +1939,10 @@ export function hitChance(bonus: number, net: number, def: number): number {
     p += accDist[k] * pr
   }
   return p
+}
+
+function actionLabel(action: string): string {
+  if (action.startsWith('custom:')) return 'That system action'
+  if (action.startsWith('tech:')) return 'That tech action'
+  return action.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())
 }

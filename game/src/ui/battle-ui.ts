@@ -482,6 +482,7 @@ export class BattleScreen {
     if (mine && !isActive && b.currentSide === 'player' && !b.activeId && u.activationsLeft > 0) actions = `<div class="actions">${this.btn('activate', '▶ Activate', true, '', 'primary')}${this.btn('auto', 'Auto (AI turn)', true)}</div>`
     if (isActive && u.side === 'player') {
       const q = b.canSpend(u, 'quick'), fu = b.canSpend(u, 'full'), pr = b.canSpend(u, 'protocol')
+      const qa = (action: string) => b.canSpend(u, 'quick', action)
       const qt = b.canQuickTech(u)
       const jam = b.has(u, 'jammed') ? 'Jammed' : true
       const and = (x: true | string, y: true | string) => (x === true ? y : x)
@@ -492,16 +493,16 @@ export class BattleScreen {
       actions = `<div class="actions">${ecoTxt}
         ${this.mode.k !== 'move' && this.mode.k !== 'idle' ? this.btn('cancel', '✕ Cancel (Esc)', true, '', 'warn') : ''}
         ${b.has(u, 'prone') ? this.btn('standup', 'Stand Up', b.has(u, 'immobilized') ? 'Immobilized' : true) : ''}
-        ${this.btn('boost', 'Boost [Q]', and(q, b.has(u, 'slowed') || b.has(u, 'immobilized') ? 'Slowed/immobilized' : true))}
+        ${this.btn('boost', 'Boost [Q]', and(qa('boost'), b.has(u, 'slowed') || b.has(u, 'immobilized') ? 'Slowed/immobilized' : true))}
         ${this.btn('overcharge', 'Overcharge', u.overchargedThisTurn ? 'Once per turn' : u.kind === 'mech' ? true : 'Mechs only')}
         ${this.btn('tech', 'Invade [QT]', and(qt, jam), 'invade')}${this.btn('tech', 'Lock On [QT]', and(qt, jam), 'lockon')}${this.btn('tech', 'Bolster [QT]', and(qt, jam), 'bolster')}${this.btn('tech', 'Scan [QT]', and(qt, jam), 'scan')}${this.btn('fulltech', 'Full Tech [F]', and(fu, jam))}
         ${this.btn('stab-cool', 'Stabilize: Cool [F]', fu)}${this.btn('stab-repair', 'Stabilize: Repair [F]', and(fu, u.repairs > 0 ? true : 'No repairs'))}
-        ${this.btn('disengage', 'Disengage [F]', fu)}${this.btn('hide', 'Hide [Q]', and(q, b.canHide(u) ? true : 'Need cover / out of sight'))}${this.btn('search', 'Search [Q]', q)}
-        ${this.btn('melee', 'Ram [Q]', q, 'ram')}${this.btn('melee', 'Grapple [Q]', q, 'grapple')}${this.btn('melee', 'Improvised [F]', fu, 'improvised')}
-        ${b.has(u, 'grappled') ? this.btn('breakgrapple', 'Break Grapple [Q]', q) : ''}
-        ${b.has(u, 'shutdown') ? this.btn('bootup', 'Boot Up [F]', u.actionsLeft >= 2 ? true : 'Needs full action') : this.btn('shutdown', 'Shut Down [Q]', q)}
+        ${this.btn('disengage', 'Disengage [F]', fu)}${this.btn('hide', 'Hide [Q]', and(qa('hide'), b.canHide(u) ? true : 'Need cover / out of sight'))}${this.btn('search', 'Search [Q]', qa('search'))}
+        ${this.btn('melee', 'Ram [Q]', qa('ram'), 'ram')}${this.btn('melee', 'Grapple [Q]', qa('grapple'), 'grapple')}${this.btn('melee', 'Improvised [F]', fu, 'improvised')}
+        ${b.has(u, 'grappled') ? this.btn('breakgrapple', 'Break Grapple [Q]', qa('break_grapple')) : ''}
+        ${b.has(u, 'shutdown') ? this.btn('bootup', 'Boot Up [F]', u.actionsLeft >= 2 ? true : 'Needs full action') : this.btn('shutdown', 'Shut Down [Q]', qa('shut_down'))}
         ${fr ? this.btn('core', `CORE: ${esc(fr.core_system.active_name ?? fr.core_system.name)} [${actLabel((fr.core_system.activation ?? 'quick').toLowerCase())}]`, u.coreAvailable ? (fr.core_system.activation === 'Protocol' ? pr : fr.core_system.activation === 'Full' ? fu : q) : 'Core power spent', '', 'core') : ''}
-        ${this.btn('selfdestruct', 'Self-Destruct', q, '', 'warn')}
+        ${this.btn('selfdestruct', 'Self-Destruct', qa('self_destruct'), '', 'warn')}
         ${this.b.canUndoMove(u) ? this.btn('undo', '↶ Undo move', true) : ''}${this.btn('auto', 'Auto (AI)', true)}${this.btn('end', 'End Turn ⏎', true, '', 'primary')}
       </div>
       ${custom.length ? `<div class="actions systems"><span class="eco">Systems & traits</span>${custom.map(c => `<button class="${c.usable(b, u) === true ? '' : 'disabled'}" data-act="custom" data-arg="${esc(c.key)}" title="${esc(c.text)}${c.usable(b, u) !== true ? ' — ' + esc(c.usable(b, u) as string) : ''}">${esc(c.name)} [${actLabel(c.activation)}]${c.text.startsWith('[manual]') ? '*' : ''}</button>`).join('')}</div>` : ''}`
@@ -529,8 +530,8 @@ export class BattleScreen {
     if (active && u.side === 'player') {
       if (this.mode.k === 'barrage-pick') btns = this.btn('barrage', 'Barrage #2', all(usable, fired), w.uid, 'primary')
       else {
-        btns = (w.size !== 'Superheavy' ? this.btn('skirmish', 'Skirmish [Q]', all(q, usable, fired), w.uid) : '') + this.btn('barrage', 'Barrage [F]', all(fu, usable, fired), w.uid)
-        if (!w.loaded && !w.destroyed) btns += this.btn('reload', 'Reload [Q]', q, w.uid)
+        btns = (w.size !== 'Superheavy' ? this.btn('skirmish', 'Skirmish [Q]', all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable, fired), w.uid) : '') + this.btn('barrage', 'Barrage [F]', all(fu, usable, fired), w.uid)
+        if (!w.loaded && !w.destroyed) btns += this.btn('reload', 'Reload [Q]', b.canSpend(u, 'quick', 'reload'), w.uid)
         if (w.profiles.length > 1) btns += w.profiles.map((p, i) => (i === w.profileIndex ? '' : `<button data-act="profile" data-arg="${w.uid}" data-i="${i}" title="Switch profile">${esc(p.name)}</button>`)).join('')
       }
     }
