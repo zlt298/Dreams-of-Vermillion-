@@ -189,3 +189,10 @@ code { background: #1d222c; padding: 1px 4px; }
   background: #0b0d12f2; border: 1px solid var(--accent2); color: var(--text); padding: 6px 9px;
   font-size: 12px; line-height: 1.4; box-shadow: 0 4px 16px #000a;
 }
+
+/* ---------------------------------------------------------------- between-battle events */
+.event .evtag { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); padding: 2px 8px; }
+.event.gamble .evtag { color: var(--accent2); border-color: var(--accent2); }
+.event.pact .evtag { color: var(--bad); border-color: var(--bad); }
+.event .evtext { max-width: 560px; font-style: italic; }
+.event .eveffect { max-width: 560px; color: var(--accent2); }

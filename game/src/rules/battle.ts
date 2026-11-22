@@ -295,6 +295,7 @@ export class Battle {
     if (c === 'exposed') return this.has(u, 'exposed')
     if (c === 'dangerzone' || c === 'danger_zone') return this.has(u, 'dangerzone')
     if (c === 'first_round') return this.round === 1
+    if (c === 'early_rounds') return this.round <= 2
     if (c === 'flying') return u.flying
     if (u.flags[c]) return true
     if (c === 'adjacent_ally') return this.alive().some(o => o !== u && !this.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc') && this.adjacent(u, o))

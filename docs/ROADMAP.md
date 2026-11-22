@@ -125,6 +125,15 @@ Useful commands, all run from `game/`:
   - The AI's "advance pull" brings units forward until they're in range.
   - Holdout lasts 8 rounds.
 
+### Between-battle events
+- 18 events after won combats (`run/events.ts`), seeded per node:
+  - 25% nothing
+  - 50% find
+  - 15% gamble
+  - 10% hard choice
+- New boons: one-battle plating, tech booster, hot rounds, early-round intel, and Impaired or Stunned starts; permanent +2 HP, +1 accuracy, +1 Armor, and +1 Evasion/E-Defense.
+- Their values are part of the post-content balance pass.
+
 ### Act looks
 - Map themes (`run/mapgen.ts` and `render/scene.ts`), each with its own layout generator, palette, lighting and props:
   - outskirts (act 1, unchanged)

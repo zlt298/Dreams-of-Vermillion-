@@ -49,6 +49,8 @@ export interface RunState {
   over?: 'victory' | 'defeat'
   battlesWon: number
   pendingLevelUp?: boolean
+  /** combat nodes whose between-battle event has been rolled */
+  eventsSeen?: string[]
   /** story interludes already shown in this run */
   story?: string[]
 }
@@ -159,10 +161,23 @@ export function squadUnits(run: RunState): Unit[] {
 
 function applyBoon(u: Unit, id: string) {
   switch (id) {
-    case 'plating': u.overshield = Math.max(u.overshield, 4); break
+    // one battle
+    case 'plating': case 'plating_one': u.overshield = Math.max(u.overshield, 4); break
     case 'intel': u.bonuses.push({ id: 'attack', accuracy: 1, condition: '{first_round}' }); break
+    case 'intel2': u.bonuses.push({ id: 'attack', accuracy: 1, condition: '{early_rounds}' }); break
+    case 'tech_booster': u.bonuses.push({ id: 'tech_attack', accuracy: 1 } as any); break
+    case 'hotload': u.bonuses.push({ id: 'damage', val: 1 }); break
+    case 'impaired_start': u.statuses.push({ id: 'impaired', clockUnit: u.id, turnsLeft: 1 }); break
+    case 'stunned_start': u.statuses.push({ id: 'stunned', clockUnit: u.id, turnsLeft: 1 }); break
+    // permanent (rest of the run)
+    case 'perm_hp2': u.stats.hp += 2; u.hp += 2; break
+    case 'perm_acc': u.bonuses.push({ id: 'attack', accuracy: 1 }); break
+    case 'perm_armor': u.stats.armor = Math.min(4, u.stats.armor + 1); break
+    case 'perm_evade': u.stats.evasion += 1; u.stats.edef += 1; break
   }
 }
+/** Boons that last one battle (the rest are permanent). */
+export const ONE_BATTLE_BOONS = ['plating', 'plating_one', 'intel', 'intel2', 'tech_booster', 'hotload', 'impaired_start', 'stunned_start']
 
 /** After a battle: write unit state back into the run. Heat/statuses clear at end of scene. */
 export function recordBattle(run: RunState, node: RunNode, units: Unit[], won: boolean) {
@@ -183,7 +198,7 @@ export function recordBattle(run: RunState, node: RunNode, units: Unit[], won: b
     for (const s of u.systems) if (s.usesLeft != null) c.limited[s.dataId] = s.usesLeft
   }
   // one-battle boons are consumed
-  run.boons = run.boons.filter(b => !['plating', 'intel'].includes(b.reward))
+  run.boons = run.boons.filter(b => !ONE_BATTLE_BOONS.includes(b.reward))
   if (won) {
     node.cleared = true
     run.current = node.id

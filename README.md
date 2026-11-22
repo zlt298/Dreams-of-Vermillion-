@@ -47,6 +47,12 @@ It uses the pilot's favourite mech and its active loadout: frame, weapons, mods,
 - **Story.** In-universe Union documents bracket the campaign: a priority transmission at the start, an after-action report after act 1, an intercepted transmission after act 2 and a debrief after the final fight. They type out as a console readout. Hold any key or mouse button to skip; recovered documents can be replayed from **Title → Transmissions**. The final boss is always *The Voice of the Eye*, the Choir of the Second Dawn's prophet in the Cinnabar Annex casket vault. Texts: `game/src/data/story.ts`.
 - **Tag tooltips.** Hover any tag (AP, Reliable 2, Blast 2, Loading, Smart…) on weapon cards, Hangar weapon lines or the battle log to read its rules. System chips and weapon cards show their rules text on hover too.
 - **Field overlays.** Smoke, terrain zones, drone fields, barriers and auras are tinted on the map by effect, and listed when you hover a tile. Press **V** to toggle.
+- **Between-battle events.** After each won combat:
+  - 25%: nothing happens.
+  - 50%: a minor find (+1, free).
+  - 15%: a gamble (a minor sacrifice for +2).
+  - 10%: a hard choice (a heavy sacrifice such as a Structure or Stress, a destroyed system or a stunned first round, for a big or permanent benefit).
+  - There are six of each kind, in `game/src/run/events.ts`.
 - **Persistent damage.** HP, structure, stress, repairs, destroyed gear, Limited uses and CORE power carry between fights.
 - **Recovery.** Spend Repairs at LANCER costs in field repairs. A rest is a full repair that reprints destroyed mechs.
 - **Progression.** Each act boss grants +5 License Levels (act 1 LL0, act 2 LL5, act 3 LL10, matching the core book NPC tiers), which raises grit and HP. Re-import updated COMP/CON builds to spend your talent, license and core-bonus points.
