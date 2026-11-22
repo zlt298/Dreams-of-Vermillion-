@@ -107,6 +107,10 @@ Massif's NPC data is a paid content pack, so enemies use an **original ruleset**
 - Validate: `cd game && npm run validate-enemies`.
 - Balance check: `npx tsx scripts/simulate.ts 6` runs AI vs AI with the pregen squad levelled to the tier.
 
+## Roadmap
+
+Planned fixes and improvements are in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
 ## Development
 
 ```bash
