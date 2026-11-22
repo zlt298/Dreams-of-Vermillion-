@@ -17,6 +17,9 @@ button.warn, .warn { color: #ffb37a; }
 button.disabled, button:disabled { opacity: 0.38; cursor: not-allowed; }
 button.core { border-color: #f2c14e; color: #f2c14e; }
 .filebtn input { display: none; }
+a.linkbtn { text-decoration: none; border-color: var(--accent2); color: var(--accent2); }
+a.linkbtn:hover { background: #262c38; }
+.help a { color: var(--accent2); }
 .muted { color: var(--muted); }
 .small { font-size: 11px; }
 .bad { color: var(--bad); }

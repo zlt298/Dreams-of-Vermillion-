@@ -67,7 +67,7 @@ export class App {
     this.clear()
     this.root.innerHTML = `<div class="screen help"><h2>How to play</h2>
       <ol>
-        <li><b>Build lancers in COMP/CON.</b> Run it from <code>vendor/compcon</code> (<code>yarn && yarn dev</code>) or use the web app. In the pilot roster, open a pilot → <i>Export</i> → <i>Save as file (.json)</i>.</li>
+        <li><b>Build lancers in COMP/CON.</b> Run it from <code>vendor/compcon</code> (<code>yarn && yarn dev</code>) or use the web app: <a href="https://compcon.app" target="_blank" rel="noopener noreferrer">compcon.app ↗</a>. In the pilot roster, open a pilot → <i>Export</i> → <i>Save as file (.json)</i>.</li>
         <li><b>Import them in the Hangar</b> (drag-and-drop or the file picker). The COMP/CON pregens are available too.</li>
         <li><b>Pick up to ${MAX_SQUAD} pilots</b> and start a run. Each act's boss raises your License Level; re-import updated builds between acts.</li>
       </ol>
@@ -91,13 +91,14 @@ export class App {
     const cards = this.roster.map(p => pilotCard(p, this.squadPick.has(p.id))).join('')
     this.root.innerHTML = `<div class="screen hangar">
       <div class="hhead"><h2>${purpose === 'reimport' ? 'Re-import updated pilots' : 'Hangar'}</h2>
-        <div><label class="filebtn">Import COMP/CON .json<input type="file" accept=".json,application/json" multiple></label>
+        <div><a class="filebtn linkbtn" href="https://compcon.app" target="_blank" rel="noopener noreferrer" title="Opens the official COMP/CON web app in a new tab">Open COMP/CON ↗</a><label class="filebtn">Import COMP/CON .json<input type="file" accept=".json,application/json" multiple></label>
         <button data-go="pregens">Add COMP/CON pregens</button>
         <button data-go="ll3" title="Legal LL3 builds: Tortuga, Monarch, Lancaster, Nelson">Add sample LL3 squad</button>
         <button data-go="ll6" title="Legal LL6 builds: Drake, Monarch, Saladin, Blackbeard">Add sample LL6 squad</button>
         ${purpose !== 'reimport' ? `<button data-go="start" class="primary">${purpose === 'run' ? 'Begin run' : 'Choose enemies'} (${this.squadPick.size}/${MAX_SQUAD})</button>` : '<button data-go="done" class="primary">Done</button>'}
         <button data-go="back">Back</button></div></div>
       <div class="drop">Drop COMP/CON pilot exports here</div>
+      <p class="muted small">Build or level up pilots in COMP/CON, then open the pilot → <i>Export</i> → <i>Save as file (.json)</i>, and drop the file here.</p>
       <div class="errors"></div>
       <div class="pilots">${cards || '<p class="muted">No pilots yet.</p>'}</div></div>`
     const input = this.root.querySelector('input[type=file]') as HTMLInputElement
