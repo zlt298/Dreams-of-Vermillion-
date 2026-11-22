@@ -117,7 +117,7 @@ To add fidelity, register a script keyed by the item id in `game/src/rules/effec
 Massif's NPC data is a paid content pack, so the bundled enemies use an **original ruleset** modelled on LANCER's NPC structure. Roles: Striker, Artillery, Controller, Defender, Support, Biological. Tiers: 1–3. Templates follow the official rules: Grunt, Veteran (with a Veteran trait), Elite (two turns), Commander, Ultra (two turns, Deadly, Juggernaut, Legendary), Mercenary. Features are written in a small effect DSL, and an encounter budget keeps teams fair.
 
 - Rules: [`docs/enemy-ruleset.md`](docs/enemy-ruleset.md). The code lives in `game/src/enemies/ruleset.ts` and `validate.ts`.
-- Teams: `data/enemies/*.json`. The game loads every valid file automatically. Twelve teams ship, covering all tiers and including three bosses.
+- Teams: `data/enemies/*.json`. The game loads every valid file automatically. Twenty teams ship, covering all tiers and including three bosses. They're named for the campaign's factions: the Choir of the Second Dawn, the Annex's print anomalies and subverted security, Choir-paid mercenaries, and the Martian incursion.
 - **Generate more with Claude.** The project skill [`.claude/skills/generate-enemies`](.claude/skills/generate-enemies/SKILL.md) designs teams from the ruleset, writes the JSON and validates it. Ask Claude Code something like *"generate two tier-2 enemy teams themed around rogue terraforming drones"* or *"make a tier 3 boss"*.
 - Validate: `cd game && npm run validate-enemies`.
 - Balance check: `npx tsx scripts/simulate.ts 10 [team-id]` runs AI vs AI on 18×36 maps. Tier 1 faces the LL0 pregens, tier 2 the LL5 sample squad and tier 3 the LL10 sample squad (the squad's level in acts 2 and 3).

@@ -125,6 +125,14 @@ Useful commands, all run from `game/`:
   - The AI's "advance pull" brings units forward until they're in range.
   - Holdout lasts 8 rounds.
 
+### Enemy variety
+- 8 new original teams modelled on official NPC archetypes (sniper/scout, berserker, pyro/demolisher, witch/hornet, specter, bastion, engineer), written in the game's own feature format. No LCP data is copied.
+  - T1: Theodora Sunspotters, Hymn of Blades
+  - T2: Steamline Pyres, Gantry Witches, The Forecast Cell (elite)
+  - T3: Cleanroom Wardens, Regolith Stalkers, Cantors of the Burning Eye (elite)
+- All 20 teams are named for the story's factions.
+- Untuned: in a one-seed smoke run, Cleanroom Wardens and the Burning Eye Cantors hit the round cap (heavy sustain); check them in the balance pass.
+
 ### Between-battle events
 - 18 events after won combats (`run/events.ts`), seeded per node:
   - 25% nothing

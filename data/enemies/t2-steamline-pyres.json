@@ -1,0 +1,252 @@
+{
+  "id": "t2-steamline-pyres",
+  "name": "Steamline Pyres",
+  "faction": "Choir of the Second Dawn",
+  "theme": "Choir flame-crews in the industrial park, turning the steam lines and slag pits into weapons.",
+  "tier": 2,
+  "designedFor": 4,
+  "kind": "standard",
+  "description": "Identity: burn and shove. Pyre throwers coat lanes in fire, a demolisher hammers people into the spills, the venter cooks the front line.",
+  "units": [
+    {
+      "name": "Pyre Thrower",
+      "role": "Striker",
+      "count": 2,
+      "color": "#e8442e",
+      "description": "The fuel tanks are stencilled with hymn verses.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Pyre Projector",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Cone",
+              "val": 3
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+2"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_burn",
+              "val": 2
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Slag Pistol",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 6
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+1"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Fireproofed",
+          "resist": [
+            "Burn"
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Heat Sinks",
+          "hooks": [
+            {
+              "on": "turn_start",
+              "effects": [
+                {
+                  "do": "clear_heat",
+                  "val": 2
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Slag Demolisher",
+      "role": "Defender",
+      "count": 1,
+      "color": "#7f8c8d",
+      "description": "Built to break foundry walls. People break easier.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Demolition Hammer",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+4"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_knockback",
+              "val": 2
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Slag Plating",
+          "resist": [
+            "Kinetic"
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Shove Off",
+          "trigger": "enemy_moves_adjacent",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "push",
+              "val": 2,
+              "save": "hull"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Rivet Gun",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 5
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Furnace Venter",
+      "role": "Controller",
+      "count": 1,
+      "color": "#9b59b6",
+      "description": "Dumps a foundry reactor into the air around it.",
+      "features": [
+        {
+          "type": "system",
+          "name": "Vent the Furnace",
+          "activation": "quick",
+          "target": "self_burst",
+          "radius": 2,
+          "save": "eng",
+          "effects": [
+            {
+              "do": "heat",
+              "val": 3
+            }
+          ],
+          "recharge": 4
+        },
+        {
+          "type": "tech",
+          "name": "Overheat Spike",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "heat",
+              "val": 3
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Flare Gun",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_burn",
+              "val": 1
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Furnace Lining",
+          "stats": {
+            "heatcap": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "Kiln Thrall",
+      "role": "Biological",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 4,
+      "color": "#8e2a2a",
+      "description": "Overalls scorched to the skin. Singing.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Burning Hands",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+1"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_burn",
+              "val": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

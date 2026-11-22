@@ -1,15 +1,15 @@
 {
   "id": "t2-warden-strike-team",
-  "name": "Warden Strike Team",
-  "faction": "Vermillion Colonial Guard",
-  "theme": "An elite rapid-response unit: a duelist, a hexer and a shield-bearer.",
+  "name": "Subverted Security Detachment",
+  "faction": "Cinnabar Annex Security (subverted)",
+  "theme": "The Annex's own security frames, their targeting slaved to a forecast that already knows where you will stand.",
   "tier": 2,
   "designedFor": 4,
   "kind": "elite",
   "description": "Identity: lock a target down with tech, then the knight deletes it while the bastion soaks return fire.",
   "units": [
     {
-      "name": "Warden Knight",
+      "name": "Detachment Knight",
       "role": "Striker",
       "templates": [
         "Elite"
@@ -74,7 +74,7 @@
       ]
     },
     {
-      "name": "Warden Duelist",
+      "name": "Detachment Duelist",
       "role": "Striker",
       "templates": [
         "Elite"
@@ -139,7 +139,7 @@
       ]
     },
     {
-      "name": "Warden Hexer",
+      "name": "Detachment Hexer",
       "role": "Controller",
       "templates": [
         "Elite"
@@ -214,7 +214,7 @@
       ]
     },
     {
-      "name": "Warden Bastion",
+      "name": "Detachment Bastion",
       "role": "Defender",
       "templates": [
         "Veteran"
@@ -284,7 +284,7 @@
       "veteranTrait": "shock_armor"
     },
     {
-      "name": "Warden Trooper",
+      "name": "Detachment Trooper",
       "role": "Striker",
       "templates": [
         "Grunt"

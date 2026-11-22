@@ -1,7 +1,7 @@
 {
   "id": "t2-ash-choir",
   "name": "The Ash Choir",
-  "faction": "Cult of the Vermillion Dream",
+  "faction": "Choir of the Second Dawn",
   "theme": "Fire-worshipping zealots who cook their enemies' reactors with hymn-borne heat.",
   "tier": 2,
   "designedFor": 4,
@@ -221,7 +221,7 @@
       "veteranTrait": "shock_armor"
     },
     {
-      "name": "Ash Thrall",
+      "name": "Kiln Thrall",
       "role": "Striker",
       "templates": [
         "Grunt"

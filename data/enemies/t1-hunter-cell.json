@@ -1,8 +1,8 @@
 {
   "id": "t1-hunter-cell",
-  "name": "Hunter Cell",
-  "faction": "Corpro Security",
-  "theme": "A small, elite kill-team that picks off stragglers from range.",
+  "name": "Sun-Eye Hunters",
+  "faction": "Choir of the Second Dawn",
+  "theme": "Choir hunters who track the lance from the treeline, with seeker drones fresh off the Annex printers.",
   "tier": 1,
   "designedFor": 4,
   "depth": [
@@ -12,7 +12,7 @@
   "kind": "elite",
   "units": [
     {
-      "name": "Longshot",
+      "name": "Sun-Eye Longshot",
       "role": "Artillery",
       "templates": [
         "Elite"
@@ -72,7 +72,7 @@
       ]
     },
     {
-      "name": "Hound",
+      "name": "Sun-Eye Hound",
       "role": "Striker",
       "templates": [
         "Veteran"
@@ -133,7 +133,7 @@
       "veteranTrait": "deadly"
     },
     {
-      "name": "Overseer",
+      "name": "Sun-Eye Overseer",
       "role": "Controller",
       "color": "#8e44ad",
       "features": [
@@ -188,7 +188,7 @@
       "count": 2
     },
     {
-      "name": "Seeker Drone",
+      "name": "Printed Seeker",
       "role": "Striker",
       "templates": [
         "Grunt"

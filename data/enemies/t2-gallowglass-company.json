@@ -1,8 +1,8 @@
 {
   "id": "t2-gallowglass-company",
   "name": "Gallowglass Company",
-  "faction": "Gallowglass Free Company",
-  "theme": "Professional mercenaries fielding surplus licensed weapons and tight fire discipline.",
+  "faction": "Choir-paid mercenaries",
+  "theme": "Professional killers the Choir pays in Annex-printed hardware. They do not sing.",
   "tier": 2,
   "designedFor": 4,
   "kind": "standard",

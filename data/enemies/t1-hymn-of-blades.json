@@ -1,0 +1,204 @@
+{
+  "id": "t1-hymn-of-blades",
+  "name": "Hymn of Blades",
+  "faction": "Choir of the Second Dawn",
+  "theme": "A Choir charge out of the LZ smoke: berserkers who do not stop when they are hit, and a censer-bearer keeping them going.",
+  "tier": 1,
+  "designedFor": 4,
+  "kind": "standard",
+  "description": "Identity: melee rush. Berserkers lash back when struck; the censer heals; thralls soak fire.",
+  "units": [
+    {
+      "name": "Hymn-Blade",
+      "role": "Striker",
+      "count": 2,
+      "color": "#b3122e",
+      "description": "The song gets louder as it bleeds.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Chain Glaive",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+4"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Ecstatic Frenzy",
+          "hooks": [
+            {
+              "on": "damaged",
+              "effects": [
+                {
+                  "do": "clear_status",
+                  "status": "any_negative"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Answering Stroke",
+          "trigger": "hit_by_melee",
+          "frequency": "1/round",
+          "attackWith": "Chain Glaive"
+        }
+      ]
+    },
+    {
+      "name": "Choir Assault",
+      "role": "Striker",
+      "count": 1,
+      "color": "#d9534f",
+      "description": "A standard assault print with the eye sigil burned into its chest plate.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Assault Rifle",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 10
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_reliable",
+              "val": 1
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Knife",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6"
+            }
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Brace for the Dawn",
+          "trigger": "damaged",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "overshield",
+              "val": 3,
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Censer-Bearer",
+      "role": "Support",
+      "count": 1,
+      "color": "#27ae60",
+      "description": "Swings a smoking censer. The smoke smells of red pigment.",
+      "features": [
+        {
+          "type": "system",
+          "name": "Censer Smoke",
+          "activation": "quick",
+          "target": "ally",
+          "range": 6,
+          "effects": [
+            {
+              "do": "heal",
+              "val": "1d6+2"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "system",
+          "name": "Hymn of Warding",
+          "activation": "quick",
+          "target": "ally",
+          "range": 6,
+          "effects": [
+            {
+              "do": "overshield",
+              "val": 3
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Censer Chain",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d3+1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Hymn-Drunk Thrall",
+      "role": "Biological",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 2,
+      "color": "#8e2a2a",
+      "description": "Pilots who heard the song too long.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Grasping Hands",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+1"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "id": "t2-boss-furnace-saint",
   "name": "The Furnace Saint",
-  "faction": "Cult of the Vermillion Dream",
+  "faction": "Choir of the Second Dawn",
   "theme": "A hovering cathedral-frame wreathed in plasma, attended by its choir.",
   "tier": 2,
   "designedFor": 4,
@@ -199,7 +199,7 @@
       ]
     },
     {
-      "name": "Ash Thrall",
+      "name": "Kiln Thrall",
       "role": "Striker",
       "templates": [
         "Grunt"
