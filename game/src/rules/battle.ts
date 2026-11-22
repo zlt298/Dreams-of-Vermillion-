@@ -302,6 +302,8 @@ export class Battle {
     u.boostedThisTurn = false
     u.flags.fullTechLeft = 0
     for (const k of Object.keys(u.flags)) if (k.startsWith('turn:')) delete u.flags[k]
+    // Ultra NPCs refresh their reactions every turn rather than every round
+    if (u.templates?.includes('Ultra') && !this.has(u, 'bracing_recovery')) u.reactionsLeft = u.reactionsPerRound
     this.tickStatuses(u, true)
     u.moveLeft = u.stats.speed
     if (this.has(u, 'bracing_recovery')) { u.actionsLeft = 1; u.moveLeft = 0 }
@@ -425,6 +427,7 @@ export class Battle {
   addHeat(u: Unit, amount: number, source?: Unit) {
     if (amount <= 0 || u.destroyed) return
     if (u.stats.heatcap <= 0) return // deployables etc.
+    if (u.isGrunt && source && source !== u) { this.say(`${u.name} burns out under the heat.`, 'damage'); this.destroy(u, 'heat'); return }
     u.heat += amount
     this.emit({ type: 'damage', unitId: u.id, amount, kind: 'heat' })
     for (const s of scriptsFor(u)) s.onHeat?.(this, u, amount)
@@ -432,11 +435,12 @@ export class Battle {
       if (scriptsFor(u).some(s => s.beforeOverheat?.(this, u))) break
       const excess = u.heat - u.stats.heatcap
       if (u.kind === 'npc' && u.stats.stress <= 1) {
-        u.heat = 0
+        u.heat = Math.max(0, u.heat - u.stats.heatcap)
         this.say(`${u.name} overheats and vents violently!`, 'damage')
         this.addStatus(u, 'exposed', 'until_cleared', source)
         break
       }
+      if (u.stress <= 0) { u.heat = Math.min(u.heat, u.stats.heatcap); break }
       u.stress--
       u.heat = excess
       this.emit({ type: 'damage', unitId: u.id, amount: 1, kind: 'stress' })
@@ -447,7 +451,12 @@ export class Battle {
   }
 
   private overheatCheck(u: Unit) {
-    if (u.stress <= 0) { this.reactorExplosion(u, 'reactor meltdown'); return }
+    if (u.stress <= 0) {
+      // out of stress: the reactor melts down at the end of the mech's next turn
+      if (u.meltdownTurns == null) u.meltdownTurns = u.activeTurn ? 2 : 1
+      this.say(`${u.name}'s REACTOR IS CRITICAL — meltdown at the end of its next turn!`, 'warn')
+      return
+    }
     const marked = u.stats.stress - u.stress
     const dice = Array.from({ length: marked }, () => this.rng.d(6))
     const ones = dice.filter(d => d === 1).length
@@ -559,14 +568,14 @@ export class Battle {
     let hpDmg = 0, heat = 0, burn = 0
     const exposed = this.has(t, 'exposed')
     const physical = parts.filter(p => ['Kinetic', 'Explosive', 'Energy', 'Variable'].includes(p.type)).map(p => ({ ...p, amount: exposed ? p.amount * 2 : p.amount }))
-    // armor applies once to the attack's combined physical damage
-    let armor = opts.ap || opts.irreducible || shredded ? 0 : t.stats.armor
-    for (const p of physical) {
-      const red = Math.min(armor, p.amount)
-      p.amount -= red
-      armor -= red
-      if (resists(p.type)) p.amount = Math.ceil(p.amount / 2)
-      hpDmg += p.amount
+    // armor applies separately to each damage type (as COMP/CON does), then resistance halves (rounded up)
+    const armor = opts.ap || opts.irreducible || shredded ? 0 : t.stats.armor
+    const byType = new Map<string, number>()
+    for (const p of physical) byType.set(p.type, (byType.get(p.type) ?? 0) + p.amount)
+    for (const [type, amt] of byType) {
+      let a = Math.max(0, amt - armor)
+      if (resists(type)) a = Math.ceil(a / 2)
+      hpDmg += a
     }
     for (const p of parts) {
       if (p.type === 'Heat') heat += resists('Heat') ? Math.ceil(p.amount / 2) : p.amount
@@ -1252,8 +1261,10 @@ export class Battle {
     if (c !== true) return { ctxs: [], ok: false, reason: c }
     const pre = this.weaponUsable(u, w)
     if (pre !== true) return { ctxs: [], ok: false, reason: pre }
+    if (u.flags['turn:skirmished'] && !w.tech) return { ctxs: [], ok: false, reason: 'Skirmish can only be taken once per turn' }
     if (this.firedThisTurn(u, w)) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
     this.spend(u, 'quick')
+    if (!w.tech) u.flags['turn:skirmished'] = true
     this.markFired(u, w)
     const r = this.weaponAttack(u, w, aim, 'skirmish')
     if (aux && aux.weapon.size === 'Auxiliary' && aux.weapon !== w && aux.weapon.mountIndex === w.mountIndex && w.mountIndex >= 0 && !u.destroyed && !this.firedThisTurn(u, aux.weapon)) {

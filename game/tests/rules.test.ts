@@ -69,6 +69,7 @@ describe('combat', () => {
     for (let i = 0; i < 40; i++) {
       a.actionsLeft = 2
       a.flags['turn:fired'] = []
+      a.flags['turn:skirmished'] = false
       a.activeTurn = true
       b.activeId = a.id
       e.hp = e.stats.hp; e.structure = e.stats.structure; e.destroyed = false; e.statuses = []
@@ -206,5 +207,63 @@ describe('tech', () => {
     expect(b.previewAttack(a, rifle, e).ctx.accuracy).toBeGreaterThanOrEqual(1)
     b.skirmish(a, rifle, { targetId: e.id })
     expect(b.has(e, 'lockon')).toBe(false)
+  })
+})
+
+describe('rulings cross-checked against COMP/CON', () => {
+  it('armor applies to each damage type separately', () => {
+    const { e, b } = duel()
+    e.stats.armor = 2
+    b.applyDamage(e, [{ type: 'Kinetic', amount: 3 }, { type: 'Energy', amount: 3 }])
+    expect(e.hp).toBe(e.stats.hp - 2)
+  })
+  it('resistance halves after armor, rounding up', () => {
+    const { e, b } = duel()
+    e.stats.armor = 1
+    e.resist.push('Energy')
+    b.applyDamage(e, [{ type: 'Energy', amount: 6 }])
+    expect(e.hp).toBe(e.stats.hp - 3)
+  })
+  it('skirmish is once per turn, each weapon once per turn', () => {
+    const { a, e, b } = duel()
+    b.beginTurn(a)
+    const [w1, w2] = a.weapons.filter(w => !b.isAoE(b.profile(w)))
+    expect(b.skirmish(a, w1, { targetId: e.id }).ok).toBe(true)
+    const r = b.skirmish(a, w2, { targetId: e.id })
+    expect(r.ok).toBe(false)
+    expect(r.reason).toMatch(/once per turn/)
+  })
+  it('reaching 0 stress schedules a meltdown at the end of the next turn', () => {
+    const { e, b } = duel()
+    e.stress = 1
+    b.addHeat(e, e.stats.heatcap + 1)
+    expect(e.stress).toBe(0)
+    expect(e.destroyed).toBe(false)
+    expect(e.meltdownTurns).toBe(1)
+  })
+  it('grunts are destroyed by external heat', () => {
+    const { a, b } = duel()
+    const g = pregenUnit('Hacker', 'enemy')
+    g.isGrunt = true
+    g.pos = { x: 9, y: 9 }
+    b.units.push(g)
+    b.addHeat(g, 1, a)
+    expect(g.destroyed).toBe(true)
+  })
+  it('NPCs cannot crit; tech attacks never crit', () => {
+    const { a, e, b } = duel()
+    a.canCrit = false
+    const ctx = b.newAttackCtx(a, e, { mode: 'skirmish', attackBonus: 50 })
+    b.rollToHit(ctx)
+    expect(ctx.hit).toBe(true)
+    expect(ctx.crit).toBe(false)
+  })
+  it('standing up from prone uses the standard move', () => {
+    const { a, b } = duel()
+    b.beginTurn(a)
+    b.addStatus(a, 'prone')
+    b.standUp(a)
+    expect(b.has(a, 'prone')).toBe(false)
+    expect(a.moveLeft).toBe(0)
   })
 })

@@ -272,7 +272,7 @@ function bestCombo(opts: Option[], quickSlots: number, fullOk: boolean): { actio
   const usedKeys = new Set<string>()
   for (const o of quick) {
     if (qa.length >= quickSlots) break
-    const k = o.kind === 'custom' ? o.action.key : o.kind === 'skirmish' ? 'sk' + o.weapon.mountIndex : o.kind + ('target' in o ? (o as any).target?.id : '')
+    const k = o.kind === 'custom' ? o.action.key : o.kind === 'skirmish' ? (o.weapon.tech ? 'tech' + o.weapon.uid : 'skirmish') : o.kind + ('target' in o ? (o as any).target?.id : '')
     if (usedKeys.has(k)) continue
     usedKeys.add(k)
     qa.push(o)
