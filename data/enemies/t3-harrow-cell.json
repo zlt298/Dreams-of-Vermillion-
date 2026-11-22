@@ -10,37 +10,245 @@
   "description": "Identity: netrunners strip defenses, reavers pounce, a railgunner finishes.",
   "units": [
     {
-      "name": "Harrow Netrunner", "role": "Controller", "color": "#9b59b6",
+      "name": "Harrow Netrunner",
+      "role": "Controller",
+      "color": "#9b59b6",
       "features": [
-        { "type": "tech", "name": "Crash Protocol", "kind": "quick", "onHit": [{ "do": "heat", "val": 4 }, { "do": "status", "status": "jammed", "save": "sys", "duration": "next_turn_end_target" }] },
-        { "type": "tech", "name": "Marrow Spike", "kind": "quick", "onHit": [{ "do": "status", "status": "exposed", "save": "sys", "duration": "next_turn_end_target" }], "recharge": 5 },
-        { "type": "weapon", "name": "Needle SMG", "weaponType": "CQB", "range": [{ "type": "Range", "val": 6 }], "damage": [{ "type": "Kinetic", "val": "1d6+3" }], "smart": true },
-        { "type": "trait", "name": "Firewall", "immune": ["jammed"] },
-        { "type": "system", "name": "Ghost Shroud", "activation": "quick", "target": "self", "effects": [{ "do": "status", "status": "invisible", "duration": "next_turn_end_target", "target": "self" }], "recharge": 6 }
+        {
+          "type": "tech",
+          "name": "Crash Protocol",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "heat",
+              "val": 4
+            },
+            {
+              "do": "status",
+              "status": "jammed",
+              "save": "sys",
+              "duration": "next_turn_end_target"
+            }
+          ]
+        },
+        {
+          "type": "tech",
+          "name": "Marrow Spike",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "exposed",
+              "save": "sys",
+              "duration": "next_turn_end_target"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "weapon",
+          "name": "Needle SMG",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 6
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+3"
+            }
+          ],
+          "smart": true
+        },
+        {
+          "type": "trait",
+          "name": "Firewall",
+          "immune": [
+            "jammed"
+          ]
+        },
+        {
+          "type": "system",
+          "name": "Ghost Shroud",
+          "activation": "quick",
+          "target": "self",
+          "effects": [
+            {
+              "do": "status",
+              "status": "invisible",
+              "duration": "next_turn_end_target",
+              "target": "self"
+            }
+          ],
+          "recharge": 6
+        }
       ]
     },
     {
-      "name": "Harrow Reaver", "role": "Striker", "count": 2, "color": "#c0392b",
+      "name": "Harrow Reaver",
+      "role": "Striker",
+      "count": 3,
+      "color": "#c0392b",
       "features": [
-        { "type": "weapon", "name": "Twin Chainblades", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Kinetic", "val": "2d6+3" }], "onHit": [{ "do": "status", "status": "shredded", "duration": "end_of_turn" }] },
-        { "type": "weapon", "name": "Shotcannon", "weaponType": "CQB", "range": [{ "type": "Range", "val": 4 }, { "type": "Threat", "val": 2 }], "damage": [{ "type": "Kinetic", "val": "1d6+5" }] },
-        { "type": "trait", "name": "Overclocked Legs", "stats": { "speed": 1, "evasion": 1 } },
-        { "type": "reaction", "name": "Pounce", "trigger": "enemy_moves_adjacent", "frequency": "1/round", "attackWith": "Twin Chainblades" }
+        {
+          "type": "weapon",
+          "name": "Twin Chainblades",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "2d6+3"
+            }
+          ],
+          "onHit": [
+            {
+              "do": "status",
+              "status": "shredded",
+              "duration": "end_of_turn"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Shotcannon",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 4
+            },
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+5"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Overclocked Legs",
+          "stats": {
+            "speed": 1,
+            "evasion": 1
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Pounce",
+          "trigger": "enemy_moves_adjacent",
+          "frequency": "1/round",
+          "attackWith": "Twin Chainblades"
+        }
       ]
     },
     {
-      "name": "Harrow Eye", "role": "Artillery", "color": "#e67e22",
+      "name": "Harrow Eye",
+      "role": "Artillery",
+      "color": "#e67e22",
       "features": [
-        { "type": "weapon", "name": "Railgun", "weaponType": "Rifle", "range": [{ "type": "Range", "val": 18 }], "damage": [{ "type": "Kinetic", "val": "2d6+4" }], "tags": [{ "id": "tg_ap" }, { "id": "tg_loading" }] },
-        { "type": "weapon", "name": "Flechette Burst", "weaponType": "CQB", "range": [{ "type": "Range", "val": 4 }], "damage": [{ "type": "Kinetic", "val": "1d6+2" }] },
-        { "type": "trait", "name": "Spotter Uplink", "stats": { "sensors": 5 } },
-        { "type": "reaction", "name": "Disengage Jets", "trigger": "enemy_moves_adjacent", "frequency": "1/round", "effects": [{ "do": "push", "val": 3 }] }
+        {
+          "type": "weapon",
+          "name": "Railgun",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 18
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "2d6+4"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_ap"
+            },
+            {
+              "id": "tg_loading"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Flechette Burst",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 4
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Spotter Uplink",
+          "stats": {
+            "sensors": 5
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Disengage Jets",
+          "trigger": "enemy_moves_adjacent",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "push",
+              "val": 3
+            }
+          ]
+        }
       ]
     },
     {
-      "name": "Harrow Ganger", "role": "Striker", "templates": ["Grunt"], "count": 4, "color": "#a93226",
+      "name": "Harrow Ganger",
+      "role": "Striker",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 4,
+      "color": "#a93226",
       "features": [
-        { "type": "weapon", "name": "Shock Carbine", "weaponType": "Rifle", "range": [{ "type": "Range", "val": 8 }], "damage": [{ "type": "Energy", "val": "1d6+4" }] }
+        {
+          "type": "weapon",
+          "name": "Shock Carbine",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+4"
+            }
+          ]
+        }
       ]
     }
   ]

@@ -9,38 +9,246 @@
   "description": "Identity: heat-bomb the backline while burning zealots tie up the front.",
   "units": [
     {
-      "name": "Ash Cantor", "role": "Controller", "color": "#a35bd1",
+      "name": "Ash Cantor",
+      "role": "Controller",
+      "color": "#a35bd1",
       "description": "Sings in machine-code; reactors listening to it run hot.",
       "features": [
-        { "type": "tech", "name": "Hymn of Cinders", "kind": "quick", "onHit": [{ "do": "heat", "val": 3 }, { "do": "status", "status": "impaired", "save": "sys", "duration": "next_turn_end_target" }] },
-        { "type": "tech", "name": "Silence", "kind": "quick", "onHit": [{ "do": "status", "status": "jammed", "duration": "next_turn_end_target" }], "recharge": 5 },
-        { "type": "weapon", "name": "Censer Flail", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 2 }], "damage": [{ "type": "Energy", "val": "1d6+2" }], "tags": [{ "id": "tg_burn", "val": 1 }] },
-        { "type": "trait", "name": "Choir Link", "hooks": [{ "on": "turn_start", "effects": [{ "do": "clear_heat", "val": 2 }] }] }
+        {
+          "type": "tech",
+          "name": "Hymn of Cinders",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "heat",
+              "val": 3
+            },
+            {
+              "do": "status",
+              "status": "impaired",
+              "save": "sys",
+              "duration": "next_turn_end_target"
+            }
+          ]
+        },
+        {
+          "type": "tech",
+          "name": "Silence",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "jammed",
+              "duration": "next_turn_end_target"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "weapon",
+          "name": "Censer Flail",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+2"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_burn",
+              "val": 1
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Choir Link",
+          "hooks": [
+            {
+              "on": "turn_start",
+              "effects": [
+                {
+                  "do": "clear_heat",
+                  "val": 2
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
-      "name": "Ember Zealot", "role": "Striker", "count": 2, "color": "#e0562b",
+      "name": "Ember Zealot",
+      "role": "Striker",
+      "count": 3,
+      "color": "#e0562b",
       "features": [
-        { "type": "weapon", "name": "Brand-Lance", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Energy", "val": "1d6+4" }], "tags": [{ "id": "tg_burn", "val": 2 }] },
-        { "type": "weapon", "name": "Flare Pistol", "weaponType": "CQB", "range": [{ "type": "Range", "val": 5 }], "damage": [{ "type": "Energy", "val": "1d6+2" }] },
-        { "type": "trait", "name": "Fervor", "stats": { "speed": 1 } },
-        { "type": "reaction", "name": "Martyr's Spite", "trigger": "damaged", "frequency": "1/round", "effects": [{ "do": "burn", "val": 2 }] }
+        {
+          "type": "weapon",
+          "name": "Brand-Lance",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+4"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_burn",
+              "val": 2
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Flare Pistol",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 5
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+2"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Fervor",
+          "stats": {
+            "speed": 1
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Martyr's Spite",
+          "trigger": "damaged",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "burn",
+              "val": 2
+            }
+          ]
+        }
       ]
     },
     {
-      "name": "Kiln Bulwark", "role": "Defender", "color": "#8a6d5a",
+      "name": "Kiln Bulwark",
+      "role": "Defender",
+      "color": "#8a6d5a",
       "features": [
-        { "type": "weapon", "name": "Furnace Ram", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Kinetic", "val": "1d6+3" }], "onHit": [{ "do": "push", "val": 2 }] },
-        { "type": "system", "name": "Heat Shroud", "activation": "quick", "target": "self_burst", "radius": 1, "save": "eng", "effects": [{ "do": "heat", "val": 2 }], "recharge": 5 },
-        { "type": "trait", "name": "Kiln Plating", "resist": ["Energy"] },
-        { "type": "reaction", "name": "Interpose", "trigger": "ally_attacked_adjacent", "frequency": "1/round", "effects": [{ "do": "status", "status": "impaired", "duration": "end_of_turn" }] }
+        {
+          "type": "weapon",
+          "name": "Furnace Ram",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+3"
+            }
+          ],
+          "onHit": [
+            {
+              "do": "push",
+              "val": 2
+            }
+          ]
+        },
+        {
+          "type": "system",
+          "name": "Heat Shroud",
+          "activation": "quick",
+          "target": "self_burst",
+          "radius": 1,
+          "save": "eng",
+          "effects": [
+            {
+              "do": "heat",
+              "val": 2
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "trait",
+          "name": "Kiln Plating",
+          "resist": [
+            "Energy"
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Interpose",
+          "trigger": "ally_attacked_adjacent",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "status",
+              "status": "impaired",
+              "duration": "end_of_turn"
+            }
+          ]
+        }
       ]
     },
     {
-      "name": "Ash Thrall", "role": "Striker", "templates": ["Grunt"], "count": 4, "color": "#9c4a35",
+      "name": "Ash Thrall",
+      "role": "Striker",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 4,
+      "color": "#9c4a35",
       "features": [
-        { "type": "weapon", "name": "Cinder Claws", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Energy", "val": "1d6+2" }] },
-        { "type": "trait", "name": "Smouldering", "stats": { "evasion": -1 } }
+        {
+          "type": "weapon",
+          "name": "Cinder Claws",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+2"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Smouldering",
+          "stats": {
+            "evasion": -1
+          }
+        }
       ]
     }
   ]

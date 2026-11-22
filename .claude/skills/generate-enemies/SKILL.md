@@ -25,15 +25,15 @@ You are designing original enemy teams for the Lancer-based roguelike in this re
    - For each weapon, check its average damage against the role/tier band in the doc (+35%, ×1.5 with recharge/uses, ×0.85 for AoE, ×0.8 for Grunts).
 3. **Write the file** to `data/enemies/<id>.json`. Use the id `t<tier>-<kebab-name>`, which must be unique. Use only effect kinds, statuses, tags and triggers listed in the doc. Avoid `text` effects: the engine doesn't execute them. Use original names; never Massif NPC names or real brands.
 4. **Validate**: `cd game && npm run validate-enemies -- ../data/enemies/<id>.json`. Fix every `error` and reconsider every `warn`, then re-run until it passes.
-5. **Smoke test** (optional but recommended): `cd game && npx tsx scripts/simulate.ts 4` plays the COMP/CON pregen squad against every team with the AI on both sides. Aim for a player win rate of roughly:
+5. **Balance test** (recommended): `cd game && npx tsx scripts/simulate.ts 10 <team-id>` plays AI vs AI against a squad matched to the tier. Tier 1 faces the LL0 COMP/CON pregens, tier 2 the legal LL3 sample squad and tier 3 the LL6 sample squad (`game/src/data/squads/`). For bosses, prefix the command with `MAX_ROUNDS=16`. Aim for:
 
-   | kind | target win rate |
-   |---|---|
-   | standard (T1) | 60–90% |
-   | elite | 50–80% |
-   | boss | 40–75% |
+   | kind | player win rate | mechs lost per fight |
+   |---|---|---|
+   | standard | 85–100% | 0.5–1.3 (attrition matters, because damage carries between fights) |
+   | elite | 50–80% | 1–2 |
+   | boss | 40–75% | ~2 |
 
-   A team the pregens beat 100% of the time in 4 rounds is too weak. A team that loses them 2+ mechs per fight at T1 is too strong. The pregens are LL0, so T2/T3 results will skew toward losses; that's expected.
+   Use at least 10 seeds: 8-seed results swing a lot. Too easy means 100% wins with fewer than 0.5 mechs lost. Tune by adding or removing units within the budget before touching stats. Against real builds, bosses and elites often play harder than their budget suggests, so a "well under budget" warning on them is fine.
 6. **Report** each team's name, identity, roster with budget, and validation and sim results. Don't commit unless asked.
 
 ## Quality checklist

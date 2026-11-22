@@ -28,6 +28,14 @@ export function addToRoster(r: PilotBuild[], builds: PilotBuild[]): PilotBuild[]
   saveRoster(out)
   return out
 }
+import ll3 from '../data/squads/ll3.json'
+import ll6 from '../data/squads/ll6.json'
+
+/** Legal sample squads at License Level 3 and 6 (also used by the balance sim). */
+export function sampleSquad(level: 3 | 6): PilotBuild[] {
+  return ((level === 3 ? ll3 : ll6) as any[]).map(p => importPilots(p)[0])
+}
+
 export function pregenBuilds(): PilotBuild[] {
   return (pregens as any[]).map(p => importPilots(p)[0])
 }

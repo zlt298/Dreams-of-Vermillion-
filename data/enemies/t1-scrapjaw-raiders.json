@@ -5,20 +5,49 @@
   "theme": "Desperate salvagers in welded-together chassis, swarming with crude melee rigs.",
   "tier": 1,
   "designedFor": 4,
-  "depth": [1, 4],
+  "depth": [
+    1,
+    4
+  ],
   "kind": "standard",
   "sitrep": "standard",
   "units": [
     {
       "name": "Scrapjaw Ripper",
       "role": "Striker",
-      "templates": ["Grunt"],
-      "count": 4,
+      "templates": [
+        "Grunt"
+      ],
+      "count": 6,
       "color": "#b5473a",
       "description": "A cheap frame with a hydraulic cleaver bolted to one arm.",
       "features": [
-        { "type": "weapon", "name": "Hydraulic Cleaver", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Kinetic", "val": "1d6+2" }] },
-        { "type": "trait", "name": "Pack Hunters", "hooks": [], "text": "Moves fast in groups.", "stats": { "speed": 1 } }
+        {
+          "type": "weapon",
+          "name": "Hydraulic Cleaver",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Pack Hunters",
+          "hooks": [],
+          "text": "Moves fast in groups.",
+          "stats": {
+            "speed": 1
+          }
+        }
       ]
     },
     {
@@ -26,9 +55,66 @@
       "role": "Striker",
       "color": "#d9534f",
       "features": [
-        { "type": "weapon", "name": "Riveter Shotgun", "weaponType": "CQB", "range": [{ "type": "Range", "val": 4 }, { "type": "Threat", "val": 2 }], "damage": [{ "type": "Kinetic", "val": "1d6+3" }], "tags": [{ "id": "tg_knockback", "val": 1 }] },
-        { "type": "weapon", "name": "Chain Flail", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 2 }], "damage": [{ "type": "Kinetic", "val": "1d6+2" }], "onHit": [{ "do": "status", "status": "prone", "save": "hull", "duration": "until_cleared" }], "recharge": 5 },
-        { "type": "trait", "name": "Scrap Plating", "stats": { "armor": 1 } }
+        {
+          "type": "weapon",
+          "name": "Riveter Shotgun",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 4
+            },
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+3"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_knockback",
+              "val": 1
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Chain Flail",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ],
+          "onHit": [
+            {
+              "do": "status",
+              "status": "prone",
+              "save": "hull",
+              "duration": "until_cleared"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "trait",
+          "name": "Scrap Plating",
+          "stats": {
+            "armor": 1
+          }
+        }
       ]
     },
     {
@@ -36,8 +122,49 @@
       "role": "Artillery",
       "color": "#e08e2b",
       "features": [
-        { "type": "weapon", "name": "Junk Mortar", "weaponType": "Launcher", "range": [{ "type": "Range", "val": 12 }, { "type": "Blast", "val": 1 }], "damage": [{ "type": "Explosive", "val": "1d6+1" }], "tags": [{ "id": "tg_arcing" }] },
-        { "type": "weapon", "name": "Rivet Pistol", "weaponType": "CQB", "range": [{ "type": "Range", "val": 5 }], "damage": [{ "type": "Kinetic", "val": "1d6" }] }
+        {
+          "type": "weapon",
+          "name": "Junk Mortar",
+          "weaponType": "Launcher",
+          "range": [
+            {
+              "type": "Range",
+              "val": 12
+            },
+            {
+              "type": "Blast",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Explosive",
+              "val": "1d6+1"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_arcing"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Rivet Pistol",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 5
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6"
+            }
+          ]
+        }
       ]
     },
     {
@@ -45,9 +172,58 @@
       "role": "Support",
       "color": "#2e9e6b",
       "features": [
-        { "type": "system", "name": "Weld Torch Repairs", "activation": "quick", "target": "ally", "range": 3, "effects": [{ "do": "heal", "val": "1d6+2" }], "recharge": 5 },
-        { "type": "weapon", "name": "Welding Lance", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Energy", "val": "1d6" }], "tags": [{ "id": "tg_burn", "val": 1 }] },
-        { "type": "system", "name": "Smoke Canister", "activation": "quick", "target": "self", "effects": [{ "do": "status", "status": "hidden", "target": "self", "duration": "until_cleared" }], "uses": 1 }
+        {
+          "type": "system",
+          "name": "Weld Torch Repairs",
+          "activation": "quick",
+          "target": "ally",
+          "range": 3,
+          "effects": [
+            {
+              "do": "heal",
+              "val": "1d6+2"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "weapon",
+          "name": "Welding Lance",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_burn",
+              "val": 1
+            }
+          ]
+        },
+        {
+          "type": "system",
+          "name": "Smoke Canister",
+          "activation": "quick",
+          "target": "self",
+          "effects": [
+            {
+              "do": "status",
+              "status": "hidden",
+              "target": "self",
+              "duration": "until_cleared"
+            }
+          ],
+          "uses": 1
+        }
       ]
     }
   ]

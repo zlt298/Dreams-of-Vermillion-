@@ -9,39 +9,250 @@
   "description": "Final boss. Identity: a size-2 juggernaut that drags lancers into its burst while its acolytes keep it shielded.",
   "units": [
     {
-      "name": "The Vermillion Engine", "role": "Defender", "templates": ["Ultra"], "color": "#b3122e",
+      "name": "The Vermillion Engine",
+      "role": "Defender",
+      "templates": [
+        "Ultra"
+      ],
+      "color": "#b3122e",
       "description": "Every lancer who sleeps near it dreams in red.",
       "features": [
-        { "type": "weapon", "name": "Siege Cannon", "weaponType": "Cannon", "range": [{ "type": "Range", "val": 12 }], "damage": [{ "type": "Kinetic", "val": "2d6+4" }] },
-        { "type": "weapon", "name": "Crimson Lash", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 3 }], "damage": [{ "type": "Energy", "val": "1d6+5" }], "onHit": [{ "do": "pull", "val": 2 }] },
-        { "type": "weapon", "name": "Barrage Pods", "weaponType": "Launcher", "range": [{ "type": "Range", "val": 12 }, { "type": "Blast", "val": 2 }], "damage": [{ "type": "Explosive", "val": "1d6+4" }], "tags": [{ "id": "tg_arcing" }], "recharge": 5 },
-        { "type": "system", "name": "Overpressure Vent", "activation": "full", "target": "self_burst", "radius": 2, "save": "eng", "effects": [{ "do": "damage", "damage": [{ "type": "Energy", "val": "2d6" }], "saveHalf": true }, { "do": "push", "val": 2 }], "recharge": 6 },
-        { "type": "tech", "name": "Dream Broadcast", "kind": "quick", "onHit": [{ "do": "status", "status": "impaired", "save": "sys", "duration": "next_turn_end_target" }, { "do": "status", "status": "slowed", "save": "sys", "duration": "next_turn_end_target" }] },
-        { "type": "trait", "name": "Dreaming Core", "hooks": [{ "on": "turn_start", "effects": [{ "do": "clear_heat", "val": 3 }, { "do": "overshield", "val": 3 }] }] },
-        { "type": "trait", "name": "Vermillion Plating", "resist": ["Kinetic"], "immune": ["prone", "immobilized"] },
-        { "type": "reaction", "name": "Retribution", "trigger": "damaged", "frequency": "1/round", "effects": [{ "do": "heat", "val": 2 }] }
+        {
+          "type": "weapon",
+          "name": "Siege Cannon",
+          "weaponType": "Cannon",
+          "range": [
+            {
+              "type": "Range",
+              "val": 12
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "2d6+4"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Crimson Lash",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 3
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+5"
+            }
+          ],
+          "onHit": [
+            {
+              "do": "pull",
+              "val": 2
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Barrage Pods",
+          "weaponType": "Launcher",
+          "range": [
+            {
+              "type": "Range",
+              "val": 12
+            },
+            {
+              "type": "Blast",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Explosive",
+              "val": "1d6+4"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_arcing"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "system",
+          "name": "Overpressure Vent",
+          "activation": "full",
+          "target": "self_burst",
+          "radius": 2,
+          "save": "eng",
+          "effects": [
+            {
+              "do": "damage",
+              "damage": [
+                {
+                  "type": "Energy",
+                  "val": "2d6"
+                }
+              ],
+              "saveHalf": true
+            },
+            {
+              "do": "push",
+              "val": 2
+            }
+          ],
+          "recharge": 6
+        },
+        {
+          "type": "tech",
+          "name": "Dream Broadcast",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "impaired",
+              "save": "sys",
+              "duration": "next_turn_end_target"
+            },
+            {
+              "do": "status",
+              "status": "slowed",
+              "save": "sys",
+              "duration": "next_turn_end_target"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Dreaming Core",
+          "hooks": [
+            {
+              "on": "turn_start",
+              "effects": [
+                {
+                  "do": "clear_heat",
+                  "val": 3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Vermillion Plating",
+          "resist": [
+            "Explosive"
+          ],
+          "immune": [
+            "prone",
+            "immobilized"
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Retribution",
+          "trigger": "damaged",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "heat",
+              "val": 2
+            }
+          ]
+        }
+      ],
+      "stats": {
+        "armor": 2,
+        "hp": 28
+      }
+    },
+    {
+      "name": "Engine Acolyte",
+      "role": "Support",
+      "color": "#27ae60",
+      "features": [
+        {
+          "type": "system",
+          "name": "Mending Hymn",
+          "activation": "quick",
+          "target": "ally",
+          "range": 6,
+          "effects": [
+            {
+              "do": "heal",
+              "val": "2d6"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "system",
+          "name": "Ward of Red Glass",
+          "activation": "quick",
+          "target": "ally",
+          "range": 6,
+          "effects": [
+            {
+              "do": "overshield",
+              "val": 5
+            },
+            {
+              "do": "clear_status",
+              "status": "any_negative"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Rivet Gun",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 6
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ]
+        }
       ]
     },
     {
-      "name": "Harrow Reaver", "role": "Striker", "count": 2, "color": "#c0392b",
+      "name": "Dreamer Husk",
+      "role": "Biological",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 4,
+      "color": "#8e2a2a",
       "features": [
-        { "type": "weapon", "name": "Twin Chainblades", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Kinetic", "val": "2d6+3" }] },
-        { "type": "weapon", "name": "Shotcannon", "weaponType": "CQB", "range": [{ "type": "Range", "val": 4 }, { "type": "Threat", "val": 2 }], "damage": [{ "type": "Kinetic", "val": "1d6+5" }] },
-        { "type": "trait", "name": "Overclocked Legs", "stats": { "speed": 1, "evasion": 1 } }
-      ]
-    },
-    {
-      "name": "Engine Acolyte", "role": "Support", "color": "#27ae60",
-      "features": [
-        { "type": "system", "name": "Mending Hymn", "activation": "quick", "target": "ally", "range": 6, "effects": [{ "do": "heal", "val": "2d6" }], "recharge": 5 },
-        { "type": "system", "name": "Ward of Red Glass", "activation": "quick", "target": "ally", "range": 6, "effects": [{ "do": "overshield", "val": 5 }, { "do": "clear_status", "status": "any_negative" }] },
-        { "type": "weapon", "name": "Rivet Gun", "weaponType": "CQB", "range": [{ "type": "Range", "val": 6 }], "damage": [{ "type": "Kinetic", "val": "1d6+2" }] }
-      ]
-    },
-    {
-      "name": "Dreamer Husk", "role": "Biological", "templates": ["Grunt"], "count": 6, "color": "#8e2a2a",
-      "features": [
-        { "type": "weapon", "name": "Grasping Hands", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 1 }], "damage": [{ "type": "Kinetic", "val": "1d6+4" }] }
+        {
+          "type": "weapon",
+          "name": "Grasping Hands",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+4"
+            }
+          ]
+        }
       ]
     }
   ]

@@ -5,34 +5,218 @@
   "theme": "A towering siege-frame that has held the pass for a decade, attended by expendable infantry walkers.",
   "tier": 1,
   "designedFor": 4,
-  "depth": [5, 6],
+  "depth": [
+    5,
+    6
+  ],
   "kind": "boss",
   "sitrep": "standard",
   "units": [
     {
       "name": "The Red Warden",
       "role": "Defender",
-      "templates": ["Ultra"],
+      "templates": [
+        "Ultra"
+      ],
       "color": "#a61c1c",
       "description": "A size-2 fortress walker with a rotary cannon and a seismic ram.",
       "features": [
-        { "type": "weapon", "name": "Rotary Cannon", "weaponType": "Cannon", "range": [{ "type": "Range", "val": 8 }], "damage": [{ "type": "Kinetic", "val": "1d6+2" }], "tags": [{ "id": "tg_reliable", "val": 2 }] },
-        { "type": "weapon", "name": "Seismic Ram", "weaponType": "Melee", "range": [{ "type": "Threat", "val": 2 }], "damage": [{ "type": "Kinetic", "val": "2d6" }], "onHit": [{ "do": "status", "status": "prone", "save": "hull", "duration": "until_cleared" }, { "do": "push", "val": 2 }], "recharge": 5 },
-        { "type": "system", "name": "Quake Stomp", "activation": "full", "target": "self_burst", "radius": 2, "save": "agi", "effects": [{ "do": "damage", "damage": [{ "type": "Kinetic", "val": "1d6+2" }], "saveHalf": true }, { "do": "status", "status": "slowed", "duration": "next_turn_end_target" }], "recharge": 6 },
-        { "type": "trait", "name": "Fortress Plating", "resist": ["Explosive"], "immune": ["prone"] },
-        { "type": "reaction", "name": "Retaliatory Swing", "trigger": "hit_by_melee", "frequency": "1/round", "attackWith": "Seismic Ram" },
-        { "type": "trait", "name": "Siege Reactor", "hooks": [{ "on": "turn_start", "effects": [{ "do": "clear_heat", "val": 2 }] }] }
+        {
+          "type": "weapon",
+          "name": "Rotary Cannon",
+          "weaponType": "Cannon",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_reliable",
+              "val": 2
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Seismic Ram",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "2d6"
+            }
+          ],
+          "onHit": [
+            {
+              "do": "status",
+              "status": "prone",
+              "save": "hull",
+              "duration": "until_cleared"
+            },
+            {
+              "do": "push",
+              "val": 2
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "system",
+          "name": "Quake Stomp",
+          "activation": "full",
+          "target": "self_burst",
+          "radius": 2,
+          "save": "agi",
+          "effects": [
+            {
+              "do": "damage",
+              "damage": [
+                {
+                  "type": "Kinetic",
+                  "val": "1d6+2"
+                }
+              ],
+              "saveHalf": true
+            },
+            {
+              "do": "status",
+              "status": "slowed",
+              "duration": "next_turn_end_target"
+            }
+          ],
+          "recharge": 6
+        },
+        {
+          "type": "trait",
+          "name": "Fortress Plating",
+          "resist": [
+            "Explosive"
+          ],
+          "immune": [
+            "prone"
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Retaliatory Swing",
+          "trigger": "hit_by_melee",
+          "frequency": "1/round",
+          "attackWith": "Seismic Ram"
+        },
+        {
+          "type": "trait",
+          "name": "Siege Reactor",
+          "hooks": [
+            {
+              "on": "turn_start",
+              "effects": [
+                {
+                  "do": "clear_heat",
+                  "val": 2
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
       "name": "Warden Picket",
       "role": "Striker",
-      "templates": ["Grunt"],
-      "count": 4,
+      "templates": [
+        "Grunt"
+      ],
+      "count": 6,
       "color": "#c0392b",
       "features": [
-        { "type": "weapon", "name": "Picket Rifle", "weaponType": "Rifle", "range": [{ "type": "Range", "val": 8 }], "damage": [{ "type": "Kinetic", "val": "1d6+1" }] },
-        { "type": "trait", "name": "Drilled", "stats": { "evasion": -1 } }
+        {
+          "type": "weapon",
+          "name": "Picket Rifle",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+1"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Drilled",
+          "stats": {
+            "evasion": -1
+          }
+        }
+      ]
+    },
+    {
+      "name": "Warden Signaller",
+      "role": "Controller",
+      "color": "#9b59b6",
+      "features": [
+        {
+          "type": "tech",
+          "name": "Target Painter",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "lockon",
+              "duration": "until_cleared"
+            }
+          ]
+        },
+        {
+          "type": "tech",
+          "name": "Jamming Burst",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "jammed",
+              "save": "sys",
+              "duration": "next_turn_end_target"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "weapon",
+          "name": "Sidearm",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 5
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d3+1"
+            }
+          ]
+        }
       ]
     }
   ]

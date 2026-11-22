@@ -13,7 +13,7 @@ import {
   repairOptions, applyRepair, rollRewards, applyReward, levelUp, replacePilots, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
 } from '../run/run'
 import { BattleScreen } from './battle-ui'
-import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles } from './roster'
+import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad } from './roster'
 import { esc } from './dom'
 import { classify } from '../rules/effects/coverage'
 
@@ -93,6 +93,8 @@ export class App {
       <div class="hhead"><h2>${purpose === 'reimport' ? 'Re-import updated pilots' : 'Hangar'}</h2>
         <div><label class="filebtn">Import COMP/CON .json<input type="file" accept=".json,application/json" multiple></label>
         <button data-go="pregens">Add COMP/CON pregens</button>
+        <button data-go="ll3" title="Legal LL3 builds: Tortuga, Monarch, Lancaster, Nelson">Add sample LL3 squad</button>
+        <button data-go="ll6" title="Legal LL6 builds: Drake, Monarch, Saladin, Blackbeard">Add sample LL6 squad</button>
         ${purpose !== 'reimport' ? `<button data-go="start" class="primary">${purpose === 'run' ? 'Begin run' : 'Choose enemies'} (${this.squadPick.size}/${MAX_SQUAD})</button>` : '<button data-go="done" class="primary">Done</button>'}
         <button data-go="back">Back</button></div></div>
       <div class="drop">Drop COMP/CON pilot exports here</div>
@@ -141,6 +143,7 @@ export class App {
       if (g === 'back') this.title()
       if (g === 'done') this.runMap()
       if (g === 'pregens') { this.roster = addToRoster(this.roster, pregenBuilds()); this.hangar(purpose) }
+      if (g === 'll3' || g === 'll6') { this.roster = addToRoster(this.roster, sampleSquad(g === 'll3' ? 3 : 6)); this.hangar(purpose) }
       if (g === 'start') {
         const squad = this.roster.filter(p => this.squadPick.has(p.id))
         if (!squad.length) return alert('Pick at least one pilot')

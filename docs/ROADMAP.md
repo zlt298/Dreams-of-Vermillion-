@@ -36,8 +36,8 @@ Sprite art is shelved for now; Milestone 6 replaces it with procedural models.
    - Target: under 50 ms per AI turn on an 18×18 map.
 3. ✅ **Animation pacing (S).** The backlog catch-up in `render/scene.ts` `wait()` works, but long AI turns still lag. Add a "skip animations" toggle and cap each turn's queue time.
 4. ✅ **Battle-end robustness (S).** `BattleScreen.advance()` depends on `busy` and `view.idle()`. Add a timeout fallback so the debrief always appears. Add a Playwright regression test based on the scratchpad `run.cjs`.
-5. **Save migration (S).** `run/run.ts` saves to `dov.run.v1` with no migration. Add `version` handling and wipe incompatible saves gracefully.
-6. **Import edge cases (S).**
+5. ✅ **Save migration (S).** `run/run.ts` saves to `dov.run.v1` with no migration. Add `version` handling and wipe incompatible saves gracefully.
+6. ✅ **Import edge cases (S).**
    - Pilots are currently matched on re-import by id *or* callsign, which can collide. Prefer id and confirm when matching by callsign.
    - Handle pilots with no mechs or a missing favourite mech.
    - Test against real COMP/CON exports from the user.
@@ -79,7 +79,7 @@ Driven by `npm run coverage -- --list`. Currently manual: 1 trait, 8 core system
 4. **Difficulty levels (S).** Scale AI caution and randomness, and the encounter budget multiplier, in `enemies/ruleset.ts` `BUDGET_PER_PC`.
 
 ### Milestone 5: Content and balance
-1. **Balance pass with levelled builds (M).** The sim currently uses LL0 pregens at LL3 and LL6, which skews results. Add sample LL3 and LL6 COMP/CON builds as fixtures, and tune T2/T3 teams and the Furnace Saint so player wins fall within the skill's target ranges.
+1. ✅ **Balance pass with levelled builds (M).** The sim currently uses LL0 pregens at LL3 and LL6, which skews results. Add sample LL3 and LL6 COMP/CON builds as fixtures, and tune T2/T3 teams and the Furnace Saint so player wins fall within the skill's target ranges.
 2. **More teams via the `generate-enemies` skill (S each).** Aim for 4+ teams per tier per kind so runs don't repeat.
 3. **Sitrep variety (M).** Use each team's `sitrep` hint, and add Escort and Recon (scan targets) objectives.
 4. **Map biomes and set pieces (M).** Hand-authored chunks spliced into `run/mapgen.ts`, plus boss arenas.
