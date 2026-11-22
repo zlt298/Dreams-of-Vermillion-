@@ -1,27 +1,27 @@
 [
  {
   "itemType": "pilot",
-  "id": "ll3-bulwark",
-  "callsign": "Bulwark",
+  "id": "ll5-bastion",
+  "callsign": "Bastion",
   "name": "Oyelaran Vance",
-  "level": 3,
+  "level": 5,
   "mechSkills": [
    3,
    0,
-   0,
-   2
+   1,
+   3
   ],
   "talents": [
    {
     "id": "t_heavy_gunner",
-    "rank": 2
+    "rank": 3
+   },
+   {
+    "id": "t_vanguard",
+    "rank": 3
    },
    {
     "id": "t_combined_arms",
-    "rank": 2
-   },
-   {
-    "id": "t_brawler",
     "rank": 2
    }
   ],
@@ -33,24 +33,24 @@
   "licenses": [],
   "mechs": [
    {
-    "id": "ll3-bulwark-mech",
-    "name": "Bulwark's Tortuga",
-    "frame": "mf_tortuga",
+    "id": "ll5-bastion-mech",
+    "name": "Bastion's Drake",
+    "frame": "mf_drake",
     "loadouts": [
      {
       "name": "Primary",
       "systems": [
        {
-        "id": "ms_siege_ram"
-       },
-       {
         "id": "ms_argonaut_shield"
        },
        {
-        "id": "ms_personalizations"
+        "id": "ms_aegis_shield_generator"
        },
        {
-        "id": "ms_custom_paint_job"
+        "id": "ms_siege_ram"
+       },
+       {
+        "id": "ms_personalizations"
        }
       ],
       "mounts": [
@@ -69,13 +69,27 @@
         "bonus_effects": []
        },
        {
+        "mount_type": "Main",
+        "lock": false,
+        "slots": [
+         {
+          "size": "Main",
+          "weapon": {
+           "id": "mw_deck_sweeper_automatic_shotgun"
+          }
+         }
+        ],
+        "extra": [],
+        "bonus_effects": []
+       },
+       {
         "mount_type": "Heavy",
         "lock": false,
         "slots": [
          {
           "size": "Heavy",
           "weapon": {
-           "id": "mw_heavy_machine_gun"
+           "id": "mw_daisy_cutter"
           }
          }
         ],
@@ -91,14 +105,14 @@
  },
  {
   "itemType": "pilot",
-  "id": "ll3-kestrel",
+  "id": "ll5-kestrel",
   "callsign": "Kestrel",
   "name": "Ilse Marrow",
-  "level": 3,
+  "level": 5,
   "mechSkills": [
    1,
-   1,
-   1,
+   2,
+   2,
    2
   ],
   "talents": [
@@ -107,12 +121,12 @@
     "rank": 3
    },
    {
-    "id": "t_tactician",
-    "rank": 2
+    "id": "t_crack_shot",
+    "rank": 3
    },
    {
-    "id": "t_ace",
-    "rank": 1
+    "id": "t_spotter",
+    "rank": 2
    }
   ],
   "core_bonuses": [
@@ -123,7 +137,7 @@
   "licenses": [],
   "mechs": [
    {
-    "id": "ll3-kestrel-mech",
+    "id": "ll5-kestrel-mech",
     "name": "Kestrel's Monarch",
     "frame": "mf_monarch",
     "loadouts": [
@@ -135,6 +149,9 @@
        },
        {
         "id": "ms_tracking_bug"
+       },
+       {
+        "id": "ms_kinetic_compensator"
        },
        {
         "id": "ms_pattern_b_hex_charges"
@@ -162,7 +179,7 @@
          {
           "size": "Main",
           "weapon": {
-           "id": "mw_mortar"
+           "id": "mw_vulture_dmr"
           }
          }
         ],
@@ -192,24 +209,24 @@
  },
  {
   "itemType": "pilot",
-  "id": "ll3-medic",
-  "callsign": "Stitch",
+  "id": "ll5-warden",
+  "callsign": "Halo",
   "name": "Tomas Achebe",
-  "level": 3,
+  "level": 5,
   "mechSkills": [
    2,
    0,
-   2,
-   1
+   3,
+   2
   ],
   "talents": [
    {
     "id": "t_leader",
-    "rank": 2
+    "rank": 3
    },
    {
     "id": "t_grease_monkey",
-    "rank": 2
+    "rank": 3
    },
    {
     "id": "t_tactician",
@@ -218,55 +235,48 @@
   ],
   "core_bonuses": [
    {
-    "id": "cb_auto_stabilizing_hardpoints"
+    "id": "cb_superior_by_design"
    }
   ],
   "licenses": [],
   "mechs": [
    {
-    "id": "ll3-medic-mech",
-    "name": "Stitch's Lancaster",
-    "frame": "mf_lancaster",
+    "id": "ll5-warden-mech",
+    "name": "Halo's Saladin",
+    "frame": "mf_saladin",
     "loadouts": [
      {
       "name": "Primary",
       "systems": [
        {
+        "id": "ms_enclave_pattern_support_shield"
+       },
+       {
+        "id": "ms_flash_anchor"
+       },
+       {
+        "id": "ms_aceso_stabilizer"
+       },
+       {
         "id": "ms_restock_drone"
        },
        {
-        "id": "ms_bulwark_mods"
-       },
-       {
-        "id": "ms_pattern_a_jericho_deployable_cover"
-       },
-       {
         "id": "ms_pattern_a_smoke_charges"
-       },
-       {
-        "id": "ms_type_3_projected_shield"
        }
       ],
       "mounts": [
        {
-        "mount_type": "Main/Aux",
+        "mount_type": "Flex",
         "lock": false,
         "slots": [
          {
           "size": "Main",
           "weapon": {
-           "id": "mw_assault_rifle"
+           "id": "mw_shatterhead_colony_missiles"
           }
          }
         ],
-        "extra": [
-         {
-          "size": "Auxiliary",
-          "weapon": {
-           "id": "mw_pistol"
-          }
-         }
-        ],
+        "extra": [],
         "bonus_effects": []
        }
       ]
@@ -278,12 +288,12 @@
  },
  {
   "itemType": "pilot",
-  "id": "ll3-lance",
+  "id": "ll5-lance",
   "callsign": "Lance",
   "name": "Juno Okafor",
-  "level": 3,
+  "level": 5,
   "mechSkills": [
-   1,
+   3,
    3,
    0,
    1
@@ -291,14 +301,14 @@
   "talents": [
    {
     "id": "t_duelist",
-    "rank": 2
+    "rank": 3
    },
    {
     "id": "t_brutal",
-    "rank": 2
+    "rank": 3
    },
    {
-    "id": "t_juggernaut",
+    "id": "t_executioner",
     "rank": 2
    }
   ],
@@ -310,24 +320,24 @@
   "licenses": [],
   "mechs": [
    {
-    "id": "ll3-lance-mech",
-    "name": "Lance's Nelson",
-    "frame": "mf_nelson",
+    "id": "ll5-lance-mech",
+    "name": "Lance's Blackbeard",
+    "frame": "mf_blackbeard",
     "loadouts": [
      {
       "name": "Primary",
       "systems": [
        {
-        "id": "ms_bulwark_mods"
+        "id": "ms_synthetic_muscle_netting"
        },
        {
-        "id": "ms_synthetic_muscle_netting"
+        "id": "ms_reinforced_cabling"
        },
        {
         "id": "ms_personalizations"
        },
        {
-        "id": "ms_pattern_b_hex_charges"
+        "id": "ms_bulwark_mods"
        }
       ],
       "mounts": [
@@ -346,7 +356,7 @@
         "bonus_effects": []
        },
        {
-        "mount_type": "Main/Aux",
+        "mount_type": "Main",
         "lock": false,
         "slots": [
          {
@@ -356,14 +366,21 @@
           }
          }
         ],
-        "extra": [
+        "extra": [],
+        "bonus_effects": []
+       },
+       {
+        "mount_type": "Heavy",
+        "lock": false,
+        "slots": [
          {
-          "size": "Auxiliary",
+          "size": "Heavy",
           "weapon": {
-           "id": "mw_thermal_pistol"
+           "id": "mw_nanocarbon_sword"
           }
          }
         ],
+        "extra": [],
         "bonus_effects": []
        }
       ]

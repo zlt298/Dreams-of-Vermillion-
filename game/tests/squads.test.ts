@@ -1,15 +1,15 @@
-// The sample LL3/LL6 squads must be legal COMP/CON builds (they drive the balance sim).
+// The sample LL5/LL10 squads must be legal COMP/CON builds (they drive the balance sim).
 import { describe, expect, it } from 'vitest'
 import { Lancer } from '../src/data/lancer'
 import { importPilots } from '../src/import/compcon'
 import { mechSP, buildMechUnit } from '../src/rules/stats'
-import ll3 from '../src/data/squads/ll3.json'
-import ll6 from '../src/data/squads/ll6.json'
+import ll5 from '../src/data/squads/ll5.json'
+import ll10 from '../src/data/squads/ll10.json'
 import './helpers'
 
 const mountAllows: Record<string, string[]> = Lancer.rules.mount_fittings
 
-describe.each([['LL3', ll3], ['LL6', ll6]] as const)('%s sample squad', (_n, squad) => {
+describe.each([['LL5', ll5], ['LL10', ll10]] as const)('%s sample squad', (_n, squad) => {
   it.each((squad as any[]).map(p => [p.callsign, p]))('%s is a legal build', (_c, raw) => {
     const [p] = importPilots(raw)
     const LL = p.level

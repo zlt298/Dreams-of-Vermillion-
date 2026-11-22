@@ -33,7 +33,8 @@ export interface AttackCtx {
   cancelDamage?: boolean
   mode: 'skirmish' | 'barrage' | 'overwatch' | 'free' | 'tech' | 'improvised' | 'ram' | 'grapple' | 'secondary'
   /** reroll a missed attack once (Neurolink etc.) */
-  rerollOnMiss?: boolean
+  /** reroll a missed attack once; a function is asked only when the attack misses (e.g. to spend a reaction) */
+  rerollOnMiss?: boolean | (() => boolean)
   /** treat target as Invisible for this attack */
   forceInvisible?: boolean
   irreducible?: boolean
@@ -107,6 +108,8 @@ export interface ItemScript {
   onStatusInflicted?(b: Battle, self: Unit, target: Unit, status: string): void
   /** after any attack roll is made (hit/miss known, damage not yet applied) */
   afterAnyRoll?(b: Battle, self: Unit, ctx: AttackCtx): void
+  /** extra accuracy (or difficulty, if negative) this unit grants `u` on a check or save */
+  checkAccuracy?(b: Battle, self: Unit, u: Unit, kind: 'check' | 'save', stat?: string): number
   onAnyTurnStart?(b: Battle, self: Unit, unit: Unit): void
   onAnyTurnEnd?(b: Battle, self: Unit, unit: Unit): void
   onHeat?(b: Battle, self: Unit, amount: number): void
@@ -150,6 +153,7 @@ export function scriptIdsFor(u: Unit): string[] {
   for (const t of u.talents) for (let r = 1; r <= t.rank; r++) ids.push(`${t.id}:${r}`)
   for (const c of u.coreBonuses) ids.push(c)
   for (const t of u.templates ?? []) ids.push(`template:${t}`)
+  for (const t of u.traits ?? []) ids.push(`trait:${t.split(':')[0]}`)
   return ids
 }
 
@@ -162,7 +166,7 @@ function signature(u: Unit): string {
   for (const w of u.weapons) if (w.destroyed) d++
   let sd = 0
   for (const s of u.systems) if (s.destroyed) sd++
-  return `${registryVersion}|${u.frameId}|${u.weapons.length}.${d}|${u.systems.length}.${sd}|${u.talents.length}|${u.coreBonuses.length}|${u.templates?.length ?? 0}`
+  return `${registryVersion}|${u.frameId}|${u.weapons.length}.${d}|${u.systems.length}.${sd}|${u.talents.length}|${u.coreBonuses.length}|${u.templates?.length ?? 0}|${u.traits?.length ?? 0}`
 }
 
 export function scriptsFor(u: Unit): ItemScript[] {

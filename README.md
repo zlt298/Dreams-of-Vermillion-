@@ -41,7 +41,7 @@ It uses the pilot's favourite mech and its active loadout: frame, weapons, mods,
 - **Campaign.** Three acts with branching node maps. Node types are ⚔ combat, ☠ elite, ⬢ supply, ⛺ rest and ♛ boss. Act *n* uses tier-*n* enemies. Sitreps include Basic Combat, Control, Holdout, Extraction and Assassination.
 - **Persistent damage.** HP, structure, stress, repairs, destroyed gear, Limited uses and CORE power carry between fights.
 - **Recovery.** Spend Repairs at LANCER costs in field repairs. A rest is a full repair that reprints destroyed mechs.
-- **Progression.** Each act boss grants +3 License Levels, which raises grit and HP. Re-import updated COMP/CON builds to spend your talent, license and core-bonus points.
+- **Progression.** Each act boss grants +5 License Levels (act 1 LL0, act 2 LL5, act 3 LL10, matching the core book NPC tiers), which raises grit and HP. Re-import updated COMP/CON builds to spend your talent, license and core-bonus points.
 - **Battles:**
   - Initiative alternates between sides: pick any ready lancer to activate.
   - Every lancer action is supported. Standard move (it can be split), Boost, Skirmish (plus an aux on the same mount), Barrage, Quick/Full Tech (Invade, Lock On, Bolster, Scan), Overcharge, Stabilize, CORE power, Hide/Search, Ram/Grapple/Improvised, Disengage, Reload, Shut Down/Boot Up, Self-Destruct.
@@ -89,7 +89,8 @@ To add fidelity, register a script keyed by the item id in `game/src/rules/effec
 
 ### Known deviations and house rules
 - Square grid with diagonals counting as 1. Range and threat include the vertical gap.
-- Hard cover is computed from terrain at least half the target's height between attacker and target. Being 2+ levels above that terrain negates it.
+- Rules follow the core book: hard cover must be adjacent to the target and at least as large as it (distant obstructions give soft cover); Blast cover is measured from the blast centre; armor comes off an attack's total once; one reaction per turn, each type once per round; wreckage is hard cover and difficult terrain. Being 2+ levels above cover negates it.
+- Wreckage can be crossed (as difficult terrain) but you can't end a move on it.
 - Each weapon can attack once per turn via Skirmish or Barrage. Reactions and free attacks are exempt.
 - Reactions that need a player decision (most talent and system reactions, Brace, Overwatch) fire automatically under a sensible policy.
 - Not implemented:
@@ -99,13 +100,22 @@ To add fidelity, register a script keyed by the item id in `game/src/rules/effec
 
 ## Enemies: an original NPC ruleset + Claude skill
 
-Massif's NPC data is a paid content pack, so enemies use an **original ruleset** modelled on LANCER's NPC structure. Roles: Striker, Artillery, Controller, Defender, Support, Biological. Tiers: 1–3. Templates: Grunt, Veteran, Elite, Commander, Ultra, Mercenary. Features are written in a small effect DSL, and an encounter budget keeps teams fair.
+Massif's NPC data is a paid content pack, so the bundled enemies use an **original ruleset** modelled on LANCER's NPC structure. Roles: Striker, Artillery, Controller, Defender, Support, Biological. Tiers: 1–3. Templates follow the official rules: Grunt, Veteran (with a Veteran trait), Elite (two turns), Commander, Ultra (two turns, Deadly, Juggernaut, Legendary), Mercenary. Features are written in a small effect DSL, and an encounter budget keeps teams fair.
 
 - Rules: [`docs/enemy-ruleset.md`](docs/enemy-ruleset.md). The code lives in `game/src/enemies/ruleset.ts` and `validate.ts`.
 - Teams: `data/enemies/*.json`. The game loads every valid file automatically. Twelve teams ship, covering all tiers and including three bosses.
 - **Generate more with Claude.** The project skill [`.claude/skills/generate-enemies`](.claude/skills/generate-enemies/SKILL.md) designs teams from the ruleset, writes the JSON and validates it. Ask Claude Code something like *"generate two tier-2 enemy teams themed around rogue terraforming drones"* or *"make a tier 3 boss"*.
 - Validate: `cd game && npm run validate-enemies`.
-- Balance check: `npx tsx scripts/simulate.ts 10 [team-id]` runs AI vs AI on 18×36 maps. Tier 1 faces the LL0 pregens, tier 2 the LL3 sample squad and tier 3 the LL6 sample squad.
+- Balance check: `npx tsx scripts/simulate.ts 10 [team-id]` runs AI vs AI on 18×36 maps. Tier 1 faces the LL0 pregens, tier 2 the LL5 sample squad and tier 3 the LL10 sample squad (the squad's level in acts 2 and 3).
+
+### Official NPCs from your own content pack
+
+If you own the NPC content pack (for example *Lancer CORE NPCs*, `.lcp`), import it from **Title → Official NPCs**. Both the v1 and v2/v3 pack layouts are read.
+
+- The pack is converted in your browser and stored **only in that browser's local storage**. It is never uploaded, bundled or committed (`*.lcp` is git-ignored).
+- Classes become units with their official tier stats, base features and 0–2 optional features. Weapons, stats, tags, flight, resistances and Blast/Burst save attacks are automated. Most reactions, Line/Cone attacks and conditional traits are shown as rules text only.
+- **Use in campaigns:** Off, Mixed (half the fights) or Only. Encounters follow the core book's guidance (grunt packs, one Elite per two players, one Ultra for bosses) within the usual budget. Quick skirmish also lists random official encounters.
+- Balance check: `LCP=/path/to/pack.lcp npx tsx scripts/simulate.ts 10 official` (reads the pack at runtime).
 
 ## Roadmap
 

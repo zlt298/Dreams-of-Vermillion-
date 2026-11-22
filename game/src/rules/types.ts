@@ -165,6 +165,8 @@ export interface Unit {
   role?: string
   tier?: number
   templates?: string[]
+  /** NPC template traits (official template features, e.g. deadly, legendary, veterancy:hull) */
+  traits?: string[]
   isGrunt?: boolean
   canCrit: boolean
   // turn economy

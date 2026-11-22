@@ -20,12 +20,12 @@ You are designing original enemy teams for the Lancer-based roguelike in this re
 2. **Design on paper before writing JSON.**
    - Pick a tactical identity, for example *"bait-and-snare"*, *"heat-bomb the backline"* or *"shield wall with artillery"*.
    - Choose 3–6 unit types and 5–9 bodies.
-   - Compute the budget: standard 1, Grunt 0.25, Veteran 1.5, Elite/Commander 2, Mercenary 1.25, Ultra 4, each × count. The total must be ≤ `designedFor × {1.0, 1.25, 1.5}[tier-1] × {1, 1.5, 2}[kind] × 1.25`.
-   - Count features per unit: T1 3, T2 4, T3 5, plus template slots (Grunt −1, Veteran/Elite/Commander +1, Ultra +3).
+   - Compute the budget: standard 1, Grunt 0.25, Veteran 1.5, Commander 1.75, Elite 2, Mercenary 1.25, Ultra 4, each × count. The total must be ≤ `designedFor × {1.0, 1.5, 2.0}[tier-1] × {1, 1.5, 2}[kind] × 1.25`.
+   - Count features per unit: T1 3, T2 4, T3 5, plus template slots (Grunt −1, Ultra +3; Veteran/Elite/Commander/Mercenary 0). Templates follow the official rules: Elites and Ultras take two turns a round, so they hit far above their slot count. Give each Veteran a `veteranTrait` and optionally `veterancy`.
    - For each weapon, check its average damage against the role/tier band in the doc (+35%, ×1.5 with recharge/uses, ×0.85 for AoE, ×0.8 for Grunts).
 3. **Write the file** to `data/enemies/<id>.json`. Use the id `t<tier>-<kebab-name>`, which must be unique. Use only effect kinds, statuses, tags and triggers listed in the doc. Avoid `text` effects: the engine doesn't execute them. Use original names; never Massif NPC names or real brands.
 4. **Validate**: `cd game && npm run validate-enemies -- ../data/enemies/<id>.json`. Fix every `error` and reconsider every `warn`, then re-run until it passes.
-5. **Balance test** (recommended): `cd game && npx tsx scripts/simulate.ts 10 <team-id>` plays AI vs AI against a squad matched to the tier. Tier 1 faces the LL0 COMP/CON pregens, tier 2 the legal LL3 sample squad and tier 3 the LL6 sample squad (`game/src/data/squads/`). Battles run on 18×36 maps with a 30-round cap; set `MAX_ROUNDS` to change it. Ranged-heavy teams get more value from the long approach than melee swarms. Aim for:
+5. **Balance test** (recommended): `cd game && npx tsx scripts/simulate.ts 10 <team-id>` plays AI vs AI against a squad matched to the tier. Tier 1 faces the LL0 COMP/CON pregens, tier 2 the legal LL5 sample squad and tier 3 the LL10 sample squad (`game/src/data/squads/`). Battles run on 18×36 maps with a 30-round cap; set `MAX_ROUNDS` to change it. Ranged-heavy teams get more value from the long approach than melee swarms. Aim for:
 
    | kind | player win rate | mechs lost per fight |
    |---|---|---|

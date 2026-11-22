@@ -1,14 +1,14 @@
 // Turn enemy team definitions into battle units.
 import { blankTurnState, defaultPolicies, nextUid, weaponFromData } from '../rules/stats'
 import type { Profile, SystemInst, Unit, Weapon } from '../rules/types'
-import { type EnemyTeam, type EnemyUnitDef, type NpcStats, type Tier, baselineStats, unitBudget } from './ruleset'
+import { type EnemyTeam, type EnemyUnitDef, type NpcStats, type Tier, applyTemplates, baselineStats, unitBudget } from './ruleset'
 
 const ROLE_COLORS: Record<string, string> = {
   Striker: '#d9534f', Artillery: '#e08e2b', Controller: '#9b59b6', Defender: '#7f8c8d', Support: '#2e9e6b', Biological: '#a0522d',
 }
 
 export function npcStats(def: EnemyUnitDef, tier: Tier): NpcStats {
-  const s = baselineStats(def.role, tier, def.templates)
+  const s = def.baseStats ? applyTemplates({ ...def.baseStats }, def.templates) : baselineStats(def.role, tier, def.templates)
   for (const f of def.features) if (f.type === 'trait' && f.stats) for (const [k, v] of Object.entries(f.stats)) (s as any)[k] += v
   for (const [k, v] of Object.entries(def.stats ?? {})) (s as any)[k] = v
   return s
@@ -24,15 +24,15 @@ export function buildNpc(def: EnemyUnitDef, tier: Tier, index = 0): Unit {
       if (f.smart && !tags.some(t => t.id === 'tg_smart')) tags.push({ id: 'tg_smart' })
       const profile: Profile = { name: f.name, damage: f.damage ?? [], range: f.range, tags, onAttack: [], onHit: f.onHit ?? [], onCrit: f.onCrit ?? [], text: f.text }
       weapons.push({
-        uid: nextUid('w'), name: f.name, dataId: `npc_w_${i}`, mountIndex: i, size: 'Main', type: f.weaponType, profiles: [profile], profileIndex: 0,
-        loaded: true, destroyed: false, usesLeft: f.uses, attackBonus: s.attackBonus, accuracy: f.accuracy, vsEdef: !!f.smart,
+        uid: nextUid('w'), name: f.name, dataId: `npc_w_${i}`, mountIndex: i, size: f.size ?? 'Main', type: f.weaponType, profiles: [profile], profileIndex: 0,
+        loaded: true, destroyed: false, usesLeft: f.uses, attackBonus: f.attackBonus ?? s.attackBonus, accuracy: f.accuracy, vsEdef: !!f.smart,
         recharge: f.recharge, charged: true, bonuses: [], activation: 'quick',
       })
     } else if (f.type === 'tech') {
       const profile: Profile = { name: f.name, damage: [], range: [{ type: 'Range', val: f.range ?? s.sensors }], tags: [], onAttack: [], onHit: f.onHit, onCrit: [], text: f.text }
       weapons.push({
         uid: nextUid('w'), name: f.name, dataId: `npc_t_${i}`, mountIndex: i, size: 'Main', type: 'Tech', profiles: [profile], profileIndex: 0,
-        loaded: true, destroyed: false, usesLeft: f.uses, attackBonus: s.techAttack, accuracy: f.accuracy, vsEdef: true, tech: true,
+        loaded: true, destroyed: false, usesLeft: f.uses, attackBonus: f.attackBonus ?? s.techAttack, accuracy: f.accuracy, vsEdef: true, tech: true,
         recharge: f.recharge, charged: true, bonuses: [], activation: f.kind,
       })
     } else {
@@ -46,6 +46,15 @@ export function buildNpc(def: EnemyUnitDef, tier: Tier, index = 0): Unit {
   const resist: string[] = [], immune: string[] = []
   for (const f of def.features) if (f.type === 'trait') { resist.push(...(f.resist ?? [])); immune.push(...(f.immune ?? [])) }
   const templates = def.templates ?? []
+  // official template traits
+  const traits: string[] = []
+  if (templates.includes('Veteran')) {
+    const best = (['hull', 'agi', 'sys', 'eng'] as const).reduce((a, k) => (s[k] > s[a] ? k : a), 'hull' as 'hull' | 'agi' | 'sys' | 'eng')
+    traits.push(`veterancy:${def.veterancy ?? best}`)
+    if (def.veteranTrait) traits.push(def.veteranTrait)
+  }
+  if (templates.includes('Ultra')) traits.push('deadly', 'legendary', 'reflex')
+  if (traits.includes('insulated')) immune.push('burn')
   const name = (def.count ?? 1) > 1 ? `${def.name} ${String.fromCharCode(65 + index)}` : def.name
   return {
     id: nextUid('npc'),
@@ -53,7 +62,7 @@ export function buildNpc(def: EnemyUnitDef, tier: Tier, index = 0): Unit {
     side: 'enemy',
     kind: 'npc',
     pos: { x: 0, y: 0 },
-    flying: def.features.some(f => f.type === 'trait' && /flying|flight|hover/i.test(f.name)),
+    flying: def.features.some(f => f.type === 'trait' && (f.flying || /flying|flight|hover/i.test(f.name))),
     stats: {
       hp: s.hp, armor: s.armor, evasion: s.evasion, edef: s.edef, heatcap: s.heatcap, speed: s.speed, sensors: s.sensors, save: s.save,
       techAttack: s.techAttack, structure: s.structure, stress: s.stress, repcap: 0, size: s.size, hull: s.hull, agi: s.agi, sys: s.sys, eng: s.eng,
@@ -62,7 +71,9 @@ export function buildNpc(def: EnemyUnitDef, tier: Tier, index = 0): Unit {
     hp: s.hp, heat: 0, structure: s.structure, stress: s.stress, overshield: 0, burn: 0, repairs: 0,
     coreAvailable: false, coreActive: false, overchargeLevel: 0,
     statuses: [], resist, immune: [...immune, ...(s.heatcap === 0 ? [] : [])], weapons, systems, talents: [], coreBonuses: [],
-    role: def.role, tier, templates, isGrunt: templates.includes('Grunt'), canCrit: false,
+    role: def.role, tier, templates, traits: [...new Set(traits)], isGrunt: templates.includes('Grunt'),
+    // only Veterans and Ultras can score critical hits
+    canCrit: templates.includes('Veteran') || templates.includes('Ultra'),
     ...blankTurnState(), activationsLeft: s.activations,
     bonuses: [], flags: { budget: unitBudget({ ...def, count: 1 }), description: def.description },
     destroyed: false, policies: defaultPolicies(), color: def.color ?? ROLE_COLORS[def.role],
@@ -83,5 +94,7 @@ export function buildTeam(team: EnemyTeam, squadSize = team.designedFor): Unit[]
     }
   }
   for (const d of defs) for (let i = 0; i < (d.count ?? 1); i++) units.push(buildNpc(d, team.tier, i))
+  // Shock and Awe: an Ultra facing five or more hostiles takes a third turn each round
+  if (squadSize >= 5) for (const u of units) if (u.templates?.includes('Ultra')) { u.stats.activations = 3; u.activationsLeft = 3 }
   return units
 }

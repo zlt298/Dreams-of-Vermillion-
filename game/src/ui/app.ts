@@ -13,6 +13,9 @@ import {
   repairOptions, applyRepair, rollRewards, applyReward, levelUp, replacePilots, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
 } from '../run/run'
 import { BattleScreen } from './battle-ui'
+import { loadPacks, readLcp, removePack, storePack, officialClasses } from '../import/lcp'
+import { generateOfficialTeam } from '../enemies/official'
+import { Rng } from '../rules/rng'
 import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad } from './roster'
 import { esc } from './dom'
 import { classify } from '../rules/effects/coverage'
@@ -48,6 +51,7 @@ export class App {
         ${this.run && !this.run.over ? `<button data-go="continue" class="primary">Continue run (Act ${this.run.act}, ${this.run.battlesWon} wins)</button>` : ''}
         <button data-go="hangar" class="${this.run && !this.run.over ? '' : 'primary'}">New run — choose squad</button>
         <button data-go="skirmish">Quick skirmish</button>
+        <button data-go="official">Official NPCs (import .lcp)</button>
         <button data-go="help">How to play</button>
       </div>
       ${lastLoadProblem ? `<p class="bad small">${esc(lastLoadProblem)}</p>` : ''}
@@ -60,6 +64,42 @@ export class App {
       if (g === 'hangar') this.hangar('run')
       if (g === 'skirmish') this.hangar('skirmish')
       if (g === 'help') this.help()
+      if (g === 'official') this.officialNpcs()
+    })
+  }
+
+  // ------------------------------------------------------------------ official NPCs (LCP import)
+  officialNpcs(msg = '') {
+    this.clear()
+    const packs = loadPacks()
+    const mode = officialMode()
+    const rows = packs.map(p => {
+      const feats = p.classes.flatMap(c => c.features)
+      return `<tr><td><b>${esc(p.name)}</b> <span class="muted">v${esc(p.version)}</span></td><td>${p.classes.length} classes</td><td>${feats.filter(f => !f.partial).length}/${feats.length} features fully automated</td><td><button data-rm="${esc(p.name)}" class="warn">Remove</button></td></tr>`
+    }).join('')
+    this.root.innerHTML = `<div class="screen"><h2>Official NPCs</h2>
+      <p>Import the official NPC classes from a LANCER content pack (<code>.lcp</code>) you own, such as <i>Lancer CORE NPCs</i>. The pack stays in <b>this browser only</b> (local storage); nothing is uploaded or added to the game files.</p>
+      <p class="muted small">Weapons, stats, tags, flight, resistances and Blast/Burst save attacks are automated. Other rules text (most reactions and conditional traits) is shown in the unit panel but not enforced. Templates use the game's own implementation of the official Grunt, Veteran, Elite, Commander, Ultra and Mercenary rules.</p>
+      ${msg ? `<p class="${msg.startsWith('✓') ? '' : 'bad'}">${esc(msg)}</p>` : ''}
+      <label class="filebtn">Import .lcp<input type="file" accept=".lcp,.zip" multiple></label>
+      ${packs.length ? `<table class="packs">${rows}</table>` : '<p class="muted">No packs imported.</p>'}
+      <h3>Use in campaigns</h3>
+      <div class="menu row">${(['off', 'mixed', 'only'] as const).map(m => `<button data-mode="${m}" class="${m === mode ? 'primary' : ''}">${{ off: 'Off: hand-made teams only', mixed: 'Mixed: half the fights', only: 'Only official NPCs' }[m]}</button>`).join('')}</div>
+      <button data-go="back">Back</button></div>`
+    this.on('[data-go]', () => this.title())
+    this.on('[data-mode]', el => { setOfficialMode(el.dataset.mode as any); this.officialNpcs() })
+    this.on('[data-rm]', el => { if (confirm(`Remove ${el.dataset.rm}?`)) { removePack(el.dataset.rm!); this.officialNpcs('✓ Removed.') } })
+    this.root.querySelector<HTMLInputElement>('input[type=file]')!.addEventListener('change', async e => {
+      const files = [...((e.target as HTMLInputElement).files ?? [])]
+      const out: string[] = []
+      for (const f of files) {
+        try {
+          const pack = readLcp(new Uint8Array(await f.arrayBuffer()))
+          out.push(storePack(pack) ? `✓ ${pack.name} v${pack.version}: ${pack.classes.length} classes.` : `${f.name}: the browser refused to store it (storage full or disabled).`)
+        } catch (err) { out.push(`${f.name}: ${(err as Error).message}`) }
+      }
+      if (out.length && officialMode() === 'off' && loadPacks().length) setOfficialMode('mixed')
+      this.officialNpcs(out.join(' '))
     })
   }
 
@@ -93,8 +133,8 @@ export class App {
       <div class="hhead"><h2>${purpose === 'reimport' ? 'Re-import updated pilots' : 'Hangar'}</h2>
         <div><a class="filebtn linkbtn" href="https://compcon.app" target="_blank" rel="noopener noreferrer" title="Opens the official COMP/CON web app in a new tab">Open COMP/CON ↗</a><label class="filebtn">Import COMP/CON .json<input type="file" accept=".json,application/json" multiple></label>
         <button data-go="pregens">Add COMP/CON pregens</button>
-        <button data-go="ll3" title="Legal LL3 builds: Tortuga, Monarch, Lancaster, Nelson">Add sample LL3 squad</button>
-        <button data-go="ll6" title="Legal LL6 builds: Drake, Monarch, Saladin, Blackbeard">Add sample LL6 squad</button>
+        <button data-go="ll5" title="Legal LL5 builds (act 2 level): Drake, Monarch, Saladin, Blackbeard">Add sample LL5 squad</button>
+        <button data-go="ll10" title="Legal LL10 builds (act 3 level): Drake, Monarch, Saladin, Blackbeard">Add sample LL10 squad</button>
         ${purpose !== 'reimport' ? `<button data-go="start" class="primary">${purpose === 'run' ? 'Begin run' : 'Choose enemies'} (${this.squadPick.size}/${MAX_SQUAD})</button>` : '<button data-go="done" class="primary">Done</button>'}
         <button data-go="back">Back</button></div></div>
       <div class="drop">Drop COMP/CON pilot exports here</div>
@@ -144,7 +184,7 @@ export class App {
       if (g === 'back') this.title()
       if (g === 'done') this.runMap()
       if (g === 'pregens') { this.roster = addToRoster(this.roster, pregenBuilds()); this.hangar(purpose) }
-      if (g === 'll3' || g === 'll6') { this.roster = addToRoster(this.roster, sampleSquad(g === 'll3' ? 3 : 6)); this.hangar(purpose) }
+      if (g === 'll5' || g === 'll10') { this.roster = addToRoster(this.roster, sampleSquad(g === 'll5' ? 5 : 10)); this.hangar(purpose) }
       if (g === 'start') {
         const squad = this.roster.filter(p => this.squadPick.has(p.id))
         if (!squad.length) return alert('Pick at least one pilot')
@@ -156,8 +196,10 @@ export class App {
 
   skirmishSetup(squad: PilotBuild[]) {
     this.clear()
-    const teams = validTeams()
-    this.root.innerHTML = `<div class="screen"><h2>Quick skirmish</h2><p class="muted">Choose an enemy team (from <code>data/enemies/</code>).</p>
+    const official = officialClasses()
+    const offTeams = official.length ? ([1, 2, 3] as const).flatMap(tier => (['standard', 'elite', 'boss'] as const).map(kind => generateOfficialTeam(official, tier, kind, squad.length, Math.floor(Math.random() * 1e6)))) : []
+    const teams = [...validTeams(), ...offTeams]
+    this.root.innerHTML = `<div class="screen"><h2>Quick skirmish</h2><p class="muted">Choose an enemy team (from <code>data/enemies/</code>${offTeams.length ? ', plus random encounters from your imported official NPCs' : ''}).</p>
       <div class="teams">${teams.map(t => `<button data-team="${esc(t.id)}"><b>${esc(t.name)}</b><br><span class="muted">T${t.tier} ${esc(t.kind ?? 'standard')} · ${t.units.reduce((a, u) => a + (u.count ?? 1), 0)} units</span><br><span class="small">${esc(t.theme ?? '')}</span></button>`).join('')}</div>
       <button data-go="back">Back</button></div>`
     this.on('[data-go]', () => this.hangar('skirmish'))
@@ -231,7 +273,10 @@ export class App {
     const run = this.run!
     const tier = nodeTier(n)
     const kind = n.kind === 'boss' ? 'boss' : n.kind === 'elite' ? 'elite' : 'standard'
-    const team = chooseTeam(run, n, teamsFor(tier, kind, n.layer + 1))
+    const official = officialClasses()
+    const mode = officialMode()
+    const useOfficial = official.length > 0 && (mode === 'only' || (mode === 'mixed' && new Rng(n.seed ^ 0x51a7).next() < 0.5))
+    const team = useOfficial ? generateOfficialTeam(official, tier, kind, run.squad.length, n.seed) : chooseTeam(run, n, teamsFor(tier, kind, n.layer + 1))
     n.teamId = team.id
     const map = generateMap(n.seed)
     const units = squadUnits(run)
@@ -341,3 +386,9 @@ function pilotCard(p: PilotBuild, picked: boolean): string {
     ${ids.length && getScript('') ? '' : ''}
   </div>`
 }
+
+type OfficialMode = 'off' | 'mixed' | 'only'
+function officialMode(): OfficialMode {
+  try { const v = localStorage.getItem('dov-official-mode'); return v === 'mixed' || v === 'only' ? v : 'off' } catch { return 'off' }
+}
+function setOfficialMode(m: OfficialMode) { try { localStorage.setItem('dov-official-mode', m) } catch { /* storage unavailable */ } }

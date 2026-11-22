@@ -5,7 +5,7 @@ import { averageDice } from '../rules/rng'
 import type { Effect } from '../rules/types'
 import {
   type EnemyTeam, type EnemyUnitDef, type Feature, type NpcStats, type Tier,
-  ROLES, TEMPLATES, DAMAGE_BAND, DAMAGE_TOLERANCE, STAT_TOLERANCE, baselineStats, featureSlots, teamBudget, BUDGET_PER_PC,
+  ROLES, TEMPLATES, VETERAN_TRAITS, DAMAGE_BAND, DAMAGE_TOLERANCE, STAT_TOLERANCE, baselineStats, featureSlots, teamBudget, BUDGET_PER_PC,
 } from './ruleset'
 
 export interface ValidationResult { ok: boolean; errors: string[]; warnings: string[]; budget: number }
@@ -122,6 +122,11 @@ export function validateTeam(t: EnemyTeam): ValidationResult {
     if (!ROLES.includes(u.role)) errors.push(`${u.name}: unknown role '${u.role}'`)
     for (const tp of u.templates ?? []) if (!TEMPLATES.includes(tp)) errors.push(`${u.name}: unknown template '${tp}'`)
     if ((u.templates ?? []).includes('Grunt') && (u.templates ?? []).some(x => x === 'Elite' || x === 'Ultra')) errors.push(`${u.name}: Grunt cannot combine with Elite/Ultra`)
+    if ((u.templates ?? []).includes('Ultra') && (u.templates ?? []).includes('Elite')) errors.push(`${u.name}: Ultra cannot combine with Elite`)
+    if ((u as any).baseStats || (u as any).officialClass) errors.push(`${u.name}: baseStats/officialClass are reserved for imported official NPCs`)
+    if (u.veteranTrait && !(u.templates ?? []).includes('Veteran')) errors.push(`${u.name}: veteranTrait requires the Veteran template`)
+    if (u.veteranTrait && !VETERAN_TRAITS.includes(u.veteranTrait)) errors.push(`${u.name}: unknown veteranTrait '${u.veteranTrait}' (one of ${VETERAN_TRAITS.join(', ')})`)
+    if (u.veterancy && !['hull', 'agi', 'sys', 'eng'].includes(u.veterancy)) errors.push(`${u.name}: veterancy must be hull, agi, sys or eng`)
     if (u.count != null && (u.count < 1 || u.count > 8)) errors.push(`${u.name}: count must be 1-8`)
     if (!ROLES.includes(u.role)) continue
     const base = baselineStats(u.role, tier, u.templates)
@@ -156,5 +161,6 @@ export function validateTeam(t: EnemyTeam): ValidationResult {
   if (budget > target * 1.25) errors.push(`budget ${budget} exceeds ${(target * 1.25).toFixed(2)} (target ${target} for ${t.designedFor} PCs at T${tier}${t.kind ? ' ' + t.kind : ''})`)
   if (budget < target * 0.6) warnings.push(`budget ${budget} is well under the target ${target}`)
   if (t.kind === 'boss' && !t.units.some(u => (u.templates ?? []).includes('Ultra'))) warnings.push('boss teams should include an Ultra')
+  if (t.units.reduce((n, u) => n + ((u.templates ?? []).includes('Ultra') ? u.count ?? 1 : 0), 0) > 1) warnings.push('the core book recommends at most one Ultra per encounter')
   return { ok: errors.length === 0, errors, warnings, budget }
 }

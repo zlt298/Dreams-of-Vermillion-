@@ -14,7 +14,7 @@ Useful commands, all run from `game/`:
 
 | command | what it does |
 |---|---|
-| `npm test` | 118 unit tests |
+| `npm test` | 148 unit tests |
 | `npm run e2e` | browser campaign run plus a GPU-leak check |
 | `npm run bench` | AI speed per turn |
 | `npm run coverage -- --list` | rules fidelity report |
@@ -45,8 +45,7 @@ Useful commands, all run from `game/`:
   - a three-act campaign with persistent damage, repairs, rewards, level-ups and COMP/CON re-import
 
 ### Rules corrections
-- Ambiguous rulings were cross-checked against COMP/CON's own combat code:
-  - armor applies per damage type
+- Ambiguous rulings were cross-checked against COMP/CON's own combat code (later superseded where the core book differs; see below):
   - resistance rounds up
   - reaching 0 stress means a meltdown at the end of the next turn
   - Grunts die to external heat
@@ -73,16 +72,46 @@ Useful commands, all run from `game/`:
 - **Auto (AI)** turn button.
 - **Open COMP/CON** link and export hint in the Hangar.
 
+### Core book alignment
+- Rules were re-checked against the LANCER core book. Corrections:
+  - reactions are one per turn, each reaction type once per round
+  - Quick Tech can repeat with a different option; Activate once per system; protocols once per turn
+  - Biological characters are immune to tech except Scan and Lock On
+  - armor is subtracted once from the attack total, then resistance
+  - heat on characters without a heat cap becomes energy damage
+  - flying characters can't be knocked Prone
+  - falling deals 3 per 3 spaces, maximum 9
+  - only hostiles the same size or larger obstruct
+  - wreckage is hard cover and difficult terrain
+  - hard cover must be adjacent and as large as the target; distant obstructions give soft cover
+  - Blast cover is measured from the blast centre
+  - dangerous terrain is also checked when ending a turn there
+  - forcing saves breaks Hidden; Hide in soft cover needs you fully inside it
+  - grappled characters can't Boost
+  - Stabilize can reload Loading weapons
+  - Barrage adds an Auxiliary per fired mount
+- **Official NPC templates:**
+  - Elite: +1/+1 and two turns
+  - Veteran: +1/+1, Veterancy and one of nine Veteran traits
+  - Commander: Voice of Authority and Military Discipline
+  - Ultra: +3/+3, +5 HP, two turns (three vs 5+), Deadly, Juggernaut, Legendary and Reflex
+  - Mercenary: Opportunist
+  - Only Veterans and Ultras crit.
+- **Progression:** +5 License Levels per act (LL0 / LL5 / LL10), matching the core book's NPC tiers. Per-player budgets rose to T2 1.5 and T3 2.0.
+- **LCP importer:** official NPC classes from a pack you own. These are stored in the browser only and join campaign and skirmish encounters.
+
 ### Content and balance
-- Legal LL3 and LL6 sample squads, also available from Hangar buttons.
-- The balance sim matches squad to tier (LL0 pregens vs T1, LL3 vs T2, LL6 vs T3).
+- Legal LL5 and LL10 sample squads (the act 2 and act 3 levels), also available from Hangar buttons.
+- The balance sim matches squad to tier (LL0 pregens vs T1, LL5 vs T2, LL10 vs T3).
 - Team rosters were retuned for the long map. Results from AI vs AI runs on 18×36 maps:
 
   | kind | player wins | mechs lost per fight |
   |---|---|---|
-  | standard | 90–100% | 0.2–1.2 |
-  | elite | 50–70% | about 1.8 |
-  | boss | 58–90% | 1.9–2.9 |
+  | standard | 87–100% | 0.3–1.1 |
+  | elite | 50–90% | 0.9–2.8 |
+  | boss | 60–75% | 1.4–2.5 |
+
+  These are the results after the core-book and template changes: 8–10 seeds per team, against LL0 / LL5 / LL10 squads.
 
 ### Presentation and map
 - Procedural low-poly unit models, shaped by manufacturer or role, carrying their actual weapons, with marks for templates; creatures for biological enemies.
@@ -108,7 +137,13 @@ Out of the 392 items in lancer-data, 266 (68%) are fully executed and 39 are app
 
 ## Next
 
-### 1. Encounters and pacing (new)
+### 0. Official NPC fidelity (new)
+1. **Reactions (M):** map common official reaction effects (resistance to the triggering attack, counter-attacks, moves) onto the reaction framework.
+2. **Line and Cone save attacks (S),** and weapon on-hit text beyond simple conditions.
+3. **Conditional traits (M):** "+1 accuracy while adjacent to…", "ignores cover", weapon mods such as High Impact Rounds.
+4. **An official-encounter preview (S):** a list of classes and features with automation markers.
+
+### 1. Encounters and pacing
 1. **Level-aware encounters (M).**
    - Choose the enemy tier from the squad's average License Level, with the act as a minimum.
    - Warn in the Hangar when pilot levels don't match the act.
@@ -117,8 +152,9 @@ Out of the 392 items in lancer-data, 266 (68%) are fully executed and 39 are app
    - On long maps, tier-3 battles average 17–25 rounds in the sim.
    - Investigate passive AI (artillery that never advances, Controllers stalling) and sustain loops (healer + overshield + regen).
    - Target: 8–14 rounds.
-3. **Tier-1 openers are trivial (S).** On long maps, grunt-heavy T1 teams die on the approach (0.1–0.2 mechs lost). Give them ranged pressure or flanking deployments.
-4. **Deployment variety (M):** flank and ambush deployments, and objectives that start mid-map, so long maps aren't always a straight march.
+3. **Hunter Cell (T1 elite) is slightly easy (S):** 90% wins in the sim, target 50–80%.
+4. **Tier-1 openers are trivial (S).** On long maps, grunt-heavy T1 teams die on the approach (0.1–0.2 mechs lost). Give them ranged pressure or flanking deployments.
+5. **Deployment variety (M):** flank and ambush deployments, and objectives that start mid-map, so long maps aren't always a straight march.
 
 ### 2. UX
 1. **Minimap or overview toggle (S, new):** one key to zoom out and back, plus click-to-jump. More useful now that maps are long.

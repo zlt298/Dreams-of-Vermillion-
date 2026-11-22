@@ -65,3 +65,47 @@ describe('auto battle', () => {
     expect(attacks).toBeGreaterThan(4)
   })
 })
+
+describe('official templates', () => {
+  const def = (templates: any[], extra: any = {}) => ({ name: 'X', role: 'Striker', templates, features: [], ...extra })
+  it('Elite: +1 structure/stress and two turns; cannot crit', () => {
+    const s = baselineStats('Striker', 1, ['Elite'])
+    expect([s.structure, s.stress, s.activations]).toEqual([2, 2, 2])
+    expect(buildTeam({ id: 't', name: 't', tier: 1, designedFor: 4, units: [def(['Elite'])] } as any)[0].canCrit).toBe(false)
+  })
+  it('Veteran: +1/+1, Veterancy and a chosen trait; can crit', () => {
+    const [u] = buildTeam({ id: 't', name: 't', tier: 1, designedFor: 4, units: [def(['Veteran'], { veterancy: 'agi', veteranTrait: 'deadly' })] } as any)
+    expect([u.stats.structure, u.stats.stress, u.stats.activations]).toEqual([2, 2, 1])
+    expect(u.traits).toEqual(expect.arrayContaining(['veterancy:agi', 'deadly']))
+    expect(u.canCrit).toBe(true)
+  })
+  it('Ultra: 4 structure/stress, two turns (three vs 5+ hostiles), Deadly and Legendary', () => {
+    const s = baselineStats('Striker', 1, ['Ultra'])
+    expect([s.structure, s.stress, s.activations]).toEqual([4, 4, 2])
+    const team = { id: 't', name: 't', tier: 1, designedFor: 4, units: [def(['Ultra'])] } as any
+    expect(buildTeam(team, 5)[0].stats.activations).toBe(3)
+    expect(buildTeam(team)[0].traits).toEqual(expect.arrayContaining(['deadly', 'legendary', 'reflex']))
+  })
+  it('Veterancy adds accuracy to the chosen skill only', () => {
+    const [u] = buildTeam({ id: 't', name: 't', tier: 1, designedFor: 4, units: [def(['Veteran'], { veterancy: 'sys' })] } as any)
+    const p = pregenUnit('Assault'); p.pos = { x: 1, y: 1 }; u.pos = { x: 8, y: 8 }
+    const b = new Battle({ map: flatMap(), units: [p, u], seed: 1 })
+    expect(b.accuracyFromStatuses(u, 'save', 'sys')).toBe(1)
+    expect(b.accuracyFromStatuses(u, 'save', 'hull')).toBe(0)
+  })
+  it('Feign Death: survives the first destruction on 1 HP', () => {
+    const [u] = buildTeam({ id: 't', name: 't', tier: 1, designedFor: 4, units: [def(['Veteran'], { veteranTrait: 'feign_death' })] } as any)
+    const p = pregenUnit('Assault'); p.pos = { x: 1, y: 1 }; u.pos = { x: 8, y: 8 }
+    const b = new Battle({ map: flatMap(), units: [p, u], seed: 1 })
+    b.destroy(u, 'test')
+    expect(u.destroyed).toBe(false)
+    expect(u.hp).toBe(1)
+    b.destroy(u, 'test')
+    expect(u.destroyed).toBe(true)
+  })
+  it('validator rejects unknown veteran traits and traits without the template', () => {
+    const base = { id: 'x', name: 'x', tier: 1, designedFor: 4, units: [] as any[] }
+    expect(validateTeam({ ...base, units: [def(['Veteran'], { veteranTrait: 'nope', features: [{ type: 'weapon', name: 'g', weaponType: 'Rifle', range: [{ type: 'Range', val: 8 }], damage: [{ type: 'Kinetic', val: 4 }] }] })] } as any).errors.join()).toMatch(/veteranTrait/)
+    expect(validateTeam({ ...base, units: [def([], { veteranTrait: 'deadly' })] } as any).errors.join()).toMatch(/requires the Veteran/)
+  })
+})

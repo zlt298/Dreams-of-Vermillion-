@@ -274,6 +274,7 @@ export class Battle {
       if (stat && kind !== 'attack' && b.id === ({ hull: 'hull', agi: 'agility', sys: 'systems', eng: 'engineering' } as const)[stat]) n += b.accuracy
     }
     if (kind !== 'attack') {
+      for (const o of this.alive()) for (const s of scriptsFor(o)) if (s.checkAccuracy) n += s.checkAccuracy(this, o, u, kind, stat)
       const bol = u.statuses.find(s => s.id === 'bolstered')
       if (bol) { n += 2; this.removeStatus(u, 'bolstered') }
     }
@@ -467,7 +468,7 @@ export class Battle {
     if (cost === 'reaction') {
       // one reaction per turn (any character's turn); each reaction type 1/round, refreshing at your own turn start
       if (u.reactionsLeft <= 0) return 'Already reacted this turn'
-      if (action && u.flags[`react:${action}`]) return `${actionLabel(action)} already used this round`
+      if (action && u.flags[`react:${action}`] && !(action === 'overwatch' && u.traits?.includes('reflex'))) return `${actionLabel(action)} already used this round`
       if (this.has(u, 'grappled')) return 'Grappled'
       if (this.has(u, 'stunned')) return 'Stunned'
       if (this.has(u, 'jammed')) return 'Jammed'
@@ -541,8 +542,7 @@ export class Battle {
       this.say(`${u.name}'s REACTOR IS CRITICAL — meltdown at the end of its next turn!`, 'warn')
       return
     }
-    const marked = u.stats.stress - u.stress
-    const dice = Array.from({ length: marked }, () => this.rng.d(6))
+    const dice = this.tableDice(u, u.stats.stress - u.stress)
     const ones = dice.filter(d => d === 1).length
     const low = Math.min(...dice)
     this.say(`Overheating check [${dice.join(', ')}]`)
@@ -559,11 +559,20 @@ export class Battle {
     }
   }
 
+  /** Structure/overheat dice; Legendary rolls twice and keeps the better result. */
+  private tableDice(u: Unit, marked: number): number[] {
+    const roll = () => Array.from({ length: marked }, () => this.rng.d(6))
+    const dice = roll()
+    if (!u.traits?.includes('legendary')) return dice
+    const alt = roll()
+    const score = (d: number[]) => (d.filter(x => x === 1).length >= 2 ? -10 : 0) + Math.min(...d)
+    this.say(`${u.name} is Legendary: [${dice.join(', ')}] or [${alt.join(', ')}]`)
+    return score(alt) > score(dice) ? alt : dice
+  }
   private structureCheck(u: Unit) {
     if (u.structure <= 0) { this.destroy(u, 'structure'); return }
     if (u.isGrunt) { this.destroy(u, 'structure'); return }
-    const marked = u.stats.structure - u.structure
-    const dice = Array.from({ length: marked }, () => this.rng.d(6))
+    const dice = this.tableDice(u, u.stats.structure - u.structure)
     const ones = dice.filter(d => d === 1).length
     const low = Math.min(...dice)
     this.say(`Structure check [${dice.join(', ')}]`)
@@ -622,6 +631,15 @@ export class Battle {
 
   destroy(u: Unit, why: string) {
     if (u.destroyed) return
+    // Veteran trait Feign Death: the first time it would be destroyed it survives on 1 HP, apparently dead (Hidden)
+    if (u.traits?.includes('feign_death') && !u.flags.feignUsed && !/meltdown|self-destruct|crushing/.test(why)) {
+      u.flags.feignUsed = true
+      u.hp = 1
+      u.structure = Math.max(1, u.structure)
+      this.addStatus(u, 'hidden', 'until_cleared')
+      this.say(`${u.name} goes down… (feigning death)`, 'damage')
+      return
+    }
     u.destroyed = true
     u.hp = 0
     // destroyed mechs become wreckage: hard cover and an obstruction (unless vaporised)
@@ -1359,6 +1377,8 @@ export class Battle {
           if (multi) a = Math.ceil(a / 2)
           base.push({ type: e.type ?? pr.damage[0]?.type ?? 'Kinetic', amount: a })
         }
+        // Deadly (Veteran trait / Ultra): +1d6 damage on critical hits
+        if (ctx.crit && u.traits?.includes('deadly')) base.push({ type: pr.damage[0]?.type ?? 'Kinetic', amount: this.rng.d(6) })
         const burnTag = tagVal(pr.tags, 'tg_burn')
         if (burnTag) base.push({ type: 'Burn', amount: burnTag })
         const heatTag = tagVal(pr.tags, 'tg_heat_target')
@@ -1420,7 +1440,7 @@ export class Battle {
     let acc = rollAccuracy(this.rng, net)
     let total = d20 + ctx.attackBonus + acc.bonus
     const def = this.defenseOf(t, ctx)
-    if (total < def && ctx.rerollOnMiss) {
+    if (total < def && ctx.rerollOnMiss && (ctx.rerollOnMiss === true || ctx.rerollOnMiss())) {
       this.say(`  ${ctx.attacker.name} rerolls (${total}).`)
       d20 = this.rng.d(20)
       acc = rollAccuracy(this.rng, net)

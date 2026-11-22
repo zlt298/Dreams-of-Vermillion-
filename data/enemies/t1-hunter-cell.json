@@ -68,18 +68,6 @@
           "stats": {
             "sensors": 5
           }
-        },
-        {
-          "type": "reaction",
-          "name": "Reposition",
-          "trigger": "enemy_moves_adjacent",
-          "frequency": "1/round",
-          "effects": [
-            {
-              "do": "push",
-              "val": 2
-            }
-          ]
         }
       ]
     },
@@ -139,16 +127,10 @@
             "speed": 1,
             "evasion": 1
           }
-        },
-        {
-          "type": "reaction",
-          "name": "Counter-Slash",
-          "trigger": "hit_by_melee",
-          "frequency": "1/round",
-          "attackWith": "Monoblade"
         }
       ],
-      "count": 2
+      "count": 2,
+      "veteranTrait": "deadly"
     },
     {
       "name": "Overseer",
@@ -204,6 +186,34 @@
         }
       ],
       "count": 2
+    },
+    {
+      "name": "Seeker Drone",
+      "role": "Striker",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 2,
+      "description": "Expendable hunter-killer drones that run ahead of the cell.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Spike Launcher",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": 3
+            }
+          ]
+        }
+      ]
     }
   ]
 }

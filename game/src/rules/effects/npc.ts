@@ -123,17 +123,4 @@ registerScripts([
       return features(self).filter(s => (s.feature as any).type === 'system').map(s => systemAction(b, self, s))
     },
   },
-  {
-    id: 'template:Commander',
-    note: 'Commander aura and rally',
-    beforeAnyAttack(b, self, ctx) {
-      if (ctx.attacker === self || b.hostile(self, ctx.attacker) || self.destroyed) return
-      if (b.distance(self, ctx.attacker) <= 3) { ctx.accuracy++; ctx.reasons.push(`${self.name} command +1`) }
-    },
-    onDestroyed(b, self, victim) {
-      if (victim === self || b.hostile(self, victim) || b.distance(self, victim) > 5) return
-      b.say(`${self.name} rallies nearby allies!`)
-      for (const a of b.alive()) if (!b.hostile(self, a) && a.kind === 'npc' && b.distance(self, a) <= 5) a.overshield = Math.max(a.overshield, 2)
-    },
-  },
 ])

@@ -81,43 +81,50 @@ export interface TemplateRule {
   notes: string
 }
 
+// Official templates (Lancer core book NPC templates). Traits marked (engine) are implemented in
+// src/rules/effects/templates.ts and Battle.
 export const TEMPLATE_RULES: Record<Template, TemplateRule> = {
   Grunt: {
     budget: 0.25, featureSlots: -1,
     apply: s => { s.hp = 1; s.structure = 1; s.stress = 1; s.armor = 0 },
-    notes: '1 HP; destroyed by any damage (hits, Reliable on a miss, enemy heat); unharmed on a successful save (no half damage). One fewer feature.',
+    notes: 'Chaff/Weak: 1 HP; destroyed by any damage (hits, Reliable on a miss, enemy heat); unharmed on a successful save (no half damage). One fewer feature.',
   },
   Veteran: {
-    budget: 1.5, featureSlots: 1,
-    apply: s => { s.hp += 4; s.attackBonus += 1; s.evasion += 1 },
-    notes: '+4 HP, +1 attack bonus, +1 evasion, +1 feature.',
+    budget: 1.5, featureSlots: 0,
+    apply: s => { s.structure += 1; s.stress += 1 },
+    notes: 'Reinforced (+1 structure, +1 stress); Veterancy (+1 accuracy on checks/saves with one skill, `veterancy`); one Veteran trait (`veteranTrait`). Can score critical hits.',
   },
   Elite: {
-    budget: 2, featureSlots: 1,
-    apply: s => { s.structure = 2; s.stress = 2; s.hp += 2 },
-    notes: '2 structure and 2 stress (uses structure/overheat tables), +2 HP, +1 feature.',
+    budget: 2, featureSlots: 0,
+    apply: s => { s.structure += 1; s.stress += 1; s.activations = 2 },
+    notes: 'Reinforced (+1 structure, +1 stress); Ready and Waiting (two separate turns each round).',
   },
   Commander: {
-    budget: 2, featureSlots: 1,
-    apply: s => { s.structure = Math.max(s.structure, 2); s.stress = Math.max(s.stress, 2) },
-    notes: 'Aura: allies within 3 gain +1 accuracy on attacks. Rally: when an ally within 5 is destroyed, allies within 5 gain 2 overshield. 2 structure/stress.',
+    budget: 1.75, featureSlots: 0,
+    apply: s => { s.structure += 1; s.stress += 1 },
+    notes: 'Reinforced (+1/+1); Voice of Authority (1/round reaction: an ally rerolls a missed attack); Military Discipline (adjacent allies +1 accuracy on attacks, checks and saves).',
   },
   Ultra: {
     budget: 4, featureSlots: 3,
-    apply: s => { s.structure = 3; s.stress = 3; s.activations = 2; s.hp += 6; s.save += 1 },
-    notes: '3 structure, 3 stress, 2 activations per round, +6 HP, +1 save target, +3 features. Use for bosses.',
+    apply: s => { s.structure += 3; s.stress += 3; s.activations = 2; s.hp += 5 },
+    notes: 'Reinforced (+3/+3), Resilient (+5 HP), Shock and Awe (two turns, a third vs 5+ hostiles; reactions refresh every turn), Deadly (+1d6 on crits), Juggernaut (clear a condition at turn start, repair a weapon/system at turn end), Legendary (structure/overheat rolled twice, keep the better), Reflex (unlimited Overwatch). +3 optional features. One per encounter.',
   },
   Mercenary: {
     budget: 1.25, featureSlots: 0,
-    apply: s => { s.hp += 2 },
-    notes: 'May carry one or two licensed mech weapons from lancer-data (by id) in addition to its features. +2 HP.',
+    apply: () => {},
+    notes: 'Opportunist (+1 accuracy when the target is engaged by an ally). May also carry one or two licensed mech weapons from lancer-data (by id; house rule).',
   },
 }
+
+/** Veteran traits the engine supports (pick one per Veteran, in addition to Veterancy). */
+export const VETERAN_TRAITS = ['deadly', 'feign_death', 'hacker', 'hardened_target', 'insulated', 'legendary', 'lightning_reflexes', 'shock_armor', 'steel_jaw'] as const
+export type VeteranTrait = (typeof VETERAN_TRAITS)[number]
+export type SkillStat = 'hull' | 'agi' | 'sys' | 'eng'
 
 export const BASE_FEATURE_SLOTS: Record<Tier, number> = { 1: 3, 2: 4, 3: 5 }
 
 /** Encounter budget per player mech, by act (run depth). Elite nodes x1.5, boss nodes x2. */
-export const BUDGET_PER_PC: Record<Tier, number> = { 1: 1.0, 2: 1.25, 3: 1.5 }
+export const BUDGET_PER_PC: Record<Tier, number> = { 1: 1.0, 2: 1.5, 3: 2.0 }
 
 // ------------------------------------------------------------------ feature schema
 export interface WeaponFeature {
@@ -134,6 +141,9 @@ export interface WeaponFeature {
   recharge?: number          // Recharge X+ (d6 at start of turn)
   uses?: number              // Limited
   text?: string
+  /** official NPC data only: mount size and the weapon's own attack bonus */
+  size?: 'Auxiliary' | 'Main' | 'Heavy' | 'Superheavy'
+  attackBonus?: number
 }
 
 export interface TechFeature {
@@ -141,6 +151,8 @@ export interface TechFeature {
   name: string
   kind: 'quick' | 'full'
   range?: number             // default: sensors
+  /** official NPC data only: the feature's own tech attack bonus */
+  attackBonus?: number
   onHit: Effect[]
   accuracy?: number
   recharge?: number
@@ -173,6 +185,8 @@ export interface TraitFeature {
   resist?: string[]
   immune?: string[]
   hooks?: { on: HookTrigger; effects: Effect[]; target?: 'self' | 'trigger' }[]
+  /** the unit can fly */
+  flying?: boolean
   text?: string
 }
 
@@ -198,6 +212,13 @@ export interface EnemyUnitDef {
   /** explicit stat adjustments on top of baseline + tier + templates */
   stats?: Partial<NpcStats>
   features: Feature[]
+  /** official NPC classes (imported LCP, browser only): full tier stats replacing the role baseline; templates still apply */
+  baseStats?: NpcStats
+  /** official NPC class id this unit was built from */
+  officialClass?: string
+  /** Veteran only: skill for Veterancy (default: the role's best skill) and the chosen Veteran trait */
+  veterancy?: SkillStat
+  veteranTrait?: VeteranTrait
   /** Mercenary only: lancer-data weapon ids */
   mechWeapons?: string[]
   description?: string
@@ -217,6 +238,11 @@ export interface EnemyTeam {
   sitrep?: 'standard' | 'holdout' | 'control' | 'extraction' | 'assassination'
   description?: string
   units: EnemyUnitDef[]
+}
+
+export function applyTemplates(s: NpcStats, templates: Template[] = []): NpcStats {
+  for (const tp of templates) TEMPLATE_RULES[tp].apply(s)
+  return s
 }
 
 export function baselineStats(role: Role, tier: Tier, templates: Template[] = []): NpcStats {

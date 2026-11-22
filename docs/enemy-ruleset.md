@@ -37,7 +37,8 @@ Each unit costs budget:
 | standard | 1 |
 | Grunt | 0.25 (+0.25 per extra template) |
 | Veteran | 1.5 |
-| Elite / Commander | 2 |
+| Commander | 1.75 |
+| Elite | 2 |
 | Mercenary | 1.25 |
 | Ultra | 4 |
 
@@ -48,8 +49,8 @@ Multiple non-Grunt templates cost the most expensive one, plus 0.5 for each extr
 | tier | per-PC rate |
 |---|---|
 | 1 | 1.0 |
-| 2 | 1.25 |
-| 3 | 1.5 |
+| 2 | 1.5 |
+| 3 | 2.0 |
 
 The kind multiplier is 1 for standard, 1.5 for elite and 2 for boss.
 
@@ -71,6 +72,8 @@ Example: a tier-1 standard team for 4 PCs targets a budget of 4, with a maximum 
   "stats": { "hp": 14 },           // optional overrides, within tolerances (§4)
   "features": [ /* §5 */ ],
   "mechWeapons": ["mw_assault_rifle"], // Mercenary only: up to 2 lancer-data weapon ids
+  "veterancy": "agi",              // Veteran only: hull | agi | sys | eng (default: the role's best skill)
+  "veteranTrait": "deadly",        // Veteran only: one trait from §5.1
   "description": "flavour shown on hover"
 }
 ```
@@ -123,11 +126,27 @@ Tech attack = attack bonus + Sys (if positive). Every unit starts with 1 structu
 | Template | Effect | Feature slots |
 |---|---|---|
 | **Grunt** | 1 HP. Any damage destroys it, including Reliable damage on a miss and heat from an enemy. A successful save leaves it completely unharmed (no half damage). Grunts are glass cannons: dangerous, and they soak up player actions. | −1 |
-| **Veteran** | +4 HP, +1 attack bonus, +1 Evasion | +1 |
-| **Elite** | 2 structure and 2 stress (rolls on the structure and overheating tables), +2 HP | +1 |
-| **Commander** | Aura: allies within 3 get +1 accuracy. Rally: when an ally within 5 is destroyed, allies within 5 gain 2 overshield. 2 structure and 2 stress. | +1 |
-| **Ultra** | 3 structure, 3 stress, **2 activations per round**, +6 HP, +1 save target | +3 |
-| **Mercenary** | +2 HP. May carry up to 2 licensed mech weapons from lancer-data (`mechWeapons`). Superheavy only at tier 3. | 0 |
+| **Veteran** | +1 structure, +1 stress. **Veterancy**: +1 accuracy on checks and saves with one skill (`veterancy`). One **Veteran trait** (`veteranTrait`, §5.1). Can score critical hits. | 0 |
+| **Elite** | +1 structure, +1 stress (rolls on the structure and overheating tables). **Two separate turns each round.** | 0 |
+| **Commander** | +1 structure, +1 stress. **Voice of Authority**: 1/round reaction, an ally may reroll a missed attack. **Military Discipline**: adjacent allies get +1 accuracy on attacks, checks and saves (not while the Commander is Jammed). | 0 |
+| **Ultra** | +3 structure, +3 stress (4 each), +5 HP. **Two turns each round** (three if facing 5+ hostiles); reactions refresh every turn. **Deadly** (+1d6 on crits), **Juggernaut** (clears a condition at turn start, repairs a destroyed weapon/system at turn end), **Legendary** (structure/overheat checks rolled twice, keep the better), **Reflex** (Overwatch any number of times per round). Can score critical hits. Use at most one per encounter. | +3 |
+| **Mercenary** | **Opportunist**: +1 accuracy when the target is engaged by an ally. House rule: may carry up to 2 licensed mech weapons from lancer-data (`mechWeapons`); Superheavy only at tier 3. | 0 |
+
+These follow the official LANCER templates. Only Veterans and Ultras can score critical hits; other NPCs can't. Ultra can't combine with Grunt or Elite.
+
+### 5.1 Veteran traits
+
+| `veteranTrait` | Effect |
+|---|---|
+| `deadly` | +1d6 damage on critical hits |
+| `feign_death` | The first time it would be destroyed it survives on 1 HP and becomes Hidden |
+| `hacker` | +2 heat on successful tech attacks |
+| `hardened_target` | +1 accuracy on Systems saves; tech attacks against it take +1 difficulty |
+| `insulated` | Immune to Burn |
+| `legendary` | Structure and overheating checks are rolled twice; it keeps the better result |
+| `lightning_reflexes` | Heavy and Superheavy attacks against it miss on a d6 roll of 5+ |
+| `shock_armor` | Resistance to damage from Main weapons |
+| `steel_jaw` | Auxiliary weapons deal at most 1 damage to it |
 
 Base feature slots by tier: T1 3, T2 4, T3 5.
 

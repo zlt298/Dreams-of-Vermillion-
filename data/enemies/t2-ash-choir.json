@@ -87,7 +87,7 @@
     {
       "name": "Ember Zealot",
       "role": "Striker",
-      "count": 3,
+      "count": 4,
       "color": "#e0562b",
       "features": [
         {
@@ -214,7 +214,11 @@
             }
           ]
         }
-      ]
+      ],
+      "templates": [
+        "Veteran"
+      ],
+      "veteranTrait": "shock_armor"
     },
     {
       "name": "Ash Thrall",

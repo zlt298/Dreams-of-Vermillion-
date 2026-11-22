@@ -178,7 +178,7 @@
       "templates": [
         "Grunt"
       ],
-      "count": 4,
+      "count": 6,
       "color": "#8e2a2a",
       "features": [
         {
@@ -250,7 +250,8 @@
             }
           ]
         }
-      ]
+      ],
+      "count": 2
     }
   ]
 }

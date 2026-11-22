@@ -174,7 +174,8 @@
           "frequency": "1/round",
           "attackWith": "Penitent Blade"
         }
-      ]
+      ],
+      "veteranTrait": "deadly"
     },
     {
       "name": "Tithe Inquisitor",
@@ -260,7 +261,7 @@
           ]
         }
       ],
-      "count": 2
+      "count": 1
     },
     {
       "name": "Tithe Serf",

@@ -210,18 +210,6 @@
               "val": "1d6+1"
             }
           ]
-        },
-        {
-          "type": "reaction",
-          "name": "Feedback",
-          "trigger": "attacked_and_missed",
-          "frequency": "1/round",
-          "effects": [
-            {
-              "do": "heat",
-              "val": 2
-            }
-          ]
         }
       ]
     },
@@ -292,7 +280,8 @@
             }
           ]
         }
-      ]
+      ],
+      "veteranTrait": "shock_armor"
     },
     {
       "name": "Warden Trooper",

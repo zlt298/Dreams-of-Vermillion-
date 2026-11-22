@@ -1,3 +1,6 @@
 node_modules/
 dist/
 .DS_Store
+
+# LANCER content packs are paid content: import them in-game (stored in the browser), never commit them
+*.lcp
