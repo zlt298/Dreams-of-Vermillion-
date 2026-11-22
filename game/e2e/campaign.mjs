@@ -31,6 +31,12 @@ try {
   await page.reload()
   await page.click('text=New run')
   await page.click('button:has-text("Begin run")')
+  // opening interlude: typed console readout; holding any key skips it
+  await page.waitForSelector('.interlude .tx')
+  await page.waitForTimeout(600)
+  const typed = await page.evaluate(() => document.querySelector('.interlude .tx').textContent.length)
+  if (typed < 5) { console.error('e2e: FAILED — interlude is not typing'); failed = true }
+  await page.keyboard.down('Space'); await page.waitForTimeout(1500); await page.keyboard.up('Space')
   await page.click('.node.avail >> nth=0')
   await page.waitForFunction(() => !!window.__dov.battle, null, { timeout: 15000 })
 

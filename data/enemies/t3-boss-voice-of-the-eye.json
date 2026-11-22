@@ -1,25 +1,29 @@
 {
-  "id": "t3-boss-vermillion-engine",
-  "name": "The Vermillion Engine",
-  "faction": "The Dream",
-  "theme": "The source of the red dreams: a walking reactor-cathedral that broadcasts madness.",
+  "id": "t3-boss-voice-of-the-eye",
+  "name": "The Voice of the Eye",
+  "faction": "Choir of the Second Dawn",
+  "theme": "The Choir's prophet, guarding the casket cradle in the Cinnabar Annex vault. It sings, and something in the casket sings back.",
   "tier": 3,
   "designedFor": 4,
   "kind": "boss",
-  "description": "Final boss. Identity: a size-2 juggernaut that drags lancers into its burst while its acolytes keep it shielded.",
+  "description": "Final boss (casket vault). A size-2 juggernaut that already knows where you will stand: it forecasts its targets, drags them into its corona and burns them, while the Choir keeps it whole. Frame: no match in any registry. Pilot: [REDACTED].",
   "units": [
     {
-      "name": "The Vermillion Engine",
+      "name": "The Voice of the Eye",
       "role": "Defender",
       "templates": [
         "Ultra"
       ],
       "color": "#b3122e",
-      "description": "Every lancer who sleeps near it dreams in red.",
+      "description": "Frame: NO MATCH IN ANY REGISTRY. Pilot: [REDACTED]. Its hull is painted with a single red solar eye; its weapon systems are written as prayers.",
+      "stats": {
+        "armor": 2,
+        "hp": 28
+      },
       "features": [
         {
           "type": "weapon",
-          "name": "Siege Cannon",
+          "name": "First Verse: Sunwake Lance",
           "weaponType": "Cannon",
           "range": [
             {
@@ -29,14 +33,15 @@
           ],
           "damage": [
             {
-              "type": "Kinetic",
+              "type": "Energy",
               "val": "2d6+2"
             }
-          ]
+          ],
+          "text": "Let the light find them where they hide."
         },
         {
           "type": "weapon",
-          "name": "Crimson Lash",
+          "name": "Second Verse: Ochre Censer",
           "weaponType": "Melee",
           "range": [
             {
@@ -55,11 +60,12 @@
               "do": "pull",
               "val": 2
             }
-          ]
+          ],
+          "text": "A chain-censer that drags the faithless into the corona."
         },
         {
           "type": "weapon",
-          "name": "Barrage Pods",
+          "name": "Third Verse: All Voices Rise",
           "weaponType": "Launcher",
           "range": [
             {
@@ -82,11 +88,12 @@
               "id": "tg_arcing"
             }
           ],
-          "recharge": 5
+          "recharge": 5,
+          "text": "Hymn-pods: the Choir's song, given payload."
         },
         {
           "type": "system",
-          "name": "Overpressure Vent",
+          "name": "The Sun Rises Twice",
           "activation": "full",
           "target": "self_burst",
           "radius": 2,
@@ -107,30 +114,31 @@
               "val": 2
             }
           ],
-          "recharge": 6
+          "recharge": 6,
+          "text": "The reactor flares in a second dawn; everything near it burns and is thrown back."
         },
         {
           "type": "tech",
-          "name": "Dream Broadcast",
+          "name": "Forecast: You Have Done This Before",
           "kind": "quick",
           "onHit": [
+            {
+              "do": "status",
+              "status": "lockon",
+              "duration": "until_cleared"
+            },
             {
               "do": "status",
               "status": "impaired",
               "save": "sys",
               "duration": "next_turn_end_target"
-            },
-            {
-              "do": "status",
-              "status": "slowed",
-              "save": "sys",
-              "duration": "next_turn_end_target"
             }
-          ]
+          ],
+          "text": "It reads you from a forecast the casket has already run. You are Locked On, and must pass a Systems save or be Impaired."
         },
         {
           "type": "trait",
-          "name": "Dreaming Core",
+          "name": "Fed by the Casket",
           "hooks": [
             {
               "on": "turn_start",
@@ -141,22 +149,24 @@
                 }
               ]
             }
-          ]
+          ],
+          "text": "Cabling runs from its spine to the cradle. It clears 3 heat at the start of each turn."
         },
         {
           "type": "trait",
-          "name": "Vermillion Plating",
+          "name": "Red-Pigment Plating",
           "resist": [
             "Explosive"
           ],
           "immune": [
             "prone",
             "immobilized"
-          ]
+          ],
+          "text": "The eye is painted in a red that isn't quite paint."
         },
         {
           "type": "reaction",
-          "name": "Retribution",
+          "name": "It Sings Back",
           "trigger": "damaged",
           "frequency": "1/round",
           "effects": [
@@ -164,22 +174,20 @@
               "do": "heat",
               "val": 2
             }
-          ]
+          ],
+          "text": "When it is damaged, the song answers: the attacker takes 2 heat."
         }
-      ],
-      "stats": {
-        "armor": 2,
-        "hp": 28
-      }
+      ]
     },
     {
-      "name": "Dreamer Husk",
+      "name": "Sleepwalker",
       "role": "Biological",
       "templates": [
         "Grunt"
       ],
       "count": 6,
       "color": "#8e2a2a",
+      "description": "Annex coveralls. Eyes open. Singing.",
       "features": [
         {
           "type": "weapon",
@@ -201,9 +209,11 @@
       ]
     },
     {
-      "name": "Engine Acolyte",
+      "name": "Cantor of the Second Dawn",
       "role": "Support",
-      "color": "#27ae60",
+      "color": "#c0392b",
+      "count": 2,
+      "description": "Choir mechanics in red-eyed hoods. They keep the Voice whole and never stop singing.",
       "features": [
         {
           "type": "system",
@@ -235,7 +245,7 @@
         },
         {
           "type": "weapon",
-          "name": "Rivet Gun",
+          "name": "Hymnal Carbine",
           "weaponType": "CQB",
           "range": [
             {
@@ -250,8 +260,7 @@
             }
           ]
         }
-      ],
-      "count": 2
+      ]
     }
   ]
 }

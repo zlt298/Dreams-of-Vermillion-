@@ -49,6 +49,8 @@ export interface RunState {
   over?: 'victory' | 'defeat'
   battlesWon: number
   pendingLevelUp?: boolean
+  /** story interludes already shown in this run */
+  story?: string[]
 }
 
 export const ACTS = 3

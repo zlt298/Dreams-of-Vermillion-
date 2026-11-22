@@ -101,6 +101,10 @@ Useful commands, all run from `game/`:
 - **LCP importer:** official NPC classes from a pack you own. These are stored in the browser only and join campaign and skirmish encounters.
 - **Official base features scripted:** 67 scripts keyed by feature id, plus structured on-hit conditions and Line/Cone save attacks. Core pack base features: 81 of 116 fully automated, 16 approximated. A smoke battle runs for every script, and official encounter budgets were re-tuned afterwards.
 
+### Story
+- Four console-readout interludes: opening, end of act 1, end of act 2, finale. They type out, hold-to-skip, show a faint two-frame flash of the burning solar eye, and are replayable from the title screen.
+- Final boss retooled as *The Voice of the Eye*, with Sleepwalker grunts and Cantors of the Second Dawn. It's always the act 3 boss. Sim: 50% player wins vs LL10.
+
 ### Content and balance
 - Legal LL5 and LL10 sample squads (the act 2 and act 3 levels), also available from Hangar buttons.
 - The balance sim matches squad to tier (LL0 pregens vs T1, LL5 vs T2, LL10 vs T3).
@@ -143,6 +147,11 @@ Out of the 392 items in lancer-data, 266 (68%) are fully executed and 39 are app
 2. **Deployables and mines (M):** Engineer turrets, Seeder mines, Rainmaker Javelin Rockets, Barricade printer, Hive swarms. These depend on the drone and deployable framework (§4.3).
 3. **Tighten the partial scripts (S):** Barrel Roll's free movement, Suppress triggering *as* the target starts to move, Earthshaker cover segments, Mirage Dataveil transfer.
 4. **An official-encounter preview (S):** a list of classes and features with automation markers.
+
+### 0b. Story (optional ideas from the story handoff)
+1. A "failed run" readout (iteration ended, rewinding…) on the squad-lost screen.
+2. Short between-mission lines: Choir radio chatter, the NHP breaking into comms.
+3. Flavor for the other act bosses and Choir teams (solar-eye sigils, singing on open channel).
 
 ### 1. Encounters and pacing
 1. **Level-aware encounters (M).**

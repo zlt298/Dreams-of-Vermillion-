@@ -16,6 +16,8 @@ import { BattleScreen } from './battle-ui'
 import { featureAutomated, loadPacks, readLcp, removePack, storePack, officialClasses } from '../import/lcp'
 import { generateOfficialTeam } from '../enemies/official'
 import { Rng } from '../rules/rng'
+import { STORY, STORY_ORDER, type StoryId } from '../data/story'
+import { playInterlude } from './interlude'
 import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad } from './roster'
 import { esc } from './dom'
 import { classify } from '../rules/effects/coverage'
@@ -35,7 +37,11 @@ export class App {
     this.title()
   }
 
+  private disposeInterlude: (() => void) | null = null
+
   private clear() {
+    this.disposeInterlude?.()
+    this.disposeInterlude = null
     this.battle?.dispose()
     this.battle = null
     this.root.innerHTML = ''
@@ -52,6 +58,7 @@ export class App {
         <button data-go="hangar" class="${this.run && !this.run.over ? '' : 'primary'}">New run — choose squad</button>
         <button data-go="skirmish">Quick skirmish</button>
         <button data-go="official">Official NPCs (import .lcp)</button>
+        ${unlockedStories().length ? '<button data-go="archive">Transmissions</button>' : ''}
         <button data-go="help">How to play</button>
       </div>
       ${lastLoadProblem ? `<p class="bad small">${esc(lastLoadProblem)}</p>` : ''}
@@ -65,6 +72,7 @@ export class App {
       if (g === 'skirmish') this.hangar('skirmish')
       if (g === 'help') this.help()
       if (g === 'official') this.officialNpcs()
+      if (g === 'archive') this.archive()
     })
   }
 
@@ -188,7 +196,7 @@ export class App {
       if (g === 'start') {
         const squad = this.roster.filter(p => this.squadPick.has(p.id))
         if (!squad.length) return alert('Pick at least one pilot')
-        if (purpose === 'run') { this.run = newRun(squad.map(p => structuredClone(p))); saveRun(this.run); this.runMap() }
+        if (purpose === 'run') { this.run = newRun(squad.map(p => structuredClone(p))); saveRun(this.run); this.story('opening', () => this.runMap()) }
         else this.skirmishSetup(squad)
       }
     })
@@ -229,7 +237,10 @@ export class App {
     const run = this.run
     if (!run) return this.title()
     if (run.over) return this.runOver()
-    if (run.pendingLevelUp) return this.levelUpScreen()
+    if (run.pendingLevelUp) {
+      const done = `act${run.act - 1}` as StoryId
+      return STORY[done] ? this.story(done, () => this.levelUpScreen()) : this.levelUpScreen()
+    }
     this.clear()
     const avail = new Set(availableNodes(run).map(n => n.id))
     const icon: Record<string, string> = { combat: '⚔', elite: '☠', rest: '⛺', supply: '⬢', boss: '♛' }
@@ -276,7 +287,9 @@ export class App {
     const official = officialClasses()
     const mode = officialMode()
     const useOfficial = official.length > 0 && (mode === 'only' || (mode === 'mixed' && new Rng(n.seed ^ 0x51a7).next() < 0.5))
-    const team = useOfficial ? generateOfficialTeam(official, tier, kind, run.squad.length, n.seed) : chooseTeam(run, n, teamsFor(tier, kind, n.layer + 1))
+    // the finale is always the Choir's prophet in the casket vault
+    const finale = n.kind === 'boss' && n.act === ACTS ? validTeams().find(t => t.id === FINAL_BOSS) : undefined
+    const team = finale ?? (useOfficial ? generateOfficialTeam(official, tier, kind, run.squad.length, n.seed) : chooseTeam(run, n, teamsFor(tier, kind, n.layer + 1)))
     n.teamId = team.id
     const map = generateMap(n.seed)
     const units = squadUnits(run)
@@ -289,7 +302,7 @@ export class App {
     b.start()
     this.clear()
     this.battle = new BattleScreen(this.root, b, {
-      title: `${team.name} (Act ${n.act} ${n.kind})`,
+      title: finale ? `CINNABAR ANNEX // CASKET VAULT — ${team.name}` : `${team.name} (Act ${n.act} ${n.kind})`,
       onEnd: w => {
         recordBattle(run, n, b.units, w === 'player')
         saveRun(run)
@@ -348,12 +361,36 @@ export class App {
 
   runOver() {
     const run = this.run!
+    if (run.over === 'victory' && !run.story?.includes('finale')) return this.story('finale', () => this.runOver())
     this.clear()
     const won = run.over === 'victory'
     this.root.innerHTML = `<div class="screen center"><h1 class="${won ? 'player' : 'enemy'}">${won ? 'CAMPAIGN COMPLETE' : 'SQUAD LOST'}</h1>
       <p>${run.battlesWon} battles won across ${Math.min(ACTS, run.act)} act(s).</p><div class="log small">${run.log.map(l => `<div>${esc(l)}</div>`).join('')}</div>
       <button data-go="t" class="primary">Title</button></div>`
     this.on('[data-go]', () => { this.run = null; saveRun(null); this.title() })
+  }
+
+  // ------------------------------------------------------------------ story interludes
+  /** Play a story interlude once per run (it's also unlocked in the title screen's archive). */
+  story(id: StoryId, then: () => void) {
+    const run = this.run
+    if (run?.story?.includes(id)) return then()
+    if (run) { run.story = [...(run.story ?? []), id]; saveRun(run) }
+    unlockStory(id)
+    this.replayStory(id, then)
+  }
+  replayStory(id: StoryId, then: () => void) {
+    this.clear()
+    this.disposeInterlude = playInterlude(this.root, STORY[id].title, STORY[id].text, () => { this.disposeInterlude = null; then() })
+  }
+  archive() {
+    this.clear()
+    const open = unlockedStories()
+    this.root.innerHTML = `<div class="screen center"><h2>Transmissions</h2><p class="muted">Recovered documents. More are unlocked as you advance.</p>
+      <div class="menu">${STORY_ORDER.map(id => open.includes(id) ? `<button data-s="${id}">${esc(STORY[id].title)}</button>` : '<button disabled>[REDACTED]</button>').join('')}</div>
+      <button data-go="back">Back</button></div>`
+    this.on('[data-s]', el => this.replayStory(el.dataset.s as StoryId, () => this.archive()))
+    this.on('[data-go]', () => this.title())
   }
 
   notice(title: string, text: string, then: () => void) {
@@ -392,3 +429,12 @@ function officialMode(): OfficialMode {
   try { const v = localStorage.getItem('dov-official-mode'); return v === 'mixed' || v === 'only' ? v : 'off' } catch { return 'off' }
 }
 function setOfficialMode(m: OfficialMode) { try { localStorage.setItem('dov-official-mode', m) } catch { /* storage unavailable */ } }
+
+const FINAL_BOSS = 't3-boss-voice-of-the-eye'
+const STORY_KEY = 'dov-story-unlocked'
+function unlockedStories(): StoryId[] {
+  try { const v = JSON.parse(localStorage.getItem(STORY_KEY) ?? '[]'); return Array.isArray(v) ? v.filter((x: string) => x in STORY) : [] } catch { return [] }
+}
+function unlockStory(id: StoryId) {
+  try { const s = new Set(unlockedStories()); s.add(id); localStorage.setItem(STORY_KEY, JSON.stringify([...s])) } catch { /* storage unavailable */ }
+}
