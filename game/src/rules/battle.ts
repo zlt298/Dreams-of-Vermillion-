@@ -115,7 +115,32 @@ export class Battle {
     return unitElevation(this.map, u)
   }
   /** Map with cover deployables (Jericho etc.) folded in as raised tiles. */
+  /** bumped whenever terrain-like state changes (cover deployables, areas); invalidates caches */
+  private terrainVersion = 0
+  private mapCache: { v: number; map: GridMap } | null = null
+  private losCache = new Map<string, boolean>()
+  private coverCache = new Map<string, Cover>()
+  private cacheVersion = -1
+  invalidateTerrain() {
+    this.terrainVersion++
+  }
+  private checkCaches() {
+    if (this.cacheVersion !== this.terrainVersion || this.losCache.size > 50000) {
+      this.losCache.clear()
+      this.coverCache.clear()
+      this.cacheVersion = this.terrainVersion
+    }
+  }
+  private posKey(u: Unit, at: Pos = u.pos) {
+    return `${u.id}@${at.x},${at.y}${u.flying ? 'f' : ''}${u.stats.size}`
+  }
   effectiveMap(): GridMap {
+    if (this.mapCache && this.mapCache.v === this.terrainVersion) return this.mapCache.map
+    const map = this.buildEffectiveMap()
+    this.mapCache = { v: this.terrainVersion, map }
+    return map
+  }
+  private buildEffectiveMap(): GridMap {
     const covers = this.units.filter(u => !u.destroyed && u.kind === 'deployable' && u.flags.isCover)
     if (!covers.length) return this.map
     const tiles = this.map.tiles.map(t => ({ ...t }))
@@ -126,23 +151,33 @@ export class Battle {
     return { ...this.map, tiles }
   }
   los(a: Unit, b: Unit, from?: Pos): boolean {
-    return hasLineOfSight(this.effectiveMap(), a, b, from)
+    this.checkCaches()
+    const k = `${this.posKey(a, from)}>${this.posKey(b)}`
+    let v = this.losCache.get(k)
+    if (v === undefined) { v = hasLineOfSight(this.effectiveMap(), a, b, from); this.losCache.set(k, v) }
+    return v
   }
   cover(attacker: Unit, target: Unit, from?: Pos): Cover {
     const m = this.effectiveMap()
-    let c = coverBetween(m, attacker, target, this.areas, from)
+    this.checkCaches()
+    const ck = `${this.posKey(attacker, from)}>${this.posKey(target)}`
+    let c = this.coverCache.get(ck) ?? coverBetween(m, attacker, target, this.areas, from)
+    this.coverCache.set(ck, c)
     if (c !== 'hard') {
       // Guardian / Colossus: adjacent allied frames provide hard cover if they are between
       const ac = center(attacker, from ?? attacker.pos), tc = center(target)
       const dx = ac.x - tc.x, dy = ac.y - tc.y, dl = Math.hypot(dx, dy) || 1
-      for (const g of this.alive()) {
-        if (g === target || g === attacker || !g.flags.guardian || this.hostile(g, target) || !this.adjacent(g, target)) continue
+      for (const g of this.units) {
+        if (g.destroyed || g === target || g === attacker || !g.flags.guardian || this.hostile(g, target) || !this.adjacent(g, target)) continue
         const gc = center(g)
         const vx = gc.x - tc.x, vy = gc.y - tc.y, vl = Math.hypot(vx, vy) || 1
         if ((vx * dx + vy * dy) / (vl * dl) >= 0.5) { c = 'hard'; break }
       }
     }
-    for (const o of this.alive()) for (const sc of scriptsFor(o)) if (sc.adjustCover) c = sc.adjustCover(this, o, attacker, target, c)
+    for (const o of this.units) {
+      if (o.destroyed) continue
+      for (const sc of scriptsFor(o)) if (sc.adjustCover) c = sc.adjustCover(this, o, attacker, target, c)
+    }
     return c
   }
 
@@ -269,6 +304,7 @@ export class Battle {
       for (const k of Object.keys(u.flags)) if (k.startsWith('round:')) delete u.flags[k]
     }
     this.areas = this.areas.filter(a => a.expiresRound == null || a.expiresRound >= this.round)
+    this.invalidateTerrain()
     for (const u of this.alive()) {
       if (u.expiresRound != null && u.expiresRound < this.round) this.destroy(u, 'expired')
     }
@@ -540,6 +576,7 @@ export class Battle {
     if (u.destroyed) return
     u.destroyed = true
     u.hp = 0
+    if (u.flags.isCover) this.invalidateTerrain()
     this.emit({ type: 'destroyed', unitId: u.id })
     this.say(`${u.name} is DESTROYED (${why}).`, 'damage')
     for (const o of this.alive()) for (const s of scriptsFor(o)) s.onDestroyed?.(this, o, u)
@@ -1607,6 +1644,7 @@ export class Battle {
   // ------------------------------------------------------------------ deployables / mines / areas
   spawn(u: Unit) {
     this.units.push(u)
+    this.invalidateTerrain()
     this.emit({ type: 'spawn', unitId: u.id })
   }
   placeMine(owner: Unit, pos: Pos, m: Omit<Mine, 'id' | 'ownerId' | 'side' | 'pos'>) {
@@ -1630,6 +1668,7 @@ export class Battle {
   addArea(a: Omit<AreaEffect, 'id'>) {
     const area = { ...a, id: nextUid('area') }
     this.areas.push(area)
+    this.invalidateTerrain()
     this.emit({ type: 'area', tiles: a.tiles, kind: a.kind })
     return area
   }

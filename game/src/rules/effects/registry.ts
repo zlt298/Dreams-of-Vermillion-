@@ -121,6 +121,7 @@ const registry = new Map<string, ItemScript>()
 
 export function registerScript(s: ItemScript) {
   registry.set(s.id, s)
+  registryVersion++
 }
 export function registerScripts(list: ItemScript[]) {
   list.forEach(registerScript)
@@ -150,6 +151,23 @@ export function scriptIdsFor(u: Unit): string[] {
   return ids
 }
 
+const cache = new WeakMap<Unit, { sig: string; scripts: ItemScript[] }>()
+let registryVersion = 0
+
+/** Cheap signature of everything that changes which scripts apply to a unit. */
+function signature(u: Unit): string {
+  let d = 0
+  for (const w of u.weapons) if (w.destroyed) d++
+  let sd = 0
+  for (const s of u.systems) if (s.destroyed) sd++
+  return `${registryVersion}|${u.frameId}|${u.weapons.length}.${d}|${u.systems.length}.${sd}|${u.talents.length}|${u.coreBonuses.length}|${u.templates?.length ?? 0}`
+}
+
 export function scriptsFor(u: Unit): ItemScript[] {
-  return [...new Set(scriptIdsFor(u))].map(id => registry.get(id)).filter((x): x is ItemScript => !!x)
+  const sig = signature(u)
+  const hit = cache.get(u)
+  if (hit && hit.sig === sig) return hit.scripts
+  const scripts = [...new Set(scriptIdsFor(u))].map(id => registry.get(id)).filter((x): x is ItemScript => !!x)
+  cache.set(u, { sig, scripts })
+  return scripts
 }

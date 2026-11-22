@@ -161,21 +161,29 @@ function costOf(a: CustomAction): 'quick' | 'full' | 'protocol' | 'free' | null 
   return null
 }
 
-function positionValue(b: Battle, u: Unit, p: Pos): number {
-  const hostiles = b.alive().filter(h => b.hostile(u, h) && (h.kind === 'mech' || h.kind === 'npc'))
-  if (!hostiles.length) return 0
+interface Threat { h: Unit; reach: number; best: number }
+
+/** Per-plan summary of each hostile's reach and best damage (independent of our position). */
+function threatsAgainst(b: Battle, u: Unit): Threat[] {
+  return b.alive().filter(h => b.hostile(u, h) && (h.kind === 'mech' || h.kind === 'npc')).map(h => ({
+    h,
+    reach: Math.max(1, ...h.weapons.filter(w => !w.destroyed).map(w => b.weaponReach(h, w))),
+    best: Math.max(0, ...h.weapons.filter(w => !w.destroyed && !w.tech).map(w => b.profile(w).damage.reduce((a, d) => a + averageDice(d.val), 0))),
+  }))
+}
+
+function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAgainst(b, u)): number {
+  if (!threats.length) return 0
   const saved = u.pos
   u.pos = p
   try {
     let danger = 0
     let nearest = Infinity
-    for (const h of hostiles) {
+    for (const { h, reach, best } of threats) {
       const d = b.distance(u, h)
       nearest = Math.min(nearest, d)
-      const reach = Math.max(1, ...h.weapons.filter(w => !w.destroyed).map(w => b.weaponReach(h, w)))
       if (d > reach + h.stats.speed) continue
       const cover = b.cover(h, u)
-      const best = Math.max(0, ...h.weapons.filter(w => !w.destroyed && !w.tech).map(w => b.profile(w).damage.reduce((a, d) => a + averageDice(d.val), 0)))
       const chance = cover === 'hard' ? 0.35 : cover === 'soft' ? 0.5 : 0.65
       danger += best * chance * (d <= reach ? 1 : 0.6)
     }
@@ -286,13 +294,13 @@ function bestCombo(opts: Option[], quickSlots: number, fullOk: boolean): { actio
 export function planFor(b: Battle, u: Unit): Plan {
   const quickBase = u.actionsLeft + (u.flags.bonusQuick ?? 0)
   const canBoost = !b.has(u, 'slowed') && !b.has(u, 'immobilized') && quickBase >= 1 && u.moveLeft > 0
-  const near = b.reachable(u, u.moveLeft)
-  const far = canBoost ? b.reachable(u, u.moveLeft + u.stats.speed) : new Map()
+  // one pathfinding pass covers both the plain move and the boosted move
+  const all = b.reachable(u, u.moveLeft + (canBoost ? u.stats.speed : 0))
   const cands: { pos: Pos; boost: boolean }[] = []
-  for (const v of near.values()) cands.push({ pos: v.pos, boost: false })
-  for (const [k, v] of far) if (!near.has(k)) cands.push({ pos: v.pos, boost: true })
+  for (const v of all.values()) cands.push({ pos: v.pos, boost: v.cost > u.moveLeft })
   // prune candidates for speed: keep the most promising ones by position value
-  let scored = cands.map(c => ({ ...c, pv: positionValue(b, u, c.pos) }))
+  const threats = threatsAgainst(b, u)
+  let scored = cands.map(c => ({ ...c, pv: positionValue(b, u, c.pos, threats) }))
   if (scored.length > 70) {
     scored.sort((a, b2) => b2.pv - a.pv)
     const keep = scored.slice(0, 50)
