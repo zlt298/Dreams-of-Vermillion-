@@ -541,6 +541,7 @@ registerScripts([
   {
     id: 't_walking_armory:1', partial: true, note: 'Armament: Ammo Case auto-uses THUMPER (knockback 1) / SHOCK (+energy) once per turn',
     beforeAttack(b, self, ctx, role) {
+      if (self.flags.ammo) return // a round was chosen with the Ammo Case actions
       if (role !== 'attacker' || ctx.weapon?.size !== 'Main' || !isRangedWeapon(b, ctx.weapon) || !once(self, 'ammo', 'turn')) return
       const sys = self.systems.find(s => s.dataId.startsWith('ms_walking_armory'))
       if (!sys || sys.usesLeft === 0) return

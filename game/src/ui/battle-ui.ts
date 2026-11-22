@@ -265,6 +265,8 @@ export class BattleScreen {
     switch (act) {
       case 'select': { const u = this.b.unit(arg); if (u) this.select(u); return }
       case 'activate':
+        // SEKHMET Protocol: the NHP plays this mech's turn
+        if (sel?.flags.sekhmet) { this.cmd(() => { runAiTurn(this.b, sel); this.mode = { k: 'idle' } }, true); this.toast('SEKHMET has control.'); return }
         if (sel) this.cmd(() => { this.b.beginTurn(sel); this.mode = { k: 'move' } })
         return
       case 'end': if (a) this.cmd(() => { this.b.endTurn(a); this.mode = { k: 'idle' } }, true); return

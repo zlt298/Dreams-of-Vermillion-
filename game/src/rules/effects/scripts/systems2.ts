@@ -1,0 +1,808 @@
+// Systems previously resolved by hand: grenades and mines, shields and barriers, NHPs, utility.
+import type { Battle } from '../../battle'
+import { blastTiles, burstTiles, chebyshev, footprint, hasLineOfSightToTile, lineTiles, tileAt, unitsOnTiles } from '../../grid'
+import { rollDice } from '../../rng'
+import type { Pos, StatusId, SystemInst, Unit } from '../../types'
+import { deployableUnit } from '../generic'
+import { registerScripts, type AttackCtx, type CustomAction, type FieldOverlay, type ItemScript } from '../registry'
+
+// ------------------------------------------------------------------ helpers
+const action = (a: Omit<CustomAction, 'usable'> & { usable?: CustomAction['usable'] }): CustomAction => ({ usable: () => true, ...a })
+const sys = (u: Unit, id: string) => u.systems.find(s => s.dataId === id && !s.destroyed)
+const usesOk = (s?: SystemInst): true | string => (!s ? 'Destroyed' : s.usesLeft === 0 ? 'No charges left' : true)
+const spend = (s?: SystemInst) => { if (s && s.usesLeft != null) s.usesLeft-- }
+const chars = (b: Battle) => b.alive().filter(o => o.kind === 'mech' || o.kind === 'npc')
+const hostiles = (b: Battle, u: Unit) => chars(b).filter(o => b.hostile(u, o))
+const allies = (b: Battle, u: Unit) => chars(b).filter(o => o !== u && !b.hostile(u, o))
+const onTiles = (u: Unit, tiles: Pos[]) => footprint(u).some(p => tiles.some(t => t.x === p.x && t.y === p.y))
+const fully = (u: Unit, tiles: Pos[]) => footprint(u).every(p => tiles.some(t => t.x === p.x && t.y === p.y))
+const free = (b: Battle, p: Pos, except?: Unit) => !!tileAt(b.map, p) && !b.alive().some(o => o !== except && !o.flags.flat && footprint(o).some(q => q.x === p.x && q.y === p.y))
+const oncePerRound = (u: Unit, key: string) => { const k = `round:${key}`; if (u.flags[k]) return false; u.flags[k] = true; return true }
+const at = (t?: Unit | Pos): Pos => (t && 'x' in t ? t : (t as Unit).pos)
+const nearest = (b: Battle, u: Unit, list: Unit[]) => [...list].sort((x, y) => b.distance(u, x) - b.distance(u, y))[0]
+const blind = (b: Battle, t: Unit) => { t.flags.blindUntil = b.round + 1; b.say(`${t.name} is blinded (line of sight to adjacent spaces only).`, 'status') }
+const half = (b: Battle, t: Unit, src: Unit, stat: 'hull' | 'agi' | 'sys' | 'eng', dice: string, type: string, extra?: (failed: boolean) => void, ap = false) => {
+  const dmg = rollDice(b.rng, dice).total
+  const ok = b.save(t, stat, src.stats.save)
+  b.applyDamage(t, [{ type, amount: ok ? Math.ceil(dmg / 2) : dmg }], { source: src, ap })
+  extra?.(!ok)
+}
+/** Is `seg` between attacker and target, next to the target? */
+const shields = (attacker: Unit, target: Unit, seg: Pos) => footprint(target).some(p => chebyshev(p, seg) <= 1) && chebyshev(attacker.pos, seg) < chebyshev(attacker.pos, target.pos)
+/** A free tile within `range` of `u` near `toward`. */
+function tileNear(b: Battle, u: Unit, toward: Pos, range: number): Pos | null {
+  let best: Pos | null = null
+  for (let dy = -range; dy <= range; dy++) for (let dx = -range; dx <= range; dx++) {
+    const p = { x: u.pos.x + dx, y: u.pos.y + dy }
+    if (!free(b, p, u)) continue
+    if (!best || chebyshev(p, toward) < chebyshev(best, toward)) best = p
+  }
+  return best
+}
+/** Barrier segments in a line across the direction you face (Magnetic Shield). */
+function spawnLine(b: Battle, owner: Unit, tile: Pos, name: string, n: number, setup: (d: Unit) => void): Unit[] {
+  const dx = Math.sign(tile.x - owner.pos.x), dy = Math.sign(tile.y - owner.pos.y)
+  if (!dx && !dy) throw new Error('Pick a space next to you')
+  const perp = { x: -dy, y: dx }
+  const out: Unit[] = []
+  for (const k of [0, 1, -1, 2, -2]) {
+    if (out.length >= n) break
+    const p = { x: tile.x + perp.x * k, y: tile.y + perp.y * k }
+    if (!free(b, p)) continue
+    const d = deployableUnit(owner, { name, type: 'Deployable', size: 1, hp: 999, evasion: 5 } as any, p)
+    d.resist = ['all']; d.flags.isCover = false
+    setup(d)
+    b.spawn(d)
+    out.push(d)
+  }
+  if (!out.length) throw new Error('No room')
+  return out
+}
+const mineOf = (b: Battle, u: Unit, name: string) => b.alive().filter(d => d.ownerId === u.id && d.flags.dataName === name)
+
+// ------------------------------------------------------------------ Ammo Case (Walking Armory)
+type Ammo = 'thumper' | 'shock' | 'mag' | 'hellfire' | 'jager' | 'sabot'
+const AMMO: Record<Ammo, { cost: number; tier: 1 | 2; text: string }> = {
+  thumper: { cost: 1, tier: 1, text: 'Knockback 1, explosive damage' },
+  shock: { cost: 1, tier: 1, text: 'Energy damage; characters adjacent to the target take 1 AP energy' },
+  mag: { cost: 1, tier: 1, text: 'Arcing, kinetic damage' },
+  hellfire: { cost: 2, tier: 2, text: 'Energy damage; bonus damage becomes Burn' },
+  jager: { cost: 2, tier: 2, text: 'Knockback 2, explosive damage; the target makes a Hull save or falls Prone' },
+  sabot: { cost: 2, tier: 2, text: 'AP, kinetic damage' },
+}
+const ammoCase = (u: Unit) => u.systems.find(s => s.dataId.startsWith('ms_walking_armory') && !s.destroyed)
+const ammoTier = (u: Unit) => (u.systems.some(s => s.dataId === 'ms_walking_armory_3') ? 3 : u.systems.some(s => s.dataId === 'ms_walking_armory_2') ? 2 : 1)
+const ammoScript = (id: string): ItemScript => ({
+  id, note: 'Ammo Case: choose a special round for your next Main ranged attack (1/turn); rank 3 refunds charges on a crit',
+  actions: (_b, u) => {
+    const s = ammoCase(u)
+    if (!s || s.dataId !== id) return [] // one set of actions even with several ranks
+    return (Object.keys(AMMO) as Ammo[]).filter(k => AMMO[k].tier <= ammoTier(u)).map(k => action({
+      key: `ammo:${k}`, name: `${u.flags.ammo === k ? '✓ ' : ''}Load ${k.toUpperCase()} (${AMMO[k].cost})`, activation: 'free', target: 'none', text: AMMO[k].text,
+      usable: () => ((s.usesLeft ?? 6) < AMMO[k].cost ? 'Not enough charges' : true),
+      run: (bt, me) => { me.flags.ammo = me.flags.ammo === k ? undefined : k; bt.say(me.flags.ammo ? `${me.name} loads ${k.toUpperCase()} rounds.` : `${me.name} unloads special rounds.`) },
+    }))
+  },
+  beforeAttack(b, self, ctx, role) {
+    const k = self.flags.ammo as Ammo | undefined
+    const s = ammoCase(self)
+    if (role !== 'attacker' || !k || !s || s.dataId !== id || ctx.weapon?.size !== 'Main' || ctx.melee || ctx.tech || !ctx.profile || self.flags['turn:ammoUsed']) return
+    if ((s.usesLeft ?? 6) < AMMO[k].cost) return
+    self.flags['turn:ammoUsed'] = true
+    self.flags.ammoFiring = { k, cost: AMMO[k].cost, target: ctx.target.id, saved: ctx.profile.damage.map(d => d.type), tags: ctx.profile.tags.length }
+    if (s.usesLeft != null) s.usesLeft -= AMMO[k].cost
+    const type = k === 'thumper' || k === 'jager' ? 'Explosive' : k === 'shock' || k === 'hellfire' ? 'Energy' : 'Kinetic'
+    ctx.profile.damage = ctx.profile.damage.map(d => ({ ...d, type }))
+    if (k === 'mag') ctx.profile.tags = [...ctx.profile.tags, { id: 'tg_arcing', ammo: true } as any]
+    if (k === 'sabot') ctx.profile.tags = [...ctx.profile.tags, { id: 'tg_ap', ammo: true } as any]
+    if (k === 'hellfire') ctx.bonusDamage = ctx.bonusDamage.map(d => ({ ...d, type: 'Burn' }))
+    ctx.reasons.push(`Ammo: ${k.toUpperCase()}`)
+  },
+  afterAttack(b, self, ctx, role) {
+    const f = self.flags.ammoFiring
+    if (role !== 'attacker' || !f || f.target !== ctx.target.id || !ctx.profile) return
+    self.flags.ammoFiring = undefined
+    ctx.profile.damage = ctx.profile.damage.map((d, i) => ({ ...d, type: f.saved[i] ?? d.type }))
+    ctx.profile.tags = ctx.profile.tags.filter(t => !(t as any).ammo)
+    const t = ctx.target
+    if (ctx.hit && !t.destroyed) {
+      if (f.k === 'thumper') b.forceMove(t, self, 1, 1)
+      if (f.k === 'jager') { b.forceMove(t, self, 2, 1); if (!t.destroyed && !b.save(t, 'hull', self.stats.save)) b.addStatus(t, 'prone', 'until_cleared', self) }
+    }
+    if (f.k === 'shock') for (const o of chars(b)) if (o !== t && o !== self && b.adjacent(o, t)) b.applyDamage(o, [{ type: 'Energy', amount: 1 }], { source: self, ap: true })
+    if (ctx.crit && ammoTier(self) >= 3) { const s = ammoCase(self); if (s && s.usesLeft != null) s.usesLeft += f.cost; b.say('  Efficiency: no charges spent.') }
+  },
+})
+
+// ------------------------------------------------------------------ scripts
+const scripts: ItemScript[] = [
+  // ---------------- SEKHMET
+  {
+    id: 'ms_sekhmet_class_nhp', partial: true, note: 'SEKHMET Protocol: the NHP takes over (the AI plays your turns; it only attacks hostiles); melee crits +1d6; Take Back Control stuns you until your next turn',
+    actions: (_b, u) => [u.flags.sekhmet
+      ? action({ key: 'sekhmet_off', name: 'Take Back Control', activation: 'protocol', target: 'none', text: 'Retake your mech; you are Stunned until the start of your next turn.', run: (bt, me) => { me.flags.sekhmet = false; bt.addStatus(me, 'stunned', 'start_of_next_turn_target', me) } })
+      : action({
+        key: 'sekhmet', name: 'SEKHMET Protocol', activation: 'protocol', target: 'none', text: 'Give your NHP control: it charges the nearest character and attacks in melee; melee crits +1d6.',
+        run: (bt, me) => { me.flags.sekhmet = true; bt.say(`${me.name} hands control to SEKHMET.`, 'warn') },
+        aiTarget: (_bt, me) => ({ ...me.pos }),
+        aiScore: (bt, me) => (me.weapons.some(w => w.type === 'Melee') && hostiles(bt, me).some(h => bt.distance(me, h) <= me.stats.speed + 2) ? 2 : 0),
+      })],
+    afterAnyRoll(b, self, ctx) { if (self.flags.sekhmet && ctx.attacker === self && ctx.crit && ctx.melee) ctx.bonusDamage.push({ type: 'Kinetic', val: '1d6' } as any) },
+  },
+  // ---------------- Cable Winch
+  {
+    id: 'ms_cable_winch_system', partial: true, note: 'Cable Winch: tether an adjacent character (Hull save unless Stunned/willing); it is dragged along to stay within 5 spaces (the dragger is Slowed)',
+    actions: (_b, u) => [u.flags.tether
+      ? action({ key: 'unwinch', name: 'Release Cable', activation: 'quick', target: 'none', text: 'Remove the cable.', run: (bt, me) => { const t = bt.unit(me.flags.tether); if (t) t.flags.tetheredTo = undefined; me.flags.tether = undefined } })
+      : action({
+        key: 'winch', name: 'Cable Winch', activation: 'quick', target: 'unit', range: 1, text: 'Attach a cable to an adjacent character.',
+        run: (bt, me, t) => {
+          const target = t as Unit
+          if (!bt.adjacent(me, target)) throw new Error('Must be adjacent')
+          if (bt.hostile(me, target) && !bt.has(target, 'stunned') && bt.save(target, 'hull', me.stats.save)) return
+          me.flags.tether = target.id; target.flags.tetheredTo = me.id
+          bt.say(`${me.name} winches onto ${target.name}.`)
+        },
+      })],
+    onMove(b, self, mover) {
+      const other = mover === self ? b.unit(self.flags.tether) : mover.id === self.flags.tether ? self : undefined
+      if (!other || other.destroyed) return
+      const d = b.distance(self, mover === self ? other : mover)
+      if (d <= 5) return
+      const dragged = mover === self ? other : self
+      const dragger = mover
+      b.forceMove(dragged, dragger, d - 5, -1)
+      b.addStatus(dragger, 'slowed', 'end_of_turn', self)
+    },
+  },
+  // ---------------- MULE Harness
+  {
+    id: 'ms_mule_harness', note: 'MULE Harness: adjacent allies climb on (quick) and ride along with soft cover; riders fall off Prone if you are knocked down',
+    grantActions: (b, self, other) => {
+      if (b.hostile(self, other) || other.kind !== 'mech') return []
+      if (other.flags.ridingOn === self.id) return [action({
+        key: `mule_off:${self.id}`, name: `Climb down from ${self.name}`, activation: 'quick', target: 'none', text: 'Climb down to an adjacent space.',
+        run: bt => dismount(bt, self, other, false),
+      })]
+      const load = b.alive().filter(r => r.flags.ridingOn === self.id).reduce((a, r) => a + r.stats.size, 0)
+      if (!b.adjacent(self, other) || b.has(other, 'immobilized') || load + other.stats.size > self.stats.size - 0.5) return []
+      return [action({
+        key: `mule_on:${self.id}`, name: `Ride ${self.name}`, activation: 'quick', target: 'none', text: 'Climb onto the MULE harness: move with it and gain soft cover.',
+        run: (bt, me) => { me.flags.ridingOn = self.id; me.flags.flat = true; const from = me.pos; me.pos = { ...self.pos }; bt.emit({ type: 'move', unitId: me.id, path: [from, me.pos] }); bt.say(`${me.name} climbs onto ${self.name}.`) },
+      })]
+    },
+    onMove(b, self, mover) {
+      if (mover !== self) return
+      for (const r of b.alive().filter(r => r.flags.ridingOn === self.id)) { const from = r.pos; r.pos = { ...self.pos }; b.emit({ type: 'move', unitId: r.id, path: [from, r.pos] }) }
+    },
+    adjustCover: (_b, self, _a, target, c) => (target.flags.ridingOn === self.id && c === 'none' ? 'soft' : c),
+    onStatusRemoved() { /* riders handled at turn start */ },
+    onAnyTurnStart(b, self) {
+      if (!(['prone', 'stunned', 'immobilized'] as StatusId[]).some(s => b.has(self, s))) return
+      for (const r of b.alive().filter(r => r.flags.ridingOn === self.id)) dismount(b, self, r, true)
+    },
+    onDestroyed(b, self, v) { if (v === self) for (const r of b.alive().filter(r => r.flags.ridingOn === self.id)) dismount(b, self, r, true) },
+  },
+  // ---------------- Whitewash Sealant Spray
+  {
+    id: 'ms_whitewash_sealant_spray', note: 'Whitewash: hostiles (Agility save) or allies are Slowed and lose all Burn; on a space, puts out fires in Blast 1',
+    actions: () => [action({
+      key: 'whitewash', name: 'Whitewash Sealant', activation: 'quick', target: 'tile', range: 5, text: 'Spray a character or a space within range 5.',
+      run: (bt, me, t) => {
+        const p = at(t)
+        if (!hasLineOfSightToTile(bt.effectiveMap(), me, p)) throw new Error('No line of sight')
+        const who = chars(bt).find(o => footprint(o).some(q => q.x === p.x && q.y === p.y))
+        if (who) {
+          if (bt.hostile(me, who) && bt.save(who, 'agi', me.stats.save)) return
+          who.burn = 0
+          bt.addStatus(who, 'slowed', 'next_turn_end_target', me)
+        } else {
+          const tiles = blastTiles(bt.map, p, 1)
+          bt.areas = bt.areas.filter(a => !(a.kind === 'damage' && a.tiles.some(x => tiles.some(y => x.x === y.x && x.y === y.y))))
+          bt.invalidateTerrain()
+        }
+      },
+      aiTarget: (bt, me) => {
+        const burning = allies(bt, me).concat(me).find(a => a.burn >= 3 && bt.distance(me, a) <= 5)
+        if (burning) return { ...burning.pos }
+        const h = nearest(bt, me, hostiles(bt, me).filter(h => bt.distance(me, h) <= 5 && !bt.has(h, 'slowed')))
+        return h ? { ...h.pos } : null
+      },
+      aiScore: () => 1.5,
+    })],
+  },
+  // ---------------- Armor-Lock Plating
+  {
+    id: 'ms_armor_lock_plating', partial: true, note: "Armor-Lock: after you Brace, until the end of your next turn: +1 difficulty against you, you can't fail Hull/Agility saves and can't be moved, knocked Prone or grappled (Bracing while grappling is not modelled)",
+    afterAttack(b, self, _ctx, role) {
+      if (role === 'target' && b.has(self, 'braced') && !(self.flags.armorLockUntil >= b.round)) {
+        self.flags.armorLockUntil = b.round + 1
+        self.flags.autoSaveUntil = b.round + 1
+        b.addHeat(self, 2)
+        b.say(`${self.name} locks its armor.`)
+      }
+    },
+    beforeAttack(b, self, ctx, role) { if (role === 'target' && self.flags.armorLockUntil >= b.round) { ctx.difficulty++; ctx.reasons.push('Armor-Lock -1') } },
+    canBeMoved: (b, self) => !(self.flags.armorLockUntil >= b.round),
+    blockStatus: (b, self, st) => (st === 'prone' || st === 'grappled') && self.flags.armorLockUntil >= b.round,
+  },
+  // ---------------- BB Breach/Blast Charges
+  {
+    id: 'ms_bb_breach_blast_charges', note: 'BB charges: Thermal Grenade (Blast 1, Agility save, 1d6 energy, half on success); Breaching Charge (planted adjacent, detonated as a quick action: 2d6 AP explosive)',
+    actions: (b, u) => {
+      const s = sys(u, 'ms_bb_breach_blast_charges')
+      const out = [action({
+        key: 'thermal_grenade', name: 'Thermal Grenade', activation: 'quick', target: 'tile', range: 5, area: { shape: 'blast', size: 1 }, text: 'Blast 1 within range 5: Agility save or 1d6 energy (half on success).',
+        usable: () => usesOk(s),
+        run: (bt, me, t) => { spend(s); const tiles = blastTiles(bt.map, at(t), 1); bt.emit({ type: 'area', tiles, kind: 'explosion' }); for (const v of unitsOnTiles(chars(bt), tiles)) if (v !== me) half(bt, v, me, 'agi', '1d6', 'Energy') },
+      }), action({
+        key: 'breach_charge', name: 'Plant Breaching Charge', activation: 'quick', target: 'tile', range: 1, text: 'Plant a breaching charge next to you; detonate it later as a quick action.',
+        usable: () => (u.flags.breach ? 'Already planted' : usesOk(s)),
+        run: (_bt, me, t) => { spend(s); me.flags.breach = at(t) },
+      })]
+      if (u.flags.breach) out.push(action({
+        key: 'breach_boom', name: 'Detonate Breaching Charge', activation: 'quick', target: 'none', text: 'Burst 1: Agility save or 2d6 AP explosive (half on success).',
+        run: (bt, me) => {
+          const tiles = blastTiles(bt.map, me.flags.breach, 1)
+          me.flags.breach = undefined
+          bt.emit({ type: 'area', tiles, kind: 'explosion' })
+          for (const v of unitsOnTiles(chars(bt), tiles)) half(bt, v, me, 'agi', '2d6', 'Explosive', undefined, true)
+        },
+        aiTarget: (bt, me) => (unitsOnTiles(hostiles(bt, me), blastTiles(bt.map, me.flags.breach, 1)).length ? { ...me.pos } : null),
+        aiScore: () => 4,
+      }))
+      return out
+    },
+    fields: (b, u) => (u.flags.breach ? [{ tiles: blastTiles(b.map, u.flags.breach, 1), effect: 'harm' as const, label: `${u.name}'s breaching charge` }] : []),
+  },
+  // ---------------- Magnetic Shield
+  {
+    id: 'ms_magnetic_shield', partial: true, note: 'Magnetic Shield: Line 4 forcefield next to you; obstruction, soft cover, and resistance to damage for characters it covers (all damage types)',
+    actions: () => [action({
+      key: 'magshield', name: 'Magnetic Shield', activation: 'quick', target: 'tile', range: 1, text: 'Raise a Line 4 forcefield next to you (replaces the old one).',
+      run: (bt, me, t) => {
+        for (const d of mineOf(bt, me, 'Magnetic Shield')) bt.removeUnit(d, 'deactivates')
+        spawnLine(bt, me, at(t), 'Magnetic Shield', 4, d => { d.flags.magshield = true })
+        bt.say(`${me.name} raises a magnetic shield.`)
+      },
+      aiTarget: (bt, me) => { const h = nearest(bt, me, hostiles(bt, me)); return h ? { x: me.pos.x + Math.sign(h.pos.x - me.pos.x), y: me.pos.y + Math.sign(h.pos.y - me.pos.y) } : null },
+      aiScore: (bt, me) => (!mineOf(bt, me, 'Magnetic Shield').length && hostiles(bt, me).some(h => bt.distance(me, h) <= 12) ? 2 : 0),
+    })],
+    adjustCover(b, self, attacker, target, c) {
+      if (c !== 'none' || b.hostile(self, target)) return c
+      return mineOf(b, self, 'Magnetic Shield').some(s => shields(attacker, target, s.pos)) ? 'soft' : c
+    },
+    beforeAnyAttack(b, self, ctx) {
+      if (b.hostile(self, ctx.target) || !ctx.profile?.damage.some(d => d.type === 'Kinetic' || d.type === 'Explosive')) return
+      if (mineOf(b, self, 'Magnetic Shield').some(s => shields(ctx.attacker, ctx.target, s.pos))) { ctx.resistAll = true; ctx.reasons.push('Magnetic shield') }
+    },
+    fields: (b, u) => { const segs = mineOf(b, u, 'Magnetic Shield'); return segs.length ? [{ tiles: segs.map(s => s.pos), effect: 'barrier' as const, label: `${u.name}'s magnetic shield: soft cover and resistance to kinetic/explosive` }] : [] },
+  },
+  // ---------------- Flicker Field Projector
+  {
+    id: 'ms_flicker_field_projector', note: 'Flicker Field: after a Boost or standard move, you count as Invisible the next time you are attacked',
+    onAnyMovementAction(_b, self, mover, kind) { if (mover === self && kind !== 'involuntary') self.flags.flicker = true },
+    beforeAttack(_b, self, ctx, role) { if (role === 'target' && self.flags.flicker) { ctx.forceInvisible = true; self.flags.flicker = false } },
+  },
+  // ---------------- Flash Charges
+  {
+    id: 'ms_flash_charges', partial: true, note: "Flash Charges: Flash Grenade (Blast 3 zone: characters inside can't attack out of it until the end of your next turn); Flash Mine (Burst 1 when approached: Agility save or blinded)",
+    actions: (b, u) => {
+      const s = sys(u, 'ms_flash_charges')
+      return [action({
+        key: 'flash_grenade', name: 'Flash Grenade', activation: 'quick', target: 'tile', range: 5, area: { shape: 'blast', size: 3 }, text: "Blast 3 zone: characters other than you inside it can't draw line of sight out.",
+        usable: () => usesOk(s),
+        run: (bt, me, t) => { spend(s); me.flags.flash = { tiles: blastTiles(bt.map, at(t), 3), until: bt.round + 1 }; bt.emit({ type: 'area', tiles: me.flags.flash.tiles, kind: 'attack' }) },
+        aiTarget: (bt, me) => { const h = nearest(bt, me, hostiles(bt, me).filter(h => bt.distance(me, h) <= 7)); return h ? { ...h.pos } : null },
+        aiScore: (bt, me, t) => (t && 'x' in t ? unitsOnTiles(hostiles(bt, me), blastTiles(bt.map, t, 3)).length * 1.5 : 0),
+      }), action({
+        key: 'flash_mine', name: 'Flash Mine', activation: 'quick', target: 'tile', range: 5, text: 'Arm a mine: characters moving adjacent to or over it save (Agility) or are blinded.',
+        usable: () => usesOk(s),
+        run: (_bt, me, t) => { spend(s); me.flags.flashMines = [...(me.flags.flashMines ?? []), at(t)] },
+      })]
+    },
+    beforeAnyAttack(b, self, ctx) {
+      const f = self.flags.flash
+      if (!f || b.round > f.until || ctx.attacker === self) return
+      if (onTiles(ctx.attacker, f.tiles) && !onTiles(ctx.target, f.tiles)) { ctx.cancelled = true; b.say(`  ${ctx.attacker.name} can't see out of the flash.`) }
+    },
+    onMove(b, self, mover, path) {
+      if (!self.flags.flashMines?.length || mover === self || (mover.kind !== 'mech' && mover.kind !== 'npc')) return
+      const hit = (self.flags.flashMines as Pos[]).find(m => path.some(p => chebyshev(p, m) <= 1))
+      if (!hit) return
+      self.flags.flashMines = (self.flags.flashMines as Pos[]).filter(m => m !== hit)
+      const tiles = burstTiles(b.map, { pos: hit, stats: { size: 1 } } as Unit, 1)
+      b.emit({ type: 'area', tiles, kind: 'explosion' })
+      for (const v of unitsOnTiles(chars(b), tiles)) if (!b.save(v, 'agi', self.stats.save)) blind(b, v)
+    },
+    fields: (b, u): FieldOverlay[] => [
+      ...(u.flags.flash && b.round <= u.flags.flash.until ? [{ tiles: u.flags.flash.tiles, effect: 'control' as const, label: `${u.name}'s flash zone: no line of sight out` }] : []),
+      ...((u.flags.flashMines ?? []) as Pos[]).map(m => ({ tiles: [m], effect: 'harm' as const, label: `${u.name}'s flash mine` })),
+    ],
+  },
+  // ---------------- Javelin Rockets
+  {
+    id: 'ms_javelin_rockets', note: 'Javelin Rockets: three marked spaces until your next turn; the first character to move into each takes 3 kinetic',
+    actions: () => [action({
+      key: 'javelin', name: 'Javelin Rockets', activation: 'quick', target: 'tile', range: 15, text: 'Mark three spaces (the chosen space and two to either side); each hits the first character to enter it for 3 kinetic.',
+      run: (bt, me, t) => {
+        const c = at(t)
+        if (!hasLineOfSightToTile(bt.effectiveMap(), me, c)) throw new Error('No line of sight')
+        const dx = Math.sign(c.x - me.pos.x), dy = Math.sign(c.y - me.pos.y)
+        const perp = { x: -dy || 1, y: dx }
+        me.flags.javelins = [c, { x: c.x + perp.x * 2, y: c.y + perp.y * 2 }, { x: c.x - perp.x * 2, y: c.y - perp.y * 2 }].filter(p => tileAt(bt.map, p))
+      },
+      aiTarget: (bt, me) => { const h = nearest(bt, me, hostiles(bt, me).filter(h => bt.distance(me, h) <= 16)); return h ? { x: h.pos.x + Math.sign(me.pos.x - h.pos.x), y: h.pos.y + Math.sign(me.pos.y - h.pos.y) } : null },
+      aiScore: (_bt, me) => (me.flags.javelins?.length ? 0 : 1.5),
+    })],
+    onTurnStart(_b, u) { u.flags.javelins = [] },
+    onMove(b, self, mover, path) {
+      if (!self.flags.javelins?.length || mover.destroyed) return
+      for (const j of [...self.flags.javelins as Pos[]]) if (path.slice(1).some(p => footprint({ pos: p, stats: mover.stats }).some(q => q.x === j.x && q.y === j.y))) {
+        self.flags.javelins = (self.flags.javelins as Pos[]).filter(x => x !== j)
+        b.say(`A javelin rocket strikes ${mover.name}!`, 'attack')
+        b.applyDamage(mover, [{ type: 'Kinetic', amount: 3 }], { source: self })
+      }
+    },
+    fields: (_b, u) => (u.flags.javelins?.length ? [{ tiles: u.flags.javelins, effect: 'harm' as const, label: `${u.name}'s javelin rocket target (3 kinetic)` }] : []),
+  },
+  // ---------------- TLALOC
+  {
+    id: 'ms_tlaloc_class_nhp', partial: true, note: 'TLALOC Protocol: Immobilized until your next turn; reroll each missed attack once (against the same target)',
+    actions: () => [action({
+      key: 'tlaloc', name: 'TLALOC Protocol', activation: 'protocol', heat: 2, target: 'none', text: 'Immobilized until your next turn; reroll missed attacks once.',
+      run: (bt, me) => { me.flags.tlalocRound = bt.round; bt.addStatus(me, 'immobilized', 'start_of_next_turn_target', me) },
+      aiTarget: (_bt, me) => ({ ...me.pos }),
+      aiScore: (bt, me) => (me.heat + 2 < me.stats.heatcap && hostiles(bt, me).some(h => me.weapons.some(w => bt.validTarget(me, w, h) === true)) ? 2 : 0),
+    })],
+    beforeAttack(b, self, ctx, role) { if (role === 'attacker' && self.flags.tlalocRound === b.round && !ctx.tech) ctx.rerollOnMiss = true },
+  },
+  // ---------------- FADE Cloak
+  {
+    id: 'ms_fade_cloak', partial: true, note: "FADE Cloak: phase out (intangible: can't attack or be attacked or damaged); at each turn start, on 1–3 you are back in realspace until your next turn (passing through obstructions is not modelled)",
+    actions: (_b, u) => [action({
+      key: 'fade', name: u.flags.fade ? 'Deactivate FADE Cloak' : 'FADE Cloak', activation: 'quick', target: 'none', text: 'Toggle intangibility.',
+      run: (bt, me) => { me.flags.fade = !me.flags.fade; me.flags.intangible = me.flags.fade; bt.say(me.flags.fade ? `${me.name} phases out of realspace.` : `${me.name} returns to realspace.`) },
+      aiTarget: (_bt, me) => ({ ...me.pos }),
+      aiScore: (_bt, me) => (!me.flags.fade && me.hp < me.stats.hp / 3 ? 2 : 0),
+    })],
+    onTurnStart(b, u) {
+      if (!u.flags.fade) return
+      const r = b.rng.d(6)
+      u.flags.intangible = r >= 4
+      b.say(`${u.name}'s FADE cloak (${r}): ${u.flags.intangible ? 'still phased out' : 'back in realspace this turn'}.`)
+    },
+  },
+  // ---------------- Retractable Profile
+  {
+    id: 'ms_retractable_profile', note: "Retractable Profile: ranged and tech attacks against you +1 difficulty; you are Slowed and can't attack",
+    actions: (_b, u) => [u.flags.noAttacks
+      ? action({ key: 'retract_off', name: 'Deactivate Retractable Profile', activation: 'quick', target: 'none', text: 'Extend your systems again.', run: (_bt, me) => { me.flags.noAttacks = false; me.statuses = me.statuses.filter(s => !s.data?.retract) } })
+      : action({ key: 'retract', name: 'Retractable Profile', activation: 'protocol', target: 'none', text: "Retract: +1 difficulty against ranged/tech attacks on you; Slowed; can't attack.", run: (bt, me) => { me.flags.noAttacks = true; bt.addStatus(me, 'slowed', 'until_cleared', me, { retract: true }) } })],
+    beforeAttack(_b, self, ctx, role) { if (role === 'target' && self.flags.noAttacks && (ctx.ranged || ctx.tech)) { ctx.difficulty++; ctx.reasons.push('Retracted -1') } },
+  },
+  // ---------------- ATHENA
+  {
+    id: 'ms_athena_class_nhp', partial: true, note: "ATHENA Simulacrum: Blast 3 model within range 50; hostiles inside don't benefit from cover, and those ending their turn there are Locked On and lose Hidden/Invisible",
+    actions: () => [action({
+      key: 'athena', name: 'Simulacrum', activation: 'quick', target: 'tile', range: 50, area: { shape: 'blast', size: 3 }, text: 'Model a Blast 3 area: hostiles inside lose cover; ending a turn there gives Lock On and reveals them.',
+      run: (bt, me, t) => { me.flags.athena = blastTiles(bt.map, at(t), 3) },
+      aiTarget: (bt, me) => { const h = nearest(bt, me, hostiles(bt, me)); return h ? { ...h.pos } : null },
+      aiScore: (bt, me, t) => (t && 'x' in t ? unitsOnTiles(hostiles(bt, me), blastTiles(bt.map, t, 3)).length * 1.2 - (me.flags.athena ? 2 : 0) : 0),
+    })],
+    beforeAnyAttack(b, self, ctx) { if (self.flags.athena && b.hostile(self, ctx.target) && onTiles(ctx.target, self.flags.athena)) ctx.ignoreCover = true },
+    onAnyTurnEnd(b, self, u) {
+      if (!self.flags.athena || !b.hostile(self, u) || !onTiles(u, self.flags.athena)) return
+      b.removeStatus(u, 'hidden'); b.removeStatus(u, 'invisible')
+      b.addStatus(u, 'lockon', 'until_cleared', self)
+    },
+    fields: (_b, u) => (u.flags.athena ? [{ tiles: u.flags.athena, effect: 'reveal' as const, label: `${u.name}'s ATHENA simulacrum: hostiles lose cover` }] : []),
+  },
+  // ---------------- Swarm Body
+  {
+    id: 'ms_swarm_body', note: 'Swarm Body: Burst 1 swarm from the end of your turn; hostiles starting or entering it save (Systems) or take 3 kinetic (+3 per stationary turn, max 9); ends when you move',
+    actions: (_b, u) => (u.flags.swarm ? [] : [action({
+      key: 'swarm', name: 'Swarm Body', activation: 'quick', target: 'none', text: 'Release a Burst 1 swarm at the end of your turn.',
+      run: (_bt, me) => { me.flags.swarmPending = true },
+      aiTarget: (_bt, me) => ({ ...me.pos }),
+      aiScore: (bt, me) => (hostiles(bt, me).some(h => bt.distance(me, h) <= 2) ? 2.5 : 0),
+    })]),
+    onTurnEnd(b, u) {
+      if (u.flags.swarmPending) { u.flags.swarmPending = false; u.flags.swarm = 3; b.say(`${u.name} releases a swarm.`) }
+      else if (u.flags.swarm && !u.flags['turn:moved']) u.flags.swarm = Math.min(9, u.flags.swarm + 3)
+    },
+    onAnyMovementAction(_b, self, mover) { if (mover === self) { self.flags.swarm = undefined } },
+    onAnyTurnStart(b, self, u) { swarmHit(b, self, u) },
+    onMove(b, self, mover) { if (mover !== self) swarmHit(b, self, mover) },
+    fields: (b, u) => (u.flags.swarm ? [{ tiles: burstTiles(b.map, u, 1), effect: 'harm' as const, label: `${u.name}'s swarm: Systems save or ${u.flags.swarm} kinetic` }] : []),
+  },
+  // ---------------- H0R_OS II / III
+  {
+    id: 'ms_h0r_os_system_upgrade_ii', partial: true, note: 'H0R_OS II: Ideal Image (Size 2 hard-cover construct, immune to damage); False Idol (hostiles with line of sight to the decoy save (Systems) before acting against its target)',
+    actions: (b, u) => [action({
+      key: 'ideal_image', name: 'Construct: Ideal Image', activation: 'quick', target: 'tile', range: 1, text: 'A Size 2 construct next to you: hard cover, blocks line of sight, immune to damage.',
+      usable: () => (mineOf(b, u, 'Ideal Image').length ? 'Already constructed' : true),
+      run: (bt, me, t) => {
+        const p = at(t)
+        const d = deployableUnit(me, { name: 'Ideal Image', type: 'Deployable', size: 2, hp: 999, evasion: 5 } as any, p)
+        if (!footprint(d).every(q => free(bt, q))) throw new Error('No room')
+        d.resist = ['all']
+        bt.spawn(d)
+      },
+      aiTarget: (bt, me) => { const h = nearest(bt, me, hostiles(bt, me)); return h ? tileNear(bt, me, h.pos, 1) : null },
+      aiScore: (bt, me) => (hostiles(bt, me).some(h => bt.distance(me, h) <= 10) ? 1.5 : 0),
+    }), action({
+      key: 'false_idol', name: 'Construct: False Idol', activation: 'quick', target: 'ally', range: u.stats.sensors, text: 'Create a decoy of an ally (or yourself); hostiles that can see it must save before acting against them.',
+      run: (bt, me, t) => { const who = (t as Unit) ?? me; me.flags.idol = { of: who.id, pos: tileNear(bt, me, who.pos, me.stats.sensors) ?? who.pos } },
+      aiTarget: (bt, me) => [...allies(bt, me), me].sort((x, y) => x.hp / x.stats.hp - y.hp / y.stats.hp)[0],
+      aiScore: (_bt, me) => (me.flags.idol ? 0 : 1.5),
+    })],
+    beforeAnyAttack(b, self, ctx) {
+      const idol = self.flags.idol
+      if (!idol || ctx.target.id !== idol.of || !b.hostile(self, ctx.attacker) || !hasLineOfSightToTile(b.effectiveMap(), ctx.attacker, idol.pos)) return
+      if (!b.save(ctx.attacker, 'sys', self.stats.save)) { ctx.cancelled = true; b.say(`  ${ctx.attacker.name} is fooled by the False Idol.`) }
+    },
+    fields: (_b, u) => (u.flags.idol ? [{ tiles: [u.flags.idol.pos], effect: 'protect' as const, label: `${u.name}'s False Idol decoy` }] : []),
+  },
+  {
+    id: 'ms_h0r_os_system_upgrade_iii', note: 'H0R_OS III invades: Dimensional Emblems (three constructs by the target; passing through one deals 2 heat); Celestial Shackles (teleport the target back to its marked space)',
+    actions: (b, u) => {
+      const out: CustomAction[] = [invadeOpt(u, 'emblems', 'Dimensional Emblems', 'Three constructs next to the target; passing through one deals 2 heat.', (bt, me, t) => {
+        const spots: Pos[] = []
+        for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]]) {
+          const p = { x: t.pos.x + dx, y: t.pos.y + dy }
+          if (spots.length < 3 && free(bt, p) && !spots.some(s => chebyshev(s, p) <= 1)) spots.push(p)
+        }
+        me.flags.emblems = spots
+      }), invadeOpt(u, 'shackles', 'Celestial Shackles', 'Mark the target’s space; teleport it back there later (free action on your turn).', (_bt, me, t) => { t.flags.shackledBy = me.id; t.flags.shackleAt = { ...t.pos } })]
+      for (const t of b.alive().filter(o => o.flags.shackledBy === u.id && (o.pos.x !== o.flags.shackleAt.x || o.pos.y !== o.flags.shackleAt.y))) out.push(action({
+        key: `shackle_pull:${t.id}`, name: `Shackles: return ${t.name}`, activation: 'free', target: 'none', text: 'Teleport the shackled character back to its marked space.',
+        usable: (_bt, me) => (me.activeTurn ? true : 'Only on your turn'),
+        run: (bt) => { const p = free(bt, t.flags.shackleAt, t) ? t.flags.shackleAt : tileNear(bt, t, t.flags.shackleAt, 2); t.flags.shackledBy = undefined; if (p) { const from = t.pos; t.pos = p; bt.emit({ type: 'move', unitId: t.id, path: [from, p] }) } },
+        aiTarget: () => ({ ...t.pos }), aiScore: () => 2,
+      }))
+      return out
+    },
+    grantActions: (b, self, other) => (other.flags.shackledBy === self.id ? [action({
+      key: `shackle_break:${self.id}`, name: 'Break Celestial Shackles', activation: 'quick', target: 'none', text: 'Systems save to end the shackles.',
+      run: (bt, me) => { if (bt.save(me, 'sys', self.stats.save)) me.flags.shackledBy = undefined },
+      aiTarget: () => ({ ...other.pos }), aiScore: () => 1.5,
+    })] : []),
+    onMove(b, self, mover, path) {
+      if (!self.flags.emblems?.length || mover === self) return
+      for (const e of [...self.flags.emblems as Pos[]]) if (path.some(p => footprint({ pos: p, stats: mover.stats }).some(q => q.x === e.x && q.y === e.y))) {
+        self.flags.emblems = (self.flags.emblems as Pos[]).filter(x => x !== e)
+        b.applyDamage(mover, [{ type: 'Heat', amount: 2 }], { source: self })
+      }
+    },
+    fields: (_b, u) => (u.flags.emblems?.length ? [{ tiles: u.flags.emblems, effect: 'harm' as const, label: `${u.name}'s dimensional emblem: 2 heat when passed through` }] : []),
+  },
+  // ---------------- Monitor Module
+  {
+    id: 'ms_monitor_module', note: 'Monitor Module: guard an adjacent ally with 1d3 charges until the end of your next turn; when it is attacked next to you, Skirmish the attacker for half damage (reaction)',
+    actions: () => [action({
+      key: 'monitor', name: 'Monitor Module', activation: 'quick', target: 'ally', range: 1, text: 'Guard an adjacent ally with 1d3 charges.',
+      run: (bt, me, t) => { const a = t as Unit; if (!bt.adjacent(me, a)) throw new Error('Must be adjacent'); me.flags.monitor = { ally: a.id, charges: bt.rng.d(3), until: bt.round + 1 } },
+      aiTarget: (bt, me) => allies(bt, me).filter(a => bt.adjacent(me, a)).sort((x, y) => x.hp - y.hp)[0] ?? null,
+      aiScore: (bt, me) => (hostiles(bt, me).some(h => bt.distance(me, h) <= 8) ? 2 : 0),
+    })],
+    afterAnyAttack(b, self, ctx) {
+      const m = self.flags.monitor
+      if (!m || b.round > m.until || m.charges <= 0 || ctx.target.id !== m.ally || !b.adjacent(self, ctx.target) || ctx.attacker.destroyed) return
+      if (b.canSpend(self, 'reaction') !== true) return
+      const w = self.weapons.find(x => !x.tech && b.weaponReady(self, x) && b.validTarget(self, x, ctx.attacker) === true)
+      if (!w) return
+      self.reactionsLeft--
+      m.charges--
+      self.flags.halfDamage = true
+      try { b.weaponAttack(self, w, { targetId: ctx.attacker.id }, 'free') } finally { self.flags.halfDamage = false }
+    },
+  },
+  // ---------------- Mesmer Charges
+  {
+    id: 'ms_mesmer_charges', note: 'Mesmer: Beacon (Systems save or only move toward you until the end of its next turn); Mine (Burst 2, Systems save or Immobilized)',
+    actions: (b, u) => {
+      const s = sys(u, 'ms_mesmer_charges')
+      return [action({
+        key: 'mesmer_beacon', name: 'Mesmer Beacon', activation: 'quick', target: 'enemy', range: 5, text: 'Systems save, or the target can only move toward you until the end of its next turn.',
+        usable: () => usesOk(s),
+        run: (bt, me, t) => { spend(s); const v = t as Unit; if (!bt.save(v, 'sys', me.stats.save)) { v.flags.mesmerBy = me.id; v.flags.mesmerUntil = bt.round + 1; bt.say(`${v.name} is mesmerized.`) } },
+        aiScore: (bt, me, t) => (t && 'id' in t && bt.distance(me, t) > 2 ? 2 : 0),
+      }), action({
+        key: 'mesmer_mine', name: 'Mesmer Mine', activation: 'quick', target: 'tile', range: 5, area: { shape: 'blast', size: 2 }, text: 'Arm a mine: Burst 2, Systems save or Immobilized until the end of the next turn.',
+        usable: () => usesOk(s),
+        run: (bt, me, t) => { spend(s); bt.placeMine(me, at(t), { name: 'Mesmer Mine', radius: 2, damage: [], save: 'sys', effects: [{ do: 'status', status: 'immobilized', duration: 'next_turn_end_target' }] }) },
+      })]
+    },
+  },
+  // ---------------- Law of Blades
+  {
+    id: 'ms_law_of_blades', partial: true, note: 'Law of Blades: Predator/Prey (the target attacks one of its allies); Slave Systems (the target Rams an adjacent ally, or Boosts toward you)',
+    actions: (_b, u) => [
+      techOpt(u, 'predator', 'Predator/Prey Concepts', 'On a hit, the target attacks one of its allies with a weapon you choose.', (bt, _me, t) => {
+        for (const w of t.weapons.filter(w => !w.destroyed && !w.tech && bt.weaponReady(t, w))) {
+          const victim = chars(bt).find(o => o !== t && !bt.hostile(t, o) && bt.validTarget(t, w, o) === true)
+          if (victim) { bt.say(`${t.name} turns its ${w.name} on ${victim.name}!`, 'attack'); bt.weaponAttack(t, w, { targetId: victim.id }, 'free'); return }
+        }
+      }),
+      techOpt(u, 'slave', 'Slave Systems', 'On a hit, the target Rams an adjacent ally, or Boosts toward you.', (bt, me, t) => {
+        const ally = chars(bt).find(o => o !== t && !bt.hostile(t, o) && bt.adjacent(o, t))
+        if (ally) { bt.forceMove(ally, t, 1, 1); if (!bt.save(ally, 'hull', me.stats.save)) bt.addStatus(ally, 'prone', 'until_cleared', t); bt.say(`${t.name} rams ${ally.name}!`) }
+        else bt.forceMove(t, me, t.stats.speed, -1)
+      }),
+    ],
+  },
+  // ---------------- SISYPHUS
+  {
+    id: 'ms_sisyphus_class_nhp', note: 'SISYPHUS: Bend Probability stores two d20 results; until the end of your next turn, replace up to two d20 rolls within Sensors (good results for allies, bad ones for hostiles)',
+    actions: () => [action({
+      key: 'bend', name: 'Bend Probability', activation: 'full_tech', target: 'none', text: 'Roll 2d20 and hold them; spend them on d20 rolls within Sensors.',
+      run: (bt, me) => { me.flags.bend = { vals: [bt.rng.d(20), bt.rng.d(20)], until: bt.round + 1, uses: 2 }; bt.say(`${me.name} bends probability: ${me.flags.bend.vals.join(' and ')}.`) },
+      aiTarget: (_bt, me) => ({ ...me.pos }),
+      aiScore: (bt, me) => (me.flags.bend ? 0 : allies(bt, me).length + 1),
+    })],
+    overrideD20(b, self, roller, kind) {
+      const bend = self.flags.bend
+      if (!bend || b.round > bend.until || bend.uses <= 0 || !bend.vals.length || b.distance(self, roller) > self.stats.sensors) return undefined
+      const friendly = !b.hostile(self, roller)
+      const v = friendly ? Math.max(...bend.vals) : Math.min(...bend.vals)
+      if (friendly ? v < 14 : v > 7) return undefined
+      bend.vals.splice(bend.vals.indexOf(v), 1)
+      bend.uses--
+      b.say(`  ${self.name}'s SISYPHUS sets ${roller.name}'s ${kind} roll to ${v}.`)
+      return v
+    },
+  },
+  // ---------------- Roller charges
+  {
+    id: 'ms_roller_directed_payload_charges', partial: true, note: 'Roller: a grenade rolls along a Line 10 and detonates on the first character it passes (Agility save or 1d6+3 explosive and knocked back 3); Bouncing Mine vs flyers',
+    actions: (b, u) => {
+      const s = sys(u, 'ms_roller_directed_payload_charges')
+      return [action({
+        key: 'roller', name: 'Roller Grenade', activation: 'quick', target: 'tile', range: 10, area: { shape: 'line', size: 10 }, text: 'Rolls along a Line 10; the first character it passes saves (Agility) or takes 1d6+3 explosive and is knocked back 3.',
+        usable: () => usesOk(s),
+        run: (bt, me, t) => {
+          spend(s)
+          const line = lineTiles(bt.map, me, at(t), 10)
+          for (const p of line) {
+            const v = chars(bt).find(o => o !== me && footprint(o).some(q => chebyshev(q, p) <= 1))
+            if (!v) continue
+            bt.emit({ type: 'area', tiles: [p], kind: 'explosion' })
+            half(bt, v, me, 'agi', '1d6+3', 'Explosive', failed => { if (failed && !v.destroyed) bt.forceMove(v, me, 3, 1) })
+            return
+          }
+        },
+      }), action({
+        key: 'bouncing_mine', name: 'Bouncing Mine', activation: 'quick', target: 'tile', range: 5, text: 'Arm a mine against flyers passing over or next to it: Systems save or 2d6 explosive and grounded.',
+        usable: () => usesOk(s),
+        run: (_bt, me, t) => { spend(s); me.flags.bounceMines = [...(me.flags.bounceMines ?? []), at(t)] },
+      })]
+    },
+    onMove(b, self, mover, path) {
+      if (!self.flags.bounceMines?.length || !mover.flying || mover === self) return
+      const m = (self.flags.bounceMines as Pos[]).find(x => path.some(p => chebyshev(p, x) <= 1))
+      if (!m) return
+      self.flags.bounceMines = (self.flags.bounceMines as Pos[]).filter(x => x !== m)
+      half(b, mover, self, 'sys', '2d6', 'Explosive', failed => { if (failed) { mover.flags.groundedUntil = b.round + 1; mover.flags.wasFlying = true; mover.flying = false } })
+    },
+    onAnyTurnEnd(b, _self, u) { if (u.flags.wasFlying && b.round > (u.flags.groundedUntil ?? 0)) { u.flying = true; u.flags.wasFlying = false } },
+  },
+  // ---------------- Grounding Charges
+  {
+    id: 'ms_grounding_charges', note: 'Grounding: Gravity Grenade (Agility save or Slowed until it spends a turn without moving); Grounding Mine (remote: Hull save or pulled to it and Prone)',
+    actions: (b, u) => {
+      const s = sys(u, 'ms_grounding_charges')
+      const out = [action({
+        key: 'gravity_grenade', name: 'Gravity Grenade', activation: 'quick', target: 'enemy', range: 5, text: 'Agility save or Slowed until it makes no voluntary movement for a turn.',
+        usable: () => usesOk(s),
+        run: (bt, me, t) => { spend(s); const v = t as Unit; if (!bt.save(v, 'agi', me.stats.save)) bt.addStatus(v, 'slowed', 'until_cleared', me, { gravity: true }) },
+        aiScore: (bt, _me, t) => (t && 'id' in t && !bt.has(t, 'slowed') ? 2 : 0),
+      }), action({
+        key: 'grounding_mine', name: 'Plant Grounding Mine', activation: 'quick', target: 'tile', range: 5, text: 'Plant a mine you detonate later.',
+        usable: () => (u.flags.groundMine ? 'Already planted' : usesOk(s)),
+        run: (_bt, me, t) => { spend(s); me.flags.groundMine = at(t) },
+      })]
+      if (u.flags.groundMine) out.push(action({
+        key: 'grounding_boom', name: 'Detonate Grounding Mine', activation: 'quick', target: 'enemy', range: 50, text: 'One character within 5 of the mine: Hull save or pulled to it and Prone.',
+        run: (bt, me, t) => {
+          const v = t as Unit
+          const m = me.flags.groundMine as Pos
+          if (chebyshev(v.pos, m) > 5) throw new Error('Target must be within 5 of the mine')
+          me.flags.groundMine = undefined
+          if (bt.save(v, 'hull', me.stats.save)) return
+          bt.forceMove(v, m, chebyshev(v.pos, m), -1)
+          if (v.flying) v.flying = false
+          bt.addStatus(v, 'prone', 'until_cleared', me)
+        },
+        aiScore: (bt, me, t) => (t && 'id' in t && chebyshev((t as Unit).pos, me.flags.groundMine) <= 5 ? 3 : 0),
+      }))
+      return out
+    },
+    onAnyTurnEnd(b, _self, u) { if (!u.flags['turn:moved']) u.statuses = u.statuses.filter(s => !s.data?.gravity) },
+    fields: (_b, u) => (u.flags.groundMine ? [{ tiles: [u.flags.groundMine], effect: 'control' as const, label: `${u.name}'s grounding mine` }] : []),
+  },
+  // ---------------- Clamp Bombs
+  {
+    id: 'ms_clamp_bombs', note: 'Clamp Bombs: Engineering save or bombs clamp on; at the end of its next turn they deal 1d6+3 AP explosive (half to adjacent characters) unless it moved 4+ spaces',
+    actions: (b, u) => {
+      const s = sys(u, 'ms_clamp_bombs')
+      return [action({
+        key: 'clamp', name: 'Clamp Bombs', activation: 'quick', target: 'enemy', range: u.stats.sensors, text: 'Engineering save or the bombs clamp on.',
+        usable: () => usesOk(s),
+        run: (bt, me, t) => { spend(s); const v = t as Unit; if (!bt.save(v, 'eng', me.stats.save)) { v.flags.clampBy = me.id; v.flags.clampMoved = 0; bt.say(`Bombs clamp onto ${v.name}!`) } },
+        aiScore: (bt, _me, t) => (t && 'id' in t && !(t as Unit).flags.clampBy ? 2.5 : 0),
+      })]
+    },
+    onMove(_b, self, mover, path) { if (mover.flags.clampBy === self.id && mover.activeTurn) mover.flags.clampMoved = (mover.flags.clampMoved ?? 0) + path.length - 1 },
+    onAnyTurnEnd(b, self, u) {
+      if (u.flags.clampBy !== self.id) return
+      u.flags.clampBy = undefined
+      if ((u.flags.clampMoved ?? 0) >= 4) { b.say(`${u.name} shakes off the clamp bombs.`); return }
+      const dmg = rollDice(b.rng, '1d6+3').total
+      b.emit({ type: 'area', tiles: footprint(u), kind: 'explosion' })
+      b.applyDamage(u, [{ type: 'Explosive', amount: dmg }], { source: self, ap: true })
+      for (const o of chars(b)) if (o !== u && b.adjacent(o, u)) b.applyDamage(o, [{ type: 'Explosive', amount: Math.ceil(dmg / 2) }], { source: self, ap: true })
+    },
+  },
+  // ---------------- Tesseract
+  {
+    id: 'ms_tesseract', partial: true, note: 'Tesseract Pinpoint Focus: lift a character 6 spaces (hostiles: Engineering save, 1/scene each): Immobilized and flying until it sinks at the end of its next turn (Spread Focus zero-g is not modelled)',
+    actions: () => [action({
+      key: 'pinpoint', name: 'Pinpoint Focus', activation: 'quick_tech', target: 'unit', range: 10, text: 'Lift a character into the air: Immobilized and flying until the end of its next turn.',
+      run: (bt, me, t) => {
+        const v = t as Unit
+        if (bt.hostile(me, v)) {
+          if (v.flags[`scene:tesseract:${me.id}`]) throw new Error('Already lifted this scene')
+          v.flags[`scene:tesseract:${me.id}`] = true
+          if (bt.save(v, 'eng', me.stats.save)) return
+        }
+        v.flags.liftedUntil = bt.round + 1
+        v.flags.liftWasFlying = v.flying
+        v.flying = true
+        bt.addStatus(v, 'immobilized', 'next_turn_end_target', me)
+        bt.say(`${v.name} floats into the air.`)
+      },
+      aiScore: (bt, me, t) => (t && 'id' in t && bt.hostile(me, t) && t.weapons.some(w => bt.isMelee(w)) ? 2 : 0),
+    })],
+    onAnyTurnEnd(b, _self, u) { if (u.flags.liftedUntil != null && b.round >= u.flags.liftedUntil) { u.flying = !!u.flags.liftWasFlying; u.flags.liftedUntil = undefined } },
+  },
+  // ---------------- Blinkshield
+  {
+    id: 'ms_blinkshield', partial: true, note: 'Blinkshield: Burst 4 time bubble until the end of your next turn; nothing crosses its border (attacks and effects across it fail); movement across the border is not blocked',
+    actions: () => [action({
+      key: 'blinkshield', name: 'Blinkshield', activation: 'full', heat: 4, target: 'none', area: { shape: 'burst', size: 4 }, text: 'Burst 4 bubble: attacks and effects cannot cross its border until the end of your next turn.',
+      run: (bt, me) => { me.flags.blink = { tiles: burstTiles(bt.map, me, 4), until: bt.round + 1 } },
+      aiTarget: (_bt, me) => ({ ...me.pos }),
+      aiScore: (bt, me) => (me.heat + 4 < me.stats.heatcap && hostiles(bt, me).filter(h => bt.distance(me, h) > 4 && bt.distance(me, h) <= 12).length >= 2 ? 2.5 : 0),
+    })],
+    beforeAnyAttack(b, self, ctx) {
+      const f = self.flags.blink
+      if (!f || b.round > f.until) return
+      if (fully(ctx.attacker, f.tiles) !== fully(ctx.target, f.tiles)) { ctx.cancelled = true; b.say('  The attack cannot cross the Blinkshield.') }
+    },
+    fields: (b, u) => (u.flags.blink && b.round <= u.flags.blink.until ? [{ tiles: u.flags.blink.tiles, effect: 'barrier' as const, label: `${u.name}'s Blinkshield: nothing crosses its border` }] : []),
+  },
+  // ---------------- Flash Anchor
+  {
+    id: 'ms_flash_anchor', note: 'Flash Anchor (reaction, 2 heat): stop an ally or yourself being pushed, pulled or knocked Prone; immune until the start of their next turn',
+    preventAnyMove(b, self, target, src) {
+      if (b.hostile(self, target) || (src && !b.hostile(self, src)) || b.distance(self, target) > self.stats.sensors || !b.los(self, target)) return false
+      if (target.flags.anchoredUntil != null && b.round <= target.flags.anchoredUntil) return true
+      return anchor(b, self, target)
+    },
+    blockAnyStatus(b, self, target, status, src) {
+      if (status !== 'prone' || b.hostile(self, target) || (src && !b.hostile(self, src)) || b.distance(self, target) > self.stats.sensors) return false
+      if (target.flags.anchoredUntil != null && b.round <= target.flags.anchoredUntil) return true
+      return anchor(b, self, target)
+    },
+    canBeMoved: (b, self, src) => !(src && b.hostile(self, src) && (self.flags.anchoredUntil >= b.round || anchor(b, self, self))),
+    blockStatus: (b, self, st, src) => st === 'prone' && !!src && b.hostile(self, src) && (self.flags.anchoredUntil >= b.round || anchor(b, self, self)),
+  },
+  // ---------------- Hardlight Defense System
+  {
+    id: 'ms_hardlight_defense_system', partial: true, note: 'Hardlight Defense: Burst 3 shield (you are Immobilized); attacks across its border fail; characters crossing it take 2 burn (line of sight blocking is not modelled)',
+    actions: (_b, u) => [u.flags.hardlight
+      ? action({ key: 'hardlight_off', name: 'Deactivate Hardlight Defense', activation: 'protocol', target: 'none', text: 'Drop the shield.', run: (_bt, me) => { me.flags.hardlight = undefined; me.statuses = me.statuses.filter(s => !s.data?.hardlight) } })
+      : action({
+        key: 'hardlight', name: 'Hardlight Defense System', activation: 'full', heat: 2, target: 'none', area: { shape: 'burst', size: 3 }, text: 'Raise a Burst 3 hardlight shield; you are Immobilized.',
+        run: (bt, me) => { me.flags.hardlight = burstTiles(bt.map, me, 3); bt.addStatus(me, 'immobilized', 'until_cleared', me, { hardlight: true }) },
+        aiTarget: (_bt, me) => ({ ...me.pos }),
+        aiScore: (bt, me) => (me.heat + 2 < me.stats.heatcap && hostiles(bt, me).filter(h => bt.distance(me, h) > 3 && bt.distance(me, h) <= 12).length >= 2 && allies(bt, me).some(a => bt.distance(me, a) <= 3) ? 2.5 : 0),
+      })],
+    beforeAnyAttack(b, self, ctx) {
+      const tiles = self.flags.hardlight as Pos[] | undefined
+      if (!tiles) return
+      const ina = fully(ctx.attacker, tiles), int = fully(ctx.target, tiles)
+      const partial = (u: Unit) => onTiles(u, tiles) && !fully(u, tiles)
+      if (ina !== int && !partial(ctx.attacker) && !partial(ctx.target)) { ctx.cancelled = true; b.say('  The hardlight shield blocks the attack.') }
+    },
+    onMove(b, self, mover, path) {
+      const tiles = self.flags.hardlight as Pos[] | undefined
+      if (!tiles || mover === self || path.length < 2) return
+      const inside = (p: Pos) => tiles.some(t => t.x === p.x && t.y === p.y)
+      if (inside(path[0]) !== inside(path[path.length - 1]) && oncePerRound(mover, `hardlight:${self.id}`)) b.applyDamage(mover, [{ type: 'Burn', amount: 2 }], { source: self })
+    },
+    fields: (_b, u) => (u.flags.hardlight ? [{ tiles: u.flags.hardlight, effect: 'barrier' as const, label: `${u.name}'s hardlight shield: attacks can't cross; crossing deals 2 burn` }] : []),
+  },
+  // ---------------- NOAH
+  {
+    id: 'ms_noah_class_nhp', note: "NOAH Diluvian Ark: until the end of your next turn you are Slowed; ranged attacks on you or adjacent allies: 1 heat and a d6, on 4+ another heat and it misses; attackers who miss take 4 kinetic",
+    actions: () => [action({
+      key: 'noah', name: 'Diluvian Ark', activation: 'quick', target: 'none', text: 'Protect yourself and adjacent allies from ranged attacks until the end of your next turn.',
+      run: (bt, me) => { me.flags.ark = bt.round + 1; bt.addStatus(me, 'slowed', 'next_turn_end_target', me) },
+      aiTarget: (_bt, me) => ({ ...me.pos }),
+      aiScore: (bt, me) => (me.heat + 3 < me.stats.heatcap && hostiles(bt, me).some(h => bt.distance(me, h) <= 15) ? 2 : 0),
+    })],
+    beforeAnyAttack(b, self, ctx) {
+      if (!(self.flags.ark >= b.round) || ctx.melee || ctx.tech || b.has(ctx.target, 'invisible') || b.hostile(self, ctx.target)) return
+      if (ctx.target !== self && !b.adjacent(self, ctx.target)) return
+      if (b.canSpend(self, 'reaction') !== true || self.heat + 2 > self.stats.heatcap) return
+      self.reactionsLeft--
+      b.addHeat(self, 1)
+      const r = b.rng.d(6)
+      if (r >= 4) { b.addHeat(self, 1); ctx.cancelled = true; b.say(`  The Diluvian Ark deflects the shot (${r}).`) }
+    },
+    afterAnyAttack(b, self, ctx) {
+      if (!(self.flags.ark >= b.round) || ctx.melee || ctx.tech || ctx.hit || b.hostile(self, ctx.target) || ctx.attacker.destroyed) return
+      if (ctx.target !== self && !b.adjacent(self, ctx.target)) return
+      b.applyDamage(ctx.attacker, [{ type: 'Kinetic', amount: 4 }], { source: self })
+    },
+  },
+  // ---------------- Ammo Cases
+  ammoScript('ms_walking_armory_1'),
+  ammoScript('ms_walking_armory_2'),
+  ammoScript('ms_walking_armory_3'),
+]
+
+function anchor(b: Battle, self: Unit, target: Unit): boolean {
+  if (b.canSpend(self, 'reaction', 'flash_anchor') !== true || self.heat + 2 > self.stats.heatcap) return false
+  b.spend(self, 'reaction', 'flash_anchor')
+  b.addHeat(self, 2)
+  target.flags.anchoredUntil = b.round + 1
+  b.say(`${self.name}'s Flash Anchor holds ${target.name} in place.`)
+  return true
+}
+
+function swarmHit(b: Battle, self: Unit, u: Unit) {
+  if (!self.flags.swarm || !b.hostile(self, u) || (u.kind !== 'mech' && u.kind !== 'npc') || b.distance(self, u) > 1 || !oncePerRound(u, `swarm:${self.id}`)) return
+  if (!b.save(u, 'sys', self.stats.save)) b.applyDamage(u, [{ type: 'Kinetic', amount: self.flags.swarm }], { source: self })
+}
+
+function dismount(b: Battle, mule: Unit, r: Unit, prone: boolean) {
+  r.flags.ridingOn = undefined
+  r.flags.flat = false
+  const p = tileNear(b, mule, mule.pos, 2)
+  if (p) { const from = r.pos; r.pos = p; b.emit({ type: 'move', unitId: r.id, path: [from, p] }) }
+  if (prone) b.addStatus(r, 'prone', 'until_cleared')
+}
+
+/** An Invade option (tech attack; on a hit 2 heat plus the effect). */
+function invadeOpt(u: Unit, key: string, name: string, text: string, onHit: (b: Battle, self: Unit, t: Unit) => void): CustomAction {
+  return action({
+    key: `invade:${key}`, name: `Invade: ${name}`, activation: 'quick_tech', techOption: 'invade', target: 'enemy', range: u.stats.sensors, text,
+    run: (bt, me, t) => {
+      const target = t as Unit
+      const v = bt.techTargetValid(me, target, 'invade')
+      if (v !== true) throw new Error(v)
+      const ctx = bt.techAttackRoll(me, target, name)
+      if (ctx.hit) { bt.applyDamage(target, [{ type: 'Heat', amount: 2 }], { source: me }); if (!target.destroyed) onHit(bt, me, target) }
+    },
+    aiScore: () => 3,
+  })
+}
+/** A Full Tech option: tech attack, effect on a hit. */
+function techOpt(u: Unit, key: string, name: string, text: string, onHit: (b: Battle, self: Unit, t: Unit) => void): CustomAction {
+  return action({
+    key: `tech:${key}`, name, activation: 'full_tech', target: 'enemy', range: u.stats.sensors, text,
+    run: (bt, me, t) => {
+      const target = t as Unit
+      const v = bt.techTargetValid(me, target)
+      if (v !== true) throw new Error(v)
+      const ctx: AttackCtx = bt.techAttackRoll(me, target, name)
+      if (ctx.hit && !target.destroyed) onHit(bt, me, target)
+    },
+    aiScore: () => 3,
+  })
+}
+
+registerScripts(scripts)

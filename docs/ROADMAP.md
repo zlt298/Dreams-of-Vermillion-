@@ -173,15 +173,35 @@ All 21 talent ranks that used to be resolved by hand now have scripts (`scripts/
 
 Two engine additions support these: an `onStatusRemoved` hook and Prowl movement and hiding rules.
 
+### Systems
+The 32 systems that used to be resolved by hand now have scripts (`scripts/systems2.ts`):
+- **Grenades and mines:** BB, Flash, Mesmer, Roller, Grounding, Clamp Bombs.
+- **Shields and barriers:** Magnetic Shield, Blinkshield, Hardlight Defense, Flash Anchor, Armor-Lock.
+- **NHPs:**
+  - SEKHMET: the AI plays your turn.
+  - TLALOC, ATHENA, NOAH.
+  - SISYPHUS: stored d20s.
+- **Utility:**
+  - Cable Winch, MULE Harness, Whitewash
+  - Javelin Rockets, Flicker Field, FADE Cloak, Retractable Profile
+  - Swarm Body, H0R_OS II/III, Monitor Module, Law of Blades, Tesseract
+  - the Ammo Case rounds
+- **Engine mechanics added:**
+  - blinded (line of sight only to adjacent spaces), intangible, can't-attack
+  - automatic Hull/Agility saves, Mesmer movement
+  - a d20-override hook
+  - other units preventing forced movement or statuses
+  - standard moves now fire the movement hook
+
 ### Rules fidelity snapshot
-Out of the 392 items in lancer-data, 298 (76%) are fully executed and 52 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
+Out of the 392 items in lancer-data, 316 (81%) are fully executed and 66 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
 
 | section | scripted | partial | auto | manual |
 |---|---|---|---|---|
 | Frame traits | 27 | 2 | 0 | 0 |
 | Core systems | 26 | 3 | 0 | 0 |
 | Weapons | 19 | 5 | 53 | 8 |
-| Systems | 69 | 19 | 4 | 32 |
+| Systems | 87 | 33 | 4 | 0 |
 | Mods | 2 | 1 | 3 | 2 |
 | Talent ranks | 63 | 18 | 6 | 0 |
 | Core bonuses | 9 | 4 | 17 | 0 |
@@ -206,10 +226,7 @@ Remaining here:
 ### 2. Player content (L, in batches, each with a test)
 Driven by `npm run coverage -- --list`.
 1. ✅ **CORE systems:** done; Goblin Symbiosis is partial.
-2. **The remaining manual systems:**
-   - charges (Flash, Mesmer, Grounding, Roller, Clamp Bombs, BB)
-   - NHPs (SEKHMET, TLALOC, ATHENA, SISYPHUS, NOAH)
-   - Armor-Lock, FADE Cloak, Tesseract, Blinkshield and the rest
+2. ✅ **Systems:** every system is now executed; 33 are approximations (see `npm run coverage -- --list`).
 3. ✅ **Talent ranks:** every rank is now executed; 18 are approximations (see `npm run coverage -- --list`).
 4. **Manual weapons and mods:**
    - Vorpal Gun, Mimic Gun, Siege Cannon, Autopod

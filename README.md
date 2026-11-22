@@ -75,11 +75,11 @@ section            scripted partial   auto  manual   done%
 Frame traits             27       2      0       0     93%
 Core systems             26       3      0       0     90%
 Weapons                  19       5     53       8     85%
-Systems                  69      19      4      32     59%
+Systems                  87      33      4       0     73%
 Mods                      2       1      3       2     63%
 Talent ranks             63      18      6       0     79%
 Core bonuses              9       4     17       0     87%
-TOTAL 298/392 (76%) fully executed by the engine, 52 partially
+TOTAL 316/392 (81%) fully executed by the engine, 66 partially
 ```
 
 - **auto**: fully described by structured data (bonuses, damage, ranges, tags, on-hit statuses).

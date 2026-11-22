@@ -136,6 +136,12 @@ export interface ItemScript {
   onAnyMovementAction?(b: Battle, self: Unit, mover: Unit, kind: 'boost' | 'involuntary' | 'standard'): void
   /** when the owner activates its CORE power */
   onCoreActivate?(b: Battle, self: Unit): void
+  /** substitute the d20 that `roller` is about to roll (return undefined to leave it) */
+  overrideD20?(b: Battle, self: Unit, roller: Unit, kind: 'attack' | 'check' | 'save', ctx?: AttackCtx): number | undefined
+  /** another unit is about to be pushed/pulled: return true to prevent it */
+  preventAnyMove?(b: Battle, self: Unit, target: Unit, source?: Unit): boolean
+  /** another unit is about to gain a status: return true to prevent it */
+  blockAnyStatus?(b: Battle, self: Unit, target: Unit, status: string, source?: Unit): boolean
   /** a status was removed from this unit */
   onStatusRemoved?(b: Battle, self: Unit, status: string): void
   /** this unit took the Stabilize action */

@@ -230,6 +230,7 @@ export class Battle {
     if (u.destroyed) return false
     if (u.immune.includes(id)) { this.say(`${u.name} is immune to ${id}.`, 'status'); return false }
     for (const sc of scriptsFor(u)) if (sc.blockStatus?.(this, u, id, source)) { this.say(`${u.name} ignores ${id}.`, 'status'); return false }
+    for (const o of this.alive()) if (o !== u) for (const sc of scriptsFor(o)) if (sc.blockAnyStatus?.(this, o, u, id, source)) { this.say(`${u.name} is protected from ${id}.`, 'status'); return false }
     if (u.kind === 'deployable' && ['prone', 'slowed', 'immobilized', 'impaired', 'jammed'].includes(id) && u.stats.speed === 0) return false
     if (id === 'prone' && u.flying) { this.say(`${u.name} is flying and can't be knocked prone.`, 'status'); return false }
     const inst: StatusInstance = { id, source: source?.id, data }
@@ -304,7 +305,7 @@ export class Battle {
   check(u: Unit, stat: Stat, extraAcc = 0): boolean {
     if ((stat === 'hull' || stat === 'agi') && this.has(u, 'stunned')) { this.say(`${u.name} automatically fails the ${stat.toUpperCase()} check (stunned).`); return false }
     const acc = this.accuracyFromStatuses(u, 'check', stat) + extraAcc
-    const d = this.rng.d(20), a = rollAccuracy(this.rng, acc)
+    const d = this.rollD20(u, 'check'), a = rollAccuracy(this.rng, acc)
     const total = d + u.stats[stat] + a.bonus
     const ok = total >= 10
     this.say(`${u.name} ${stat.toUpperCase()} check: ${total} (${d}${fmtAcc(a.bonus)}+${u.stats[stat]}) ${ok ? 'success' : 'failure'}.`)
@@ -313,8 +314,9 @@ export class Battle {
   /** Save vs a source's save target. */
   save(u: Unit, stat: Stat, target: number, extraAcc = 0): boolean {
     if ((stat === 'hull' || stat === 'agi') && this.has(u, 'stunned')) { this.say(`${u.name} automatically fails the ${stat.toUpperCase()} save (stunned).`); return false }
+    if ((stat === 'hull' || stat === 'agi') && u.flags.autoSaveUntil != null && this.round <= u.flags.autoSaveUntil) { this.say(`${u.name} automatically passes the ${stat.toUpperCase()} save.`); return true }
     const acc = this.accuracyFromStatuses(u, 'save', stat) + extraAcc
-    const d = this.rng.d(20), a = rollAccuracy(this.rng, acc)
+    const d = this.rollD20(u, 'save'), a = rollAccuracy(this.rng, acc)
     const total = d + u.stats[stat] + a.bonus
     const ok = total >= target
     this.say(`${u.name} ${stat.toUpperCase()} save vs ${target}: ${total} — ${ok ? 'success' : 'failure'}.`)
@@ -680,6 +682,7 @@ export class Battle {
    */
   applyDamage(t: Unit, parts: { type: string; amount: number }[], opts: { source?: Unit; ap?: boolean; irreducible?: boolean; attack?: AttackCtx; resistAll?: boolean } = {}): number {
     if (t.destroyed) return 0
+    if (t.flags.intangible) { this.say(`${t.name} is intangible: unaffected.`); return 0 }
     const shredded = this.has(t, 'shredded')
     const resists = (type: string) => !opts.irreducible && !shredded && (opts.resistAll || t.resist.includes(type) || t.resist.includes('all') || (t.flags.resistAll ?? 0) > 0)
     let hpDmg = 0, heat = 0, burn = 0
@@ -866,6 +869,9 @@ export class Battle {
     const ok = this.canMove(u, opts.mode)
     if (ok !== true) throw new Error(ok)
     if (this.has(u, 'prone') && opts.mode === 'standard') throw new Error('Stand up first')
+    // Mesmer Beacon: voluntary movement only toward the source
+    const mes = u.flags.mesmerBy ? this.unit(u.flags.mesmerBy) : undefined
+    if (mes && !mes.destroyed && this.round <= u.flags.mesmerUntil && opts.mode !== 'involuntary' && chebyshev(dest, mes.pos) >= chebyshev(u.pos, mes.pos)) throw new Error(`Mesmerized: can only move toward ${mes.name}`)
     const budget = opts.mode === 'standard' ? u.moveLeft : u.flags.pendingMove ?? u.stats.speed
     // teleporting movers (u.flags.teleportMoves) aren't held by engagement
     const p = this.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves })
@@ -878,6 +884,7 @@ export class Battle {
     if (opts.mode === 'standard') u.moveLeft -= p.cost
     else if (u.flags.pendingMove != null) u.flags.pendingMove = Math.max(0, u.flags.pendingMove - p.cost)
     if (opts.mode !== 'involuntary') { u.actedThisTurn = true; u.flags['turn:moved'] = true }
+    if (opts.mode === 'standard') for (const o of this.alive()) for (const s of scriptsFor(o)) s.onAnyMovementAction?.(this, o, u, 'standard')
     // overwatch triggers at the start of voluntary movement
     if (opts.mode !== 'involuntary' && !u.flags['turn:disengaged']) this.triggerOverwatch(u)
     if (u.destroyed) return false
@@ -957,6 +964,7 @@ export class Battle {
     if (target.kind === 'deployable' && target.stats.speed === 0) return
     const srcUnit = 'stats' in (source as any) ? (source as Unit) : undefined
     for (const s of scriptsFor(target)) if (s.canBeMoved && !s.canBeMoved(this, target, srcUnit)) { this.say(`${target.name} holds its ground.`); return }
+    for (const o of this.alive()) for (const s of scriptsFor(o)) if (s.preventAnyMove?.(this, o, target, srcUnit)) { this.say(`${target.name} is anchored in place.`); return }
     for (const o of this.alive()) for (const s of scriptsFor(o)) s.onAnyMovementAction?.(this, o, target, 'involuntary')
     if (target.destroyed) return
     const sc = 'stats' in (source as any) ? center(source as Unit) : { x: (source as Pos).x + 0.5, y: (source as Pos).y + 0.5 }
@@ -1069,6 +1077,8 @@ export class Battle {
   }
   weaponUsable(u: Unit, w: Weapon, normalAttack = true): true | string {
     if (w.destroyed) return 'Destroyed'
+    if (u.flags.intangible) return 'Intangible: cannot attack'
+    if (u.flags.noAttacks) return 'Cannot attack (retracted profile)'
     if (normalAttack && w.dataId && NO_NORMAL_ATTACK.has(w.dataId)) return 'Cannot make normal attacks'
     if (!w.loaded) return 'Needs reloading'
     if (w.usesLeft === 0) return 'No uses left'
@@ -1086,6 +1096,8 @@ export class Battle {
   validTarget(u: Unit, w: Weapon, t: Unit, from: Pos = u.pos): true | string {
     if (t.destroyed) return 'Destroyed'
     if (t === u) return 'Cannot target self'
+    if (t.flags.intangible) return 'Intangible'
+    if (this.isBlinded(u) && chebyshev(from, t.pos) > 1 && this.distance(u, t) > 1) return 'Blinded: can only see adjacent spaces'
     if (this.has(t, 'hidden') && this.hostile(u, t)) return 'Hidden'
     const pr = this.profile(w)
     const tags = pr.tags
@@ -1452,7 +1464,7 @@ export class Battle {
       this.emit({ type: 'attack', attackerId: ctx.attacker.id, targetId: t.id, hit: false, crit: false, weapon: ctx.weapon?.name ?? 'tech', total: 0 })
       return
     }
-    let d20 = this.rng.d(20)
+    let d20 = this.rollD20(ctx.attacker, 'attack', ctx)
     let acc = rollAccuracy(this.rng, net)
     let total = d20 + ctx.attackBonus + acc.bonus
     const def = this.defenseOf(t, ctx)
@@ -1854,6 +1866,9 @@ export class Battle {
     if (this.has(u, 'jammed')) return 'Jammed'
     if (this.inIceout(u)) return 'Inside an ICEOUT field: no tech actions'
     if (this.inIceout(t)) return 'Target is protected by an ICEOUT field'
+    if (t.flags.intangible || u.flags.intangible) return 'Intangible'
+    if (u.flags.noAttacks && option === 'invade') return 'Cannot attack (retracted profile)'
+    if (this.isBlinded(u) && this.distance(u, t) > 1) return 'Blinded: can only see adjacent spaces'
     if (t.role === 'Biological' && option !== 'scan' && option !== 'lock_on') return 'Biological characters are immune to tech actions (except Scan and Lock On)'
     if (t.destroyed) return 'Destroyed'
     if (this.has(t, 'shutdown')) return 'Target is shut down (immune to tech)'
@@ -1977,6 +1992,18 @@ export class Battle {
       for (const s of scriptsFor(o)) if (s.fields) out.push(...s.fields(this, o).map(f => ({ ownerId: o.id, ...f })))
     }
     return out
+  }
+  /** Blinded: line of sight only to adjacent spaces (flash bombs, Blind tech). */
+  isBlinded(u: Unit): boolean {
+    return u.flags.blindUntil != null && this.round <= u.flags.blindUntil
+  }
+  /** d20 for an attack, check or save; scripts (e.g. SISYPHUS) may substitute a stored result. */
+  rollD20(u: Unit, kind: 'attack' | 'check' | 'save', ctx?: AttackCtx): number {
+    for (const o of this.alive()) for (const s of scriptsFor(o)) {
+      const v = s.overrideD20?.(this, o, u, kind, ctx)
+      if (v != null) return v
+    }
+    return this.rng.d(20)
   }
   /** Hostile reveal fields (e.g. Lotus Projector): no Hiding, no Invisibility benefit, Hidden lost at turn end. */
   inRevealField(u: Unit): boolean {
