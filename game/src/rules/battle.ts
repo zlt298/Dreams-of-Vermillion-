@@ -6,7 +6,7 @@ import {
   distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from './grid'
-import { Rng, rollDice, rollAccuracy, averageDice } from './rng'
+import { parseDice, Rng, rollDice, rollAccuracy, averageDice } from './rng'
 import { hasTag, tagVal, nextUid } from './stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, Weapon } from './types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from './effects/registry'
@@ -62,6 +62,14 @@ export interface AttackAim { targetId?: string; tile?: Pos }
 export interface AttackSummary { ctxs: AttackCtx[]; ok: boolean; reason?: string }
 
 /** weapons that can only fire through their own special rules */
+/** "By the Way, I Know Everything" (Pegasus): fixed average damage instead of rolling. */
+function averageRoll(val: string | number): { total: number; overkillHeat: number } {
+  const p = parseDice(val)
+  const TABLE: Record<string, number> = { '1d3': 2, '1d6': 4, '2d6': 7, '3d6': 11, '4d6': 14 }
+  const dice = p.count ? TABLE[`${p.count}d${p.sides}`] ?? Math.floor(p.count * (p.sides + 1) / 2) : 0
+  return { total: dice + p.flat, overkillHeat: 0 }
+}
+
 const NO_NORMAL_ATTACK = new Set(['mw_autogun', 'mw_lancaster_integrated', 'mw_autopod', 'mw_vorpal_gun', 'mw_barbarossa_integrated'])
 
 const NEGATIVE: StatusId[] = ['impaired', 'slowed', 'immobilized', 'jammed', 'lockon', 'shredded', 'stunned', 'exposed', 'prone']
@@ -1357,11 +1365,11 @@ export class Battle {
     let overkillHeat = 0
     for (const d of pr.damage) {
       const flat = this.flatDamageBonus(u, w, d.type)
-      const r1 = rollDice(this.rng, d.val, { overkill })
+      const r1 = u.flags.averageDamage ? averageRoll(d.val) : rollDice(this.rng, d.val, { overkill })
       overkillHeat += r1.overkillHeat
       dmgNormal.push({ type: d.type, amount: Math.max(0, r1.total + flat) })
       if (anyCrit) {
-        const r2 = rollDice(this.rng, d.val, { crit: true, overkill })
+        const r2 = u.flags.averageDamage ? averageRoll(d.val) : rollDice(this.rng, d.val, { crit: true, overkill })
         overkillHeat += r2.overkillHeat
         dmgCrit.push({ type: d.type, amount: Math.max(0, r2.total + flat) })
       }
@@ -1665,6 +1673,7 @@ export class Battle {
     if (c !== true) throw new Error(c)
     if (mode === 'repair' && u.repairs <= 0) throw new Error('No repairs left')
     this.spend(u, 'full')
+    for (const s of scriptsFor(u)) s.onStabilize?.(this, u)
     if (mode === 'cool') {
       u.heat = 0
       this.removeStatus(u, 'exposed')

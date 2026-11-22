@@ -146,13 +146,23 @@ Useful commands, all run from `game/`:
   - Zones include smoke, difficult and damaging terrain, drone fields, deployables, barriers and NPC domes.
   - The hover tooltip lists the fields on that tile. **V** toggles the overlay.
 
+### CORE powers
+Every CORE system is now executed (`rules/effects/scripts/cores.ts`):
+- **Raleigh, Thunder God:** chambered Mjolnir, 4 kinetic per round; 4+ rounds are AP and Shred.
+- **Black Witch, Mag Field:** stops kinetic and explosive shots crossing its edge, then they resume; metal characters are pulled in and Immobilized.
+- **Dusk Wing, Hall of Mirrors:** hologram trail that detonates on hostiles, plus Hologram Teleport.
+- **Goblin, Symbiosis** (partial): you keep your own turns, and conditions and heat aren't shared.
+- **Pegasus, Ushabti Omnigun:** 1 unreducible damage, 1/round or 3/round after Unshackle. The "I Know Everything" average-damage toggle is included.
+- **Barbarossa, Apocalypse Rail:** the Apocalypse Die counts down; three firing profiles leave clouds, a burning storm or a crater.
+- **Sherman, SOLIDCORE:** charges and COREBURN.
+
 ### Rules fidelity snapshot
-Out of the 392 items in lancer-data, 278 (71%) are fully executed and 43 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
+Out of the 392 items in lancer-data, 285 (73%) are fully executed and 44 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
 
 | section | scripted | partial | auto | manual |
 |---|---|---|---|---|
-| Frame traits | 26 | 2 | 0 | 1 |
-| Core systems | 20 | 2 | 0 | 7 |
+| Frame traits | 27 | 2 | 0 | 0 |
+| Core systems | 26 | 3 | 0 | 0 |
 | Weapons | 19 | 5 | 53 | 8 |
 | Systems | 69 | 19 | 4 | 32 |
 | Mods | 2 | 1 | 3 | 2 |
@@ -178,15 +188,7 @@ Remaining here:
 
 ### 2. Player content (L, in batches, each with a test)
 Driven by `npm run coverage -- --list`.
-1. **The 8 missing CORE systems:**
-   - Raleigh Thunder God
-   - Black Witch Mag Field
-   - Dusk Wing DHIYED
-   - Goblin INSTINCT
-   - Hydra OROCHI (after §1)
-   - Pegasus Omnigun
-   - Barbarossa Apocalypse Rail
-   - Sherman SOLIDCORE
+1. ✅ **CORE systems:** done; Goblin Symbiosis is partial.
 2. **The remaining manual systems:**
    - charges (Flash, Mesmer, Grounding, Roller, Clamp Bombs, BB)
    - NHPs (SEKHMET, TLALOC, ATHENA, SISYPHUS, NOAH)

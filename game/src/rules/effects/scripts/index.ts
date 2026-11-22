@@ -7,4 +7,5 @@ import './talents'
 import './systems'
 import './weapons'
 import './drones'
+import './cores'
 export {}

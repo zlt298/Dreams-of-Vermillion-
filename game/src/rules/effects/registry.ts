@@ -136,6 +136,8 @@ export interface ItemScript {
   onAnyMovementAction?(b: Battle, self: Unit, mover: Unit, kind: 'boost' | 'involuntary' | 'standard'): void
   /** when the owner activates its CORE power */
   onCoreActivate?(b: Battle, self: Unit): void
+  /** this unit took the Stabilize action */
+  onStabilize?(b: Battle, self: Unit): void
 }
 
 const registry = new Map<string, ItemScript>()
