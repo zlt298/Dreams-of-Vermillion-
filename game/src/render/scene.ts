@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import type { Battle, BattleEvent } from '../rules/battle'
 import { footprintSize, tileAt, elevationAt, type GridMap } from '../rules/grid'
 import type { Pos, Unit } from '../rules/types'
+import { buildUnitModel, MODEL_GEOMETRIES } from './models'
 
 export const LEVEL = 0.55 // world units per elevation level
 
@@ -27,7 +28,7 @@ const KIND_COLOR: Record<string, number> = {
 
 export interface Highlight { tiles: Pos[]; color: number; opacity?: number }
 
-interface UnitVisual { group: THREE.Group; body: THREE.Mesh; ring: THREE.Mesh; shown: Pos; elev: number }
+interface UnitVisual { group: THREE.Group; own: THREE.MeshStandardMaterial[]; height: number; ring: THREE.Mesh; shown: Pos; elev: number; faded?: boolean }
 
 export class BattleView {
   renderer: THREE.WebGLRenderer
@@ -148,7 +149,7 @@ export class BattleView {
     const mats = new Set<THREE.Material>()
     this.scene.traverse(o => {
       const m = o as THREE.Mesh
-      if (m.geometry && !SHARED_GEOMETRIES.has(m.geometry)) geos.add(m.geometry)
+      if (m.geometry && !SHARED_GEOMETRIES.has(m.geometry) && !MODEL_GEOMETRIES.has(m.geometry)) geos.add(m.geometry)
       if (m.material) for (const x of Array.isArray(m.material) ? m.material : [m.material]) mats.add(x)
       if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose()
     })
@@ -297,39 +298,9 @@ export class BattleView {
   }
   addUnit(u: Unit) {
     if (this.units.has(u.id)) return
-    const group = new THREE.Group()
-    const s = Math.max(0.5, u.stats.size)
     const fs = footprintSize(u)
-    const col = this.unitColor(u)
-    let body: THREE.Mesh
-    const mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.55, metalness: 0.35 })
-    if (u.kind === 'drone') {
-      body = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), mat)
-      body.position.y = 0.9
-    } else if (u.kind === 'deployable') {
-      body = new THREE.Mesh(new THREE.BoxGeometry(fs * 0.9, Math.max(0.5, s) * 0.8, fs * 0.25), mat)
-      body.position.y = (Math.max(0.5, s) * 0.8) / 2
-    } else {
-      const h = 0.75 * s + 0.35
-      body = new THREE.Mesh(new THREE.BoxGeometry(0.55 * fs, h, 0.45 * fs), mat)
-      body.position.y = h / 2 + 0.05
-      // head + shoulders so tokens read as mechs
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.28 * fs, 0.22 * s, 0.28 * fs), new THREE.MeshStandardMaterial({ color: 0x222831, roughness: 0.4, metalness: 0.6 }))
-      head.position.y = h + 0.12 * s
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.2 * fs, 0.05, 0.02), new THREE.MeshBasicMaterial({ color: u.side === 'player' ? 0x7ff3ff : 0xff5040 }))
-      eye.position.set(0, h + 0.14 * s, 0.15 * fs)
-      const shoulders = new THREE.Mesh(new THREE.BoxGeometry(0.85 * fs, 0.18 * s, 0.35 * fs), mat)
-      shoulders.position.y = h * 0.85
-      group.add(head, eye, shoulders)
-      if (u.weapons.some(w => !w.tech && !(w.type === 'Melee'))) {
-        const gun = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.55 * fs), new THREE.MeshStandardMaterial({ color: 0x30343c }))
-        gun.position.set(0.45 * fs, h * 0.7, 0.2)
-        group.add(gun)
-      }
-      for (const c of group.children) (c as THREE.Mesh).castShadow = true
-    }
-    body.castShadow = true
-    group.add(body)
+    const model = buildUnitModel(u, { shared: (k, make) => { let m = this.materials.get(k); if (!m) { m = make(); this.materials.set(k, m) } return m } })
+    const group = model.group
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.36 * fs, 0.46 * fs, 24), new THREE.MeshBasicMaterial({ color: u.side === 'player' ? 0x4fc3ff : 0xff4d4d, side: THREE.DoubleSide, transparent: true, opacity: 0.85 }))
     ring.rotation.x = -Math.PI / 2
     ring.position.y = 0.03
@@ -339,7 +310,7 @@ export class BattleView {
     group.rotation.y = u.side === 'player' ? Math.PI : 0
     group.traverse(o => (o.userData.unitId = u.id))
     this.scene.add(group)
-    this.units.set(u.id, { group, body, ring, shown: { ...u.pos }, elev })
+    this.units.set(u.id, { group, own: model.own, height: model.height, ring, shown: { ...u.pos }, elev })
     const label = document.createElement('div')
     label.className = `unit-label ${u.side}`
     this.overlay.appendChild(label)
@@ -354,7 +325,7 @@ export class BattleView {
       const vis = this.units.get(id)
       if (!u || !vis || (u.destroyed && !vis.group.visible)) { label.style.display = 'none'; continue }
       v.copy(vis.group.position)
-      v.y += 0.75 * Math.max(0.5, u.stats.size) + 0.9
+      v.y += vis.height + 0.35
       v.project(this.camera)
       label.style.display = v.z > 1 ? 'none' : 'block'
       label.style.transform = `translate(${((v.x + 1) / 2) * w}px, ${((1 - v.y) / 2) * h}px) translate(-50%, -100%)`
@@ -375,8 +346,11 @@ export class BattleView {
       if (!this.animating) this.placeUnit(u, u.pos)
       vis.group.visible = !u.destroyed || vis.group.visible
       ;(vis.ring.material as THREE.MeshBasicMaterial).opacity = u.activeTurn ? 1 : u.activationsLeft > 0 ? 0.85 : 0.35
-      ;(vis.body.material as THREE.MeshStandardMaterial).transparent = u.statuses.some(s => s.id === 'hidden' || s.id === 'invisible')
-      ;(vis.body.material as THREE.MeshStandardMaterial).opacity = u.statuses.some(s => s.id === 'hidden' || s.id === 'invisible') ? 0.45 : 1
+      const fade = u.statuses.some(s => s.id === 'hidden' || s.id === 'invisible')
+      if (fade !== !!vis.faded) {
+        vis.faded = fade
+        for (const m of vis.own) { m.transparent = fade; m.opacity = fade ? 0.4 : 1; m.needsUpdate = true }
+      }
       vis.group.rotation.z = u.statuses.some(s => s.id === 'prone') ? 0.9 : 0
     }
   }

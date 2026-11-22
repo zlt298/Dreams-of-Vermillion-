@@ -87,7 +87,7 @@ Driven by `npm run coverage -- --list`. Currently manual: 1 trait, 8 core system
 6. **Reserves from lancer-data (S).** Replace the custom rewards with `reserves.json` entries where they're mechanically usable.
 
 ### Milestone 6: Presentation (sprites shelved)
-1. **Procedural low-poly mech kit (L).** Instead of sprites, build each token in `render/scene.ts` from modular primitives: torso, legs, arms and a weapon-type prop chosen from the unit's loadout. Size, role and manufacturer palette drive the shapes. This gives distinct silhouettes per frame and NPC without generated art.
+1. ✅ **Procedural low-poly mech kit (L).** Instead of sprites, build each token in `render/scene.ts` from modular primitives: torso, legs, arms and a weapon-type prop chosen from the unit's loadout. Size, role and manufacturer palette drive the shapes. This gives distinct silhouettes per frame and NPC without generated art.
 2. **Effects (M):** particle muzzle flashes, explosions, smoke and fire areas, shield domes and hit sparks.
 3. **Terrain detail (S):** procedural texture variation, building props, a skybox.
 4. **Audio (M):** sounds for weapon types, impacts, UI clicks and ambient music, with volume settings.
