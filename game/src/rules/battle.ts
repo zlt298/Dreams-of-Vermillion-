@@ -383,7 +383,7 @@ export class Battle {
   endTurn(u: Unit = this.active!) {
     if (!u || u.id !== this.activeId) throw new Error('Not the active unit')
     // dangerous terrain: ending a turn in it also requires the (once per round) Engineering check
-    if (!u.destroyed && !u.flying && !u.flags['round:hazard'] && footprint(u).some(q => tileAt(this.map, q)?.kind === 'hazard')) {
+    if (!u.destroyed && !u.flying && !u.flags.ignoreHazard && !u.flags['round:hazard'] && footprint(u).some(q => tileAt(this.map, q)?.kind === 'hazard')) {
       u.flags['round:hazard'] = true
       if (!this.check(u, 'eng')) this.applyDamage(u, [{ type: 'Energy', amount: 5 }], {})
     }
@@ -852,7 +852,8 @@ export class Battle {
     if (ok !== true) throw new Error(ok)
     if (this.has(u, 'prone') && opts.mode === 'standard') throw new Error('Stand up first')
     const budget = opts.mode === 'standard' ? u.moveLeft : u.flags.pendingMove ?? u.stats.speed
-    const p = this.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' })
+    // teleporting movers (u.flags.teleportMoves) aren't held by engagement
+    const p = this.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves })
     if (!p) throw new Error('Unreachable')
     if (p.path.length <= 1) return true
     const snapshot = opts.mode === 'standard'
@@ -916,7 +917,7 @@ export class Battle {
       }
       // hazard tiles
       const hz = footprint(u).some(q => tileAt(this.map, q)?.kind === 'hazard')
-      if (hz && !u.flags['round:hazard']) {
+      if (hz && !u.flags['round:hazard'] && !u.flags.ignoreHazard) {
         u.flags['round:hazard'] = true
         if (!this.check(u, 'eng')) this.applyDamage(u, [{ type: 'Energy', amount: 5 }], {})
       }

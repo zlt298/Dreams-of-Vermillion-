@@ -1,6 +1,6 @@
 // Runtime for enemy-ruleset features (systems, traits, reactions, templates).
 import type { Battle } from '../battle'
-import { blastTiles, burstTiles, distanceToTile, hasLineOfSightToTile, unitsOnTiles } from '../grid'
+import { blastTiles, burstTiles, coneTiles, distanceToTile, hasLineOfSightToTile, lineTiles, unitsOnTiles } from '../grid'
 import type { Effect, Pos, SystemInst, Unit } from '../types'
 import type { HookTrigger, ReactionFeature, SystemFeature, TraitFeature } from '../../enemies/ruleset'
 import { registerScripts, type CustomAction } from './registry'
@@ -47,9 +47,9 @@ function systemAction(b: Battle, self: Unit, s: SystemInst): CustomAction {
     name: f.name,
     activation: f.activation,
     text: f.text ?? '',
-    target: f.target === 'self' || f.target === 'self_burst' ? 'self' : f.target === 'tile_blast' ? 'tile' : f.target,
-    range,
-    area: f.target === 'self_burst' ? { shape: 'burst', size: f.radius ?? 1 } : f.target === 'tile_blast' ? { shape: 'blast', size: f.radius ?? 1 } : undefined,
+    target: f.target === 'self' || f.target === 'self_burst' ? 'self' : f.target === 'tile_blast' || f.target === 'line' || f.target === 'cone' ? 'tile' : f.target,
+    range: f.target === 'line' || f.target === 'cone' ? f.radius ?? 3 : range,
+    area: f.target === 'self_burst' ? { shape: 'burst', size: f.radius ?? 1 } : f.target === 'tile_blast' ? { shape: 'blast', size: f.radius ?? 1 } : f.target === 'line' || f.target === 'cone' ? { shape: f.target, size: f.radius ?? 3 } : undefined,
     heat: f.heat,
     sourceUid: s.uid,
     usable: () => (s.destroyed ? 'Destroyed' : s.usesLeft === 0 ? 'No uses left' : !s.charged ? 'Recharging' : true),
@@ -58,9 +58,13 @@ function systemAction(b: Battle, self: Unit, s: SystemInst): CustomAction {
       if (f.recharge) s.charged = false
       let victims: Unit[] = []
       if (f.target === 'self') victims = [me]
-      else if (f.target === 'self_burst' || f.target === 'tile_blast') {
+      else if (f.target === 'self_burst' || f.target === 'tile_blast' || f.target === 'line' || f.target === 'cone') {
         let tiles: Pos[]
         if (f.target === 'self_burst') tiles = burstTiles(bt.map, me, f.radius ?? 1)
+        else if (f.target === 'line' || f.target === 'cone') {
+          const p = target && 'x' in target ? target : (target as Unit)?.pos ?? me.pos
+          tiles = (f.target === 'line' ? lineTiles : coneTiles)(bt.map, me, p, f.radius ?? 3)
+        }
         else {
           const p = target && 'x' in target ? target : (target as Unit)?.pos ?? me.pos
           if (distanceToTile(bt.map, me, p) > range) throw new Error('Out of range')

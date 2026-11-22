@@ -128,6 +128,9 @@ export function registerScript(s: ItemScript) {
   registry.set(s.id, s)
   registryVersion++
 }
+export function hasScript(id: string): boolean {
+  return registry.has(id)
+}
 export function registerScripts(list: ItemScript[]) {
   list.forEach(registerScript)
 }
@@ -145,9 +148,14 @@ export function scriptIdsFor(u: Unit): string[] {
     ids.push(`frame:${u.frameId}`)
     ids.push(`core:${u.frameId}`)
   }
-  for (const s of u.systems) if (!s.destroyed) ids.push(s.feature ? `npc:${s.feature.script ?? s.dataId}` : s.dataId)
+  for (const s of u.systems) if (!s.destroyed) {
+    if (!s.feature) { ids.push(s.dataId); continue }
+    ids.push(`npc:${s.dataId}`)
+    if (s.feature.script) ids.push(`npc:${s.feature.script}`)
+  }
   for (const w of u.weapons) if (!w.destroyed) {
     if (w.dataId) ids.push(w.dataId.startsWith('npc_') ? `npc:${w.dataId}` : w.dataId)
+    if (w.script) ids.push(`npc:${w.script}`)
     if (w.modId) ids.push(w.modId)
   }
   for (const t of u.talents) for (let r = 1; r <= t.rank; r++) ids.push(`${t.id}:${r}`)

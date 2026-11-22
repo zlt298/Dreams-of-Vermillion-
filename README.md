@@ -113,7 +113,9 @@ Massif's NPC data is a paid content pack, so the bundled enemies use an **origin
 If you own the NPC content pack (for example *Lancer CORE NPCs*, `.lcp`), import it from **Title → Official NPCs**. Both the v1 and v2/v3 pack layouts are read.
 
 - The pack is converted in your browser and stored **only in that browser's local storage**. It is never uploaded, bundled or committed (`*.lcp` is git-ignored).
-- Classes become units with their official tier stats, base features and 0–2 optional features. Weapons, stats, tags, flight, resistances and Blast/Burst save attacks are automated. Most reactions, Line/Cone attacks and conditional traits are shown as rules text only.
+- Classes become units with their official tier stats, base features and 0–2 optional features. Weapons (including structured on-hit conditions), stats, tags, flight, resistances and Blast/Burst/Line/Cone save attacks are automated from the data.
+- Base class features have hand-written scripts in `game/src/rules/effects/official.ts`, keyed by feature id. These include reactions like Hunker Down and Barrel Roll, Guardian cover, Siege Armor, Assassin's and Sniper's Marks, Leap, Avalanche Charge and the Witch's hacks. Of the core pack's 116 base features, 81 are fully automated and 16 approximated. Deployable- and mine-based ones (turrets, mines, Javelin Rockets) and the Squad are still text only, as are most optional features.
+- Coverage: `LCP=/path/to/pack.lcp npm run coverage -- --list`.
 - **Use in campaigns:** Off, Mixed (half the fights) or Only. Encounters follow the core book's guidance (grunt packs, one Elite per two players, one Ultra for bosses) within the usual budget. Quick skirmish also lists random official encounters.
 - Balance check: `LCP=/path/to/pack.lcp npx tsx scripts/simulate.ts 10 official` (reads the pack at runtime).
 

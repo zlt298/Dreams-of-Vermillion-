@@ -73,6 +73,8 @@ export interface Weapon {
   destroyed: boolean
   usesLeft?: number
   modId?: string
+  /** official NPC feature id whose script (`npc:<id>`) implements this weapon's extra rules */
+  script?: string
   /** NPC flat attack bonus (replaces grit). */
   attackBonus?: number
   /** Innate accuracy (+) / difficulty (-) */

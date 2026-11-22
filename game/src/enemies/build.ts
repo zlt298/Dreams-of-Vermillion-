@@ -1,4 +1,5 @@
 // Turn enemy team definitions into battle units.
+import { scriptsFor } from '../rules/effects/registry'
 import { blankTurnState, defaultPolicies, nextUid, weaponFromData } from '../rules/stats'
 import type { Profile, SystemInst, Unit, Weapon } from '../rules/types'
 import { type EnemyTeam, type EnemyUnitDef, type NpcStats, type Tier, applyTemplates, baselineStats, unitBudget } from './ruleset'
@@ -26,14 +27,14 @@ export function buildNpc(def: EnemyUnitDef, tier: Tier, index = 0): Unit {
       weapons.push({
         uid: nextUid('w'), name: f.name, dataId: `npc_w_${i}`, mountIndex: i, size: f.size ?? 'Main', type: f.weaponType, profiles: [profile], profileIndex: 0,
         loaded: true, destroyed: false, usesLeft: f.uses, attackBonus: f.attackBonus ?? s.attackBonus, accuracy: f.accuracy, vsEdef: !!f.smart,
-        recharge: f.recharge, charged: true, bonuses: [], activation: 'quick',
+        recharge: f.recharge, charged: true, bonuses: [], activation: 'quick', script: f.script,
       })
     } else if (f.type === 'tech') {
       const profile: Profile = { name: f.name, damage: [], range: [{ type: 'Range', val: f.range ?? s.sensors }], tags: [], onAttack: [], onHit: f.onHit, onCrit: [], text: f.text }
       weapons.push({
         uid: nextUid('w'), name: f.name, dataId: `npc_t_${i}`, mountIndex: i, size: 'Main', type: 'Tech', profiles: [profile], profileIndex: 0,
         loaded: true, destroyed: false, usesLeft: f.uses, attackBonus: f.attackBonus ?? s.techAttack, accuracy: f.accuracy, vsEdef: true, tech: true,
-        recharge: f.recharge, charged: true, bonuses: [], activation: f.kind,
+        recharge: f.recharge, charged: true, bonuses: [], activation: f.kind, script: f.script,
       })
     } else {
       systems.push({ uid: nextUid('s'), dataId: 'npc_feature', name: f.name, destroyed: false, usesLeft: (f as any).uses, feature: f, charged: true })
@@ -56,7 +57,7 @@ export function buildNpc(def: EnemyUnitDef, tier: Tier, index = 0): Unit {
   if (templates.includes('Ultra')) traits.push('deadly', 'legendary', 'reflex')
   if (traits.includes('insulated')) immune.push('burn')
   const name = (def.count ?? 1) > 1 ? `${def.name} ${String.fromCharCode(65 + index)}` : def.name
-  return {
+  const unit: Unit = {
     id: nextUid('npc'),
     name,
     side: 'enemy',
@@ -78,6 +79,8 @@ export function buildNpc(def: EnemyUnitDef, tier: Tier, index = 0): Unit {
     bonuses: [], flags: { budget: unitBudget({ ...def, count: 1 }), description: def.description },
     destroyed: false, policies: defaultPolicies(), color: def.color ?? ROLE_COLORS[def.role],
   }
+  for (const sc of scriptsFor(unit)) sc.init?.(unit)
+  return unit
 }
 
 export function buildTeam(team: EnemyTeam, squadSize = team.designedFor): Unit[] {

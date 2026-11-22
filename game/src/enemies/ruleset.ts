@@ -129,6 +129,8 @@ export const BUDGET_PER_PC: Record<Tier, number> = { 1: 1.0, 2: 1.5, 3: 2.0 }
 // ------------------------------------------------------------------ feature schema
 export interface WeaponFeature {
   type: 'weapon'
+  /** official NPC feature id: rules implemented by the script `npc:<id>` (rules/effects/official.ts) */
+  script?: string
   name: string
   weaponType: 'Melee' | 'CQB' | 'Rifle' | 'Cannon' | 'Launcher' | 'Nexus' | 'Spool'
   range: RangeData[]
@@ -148,6 +150,8 @@ export interface WeaponFeature {
 
 export interface TechFeature {
   type: 'tech'
+  /** official NPC feature id: rules implemented by the script `npc:<id>` (rules/effects/official.ts) */
+  script?: string
   name: string
   kind: 'quick' | 'full'
   range?: number             // default: sensors
@@ -162,9 +166,11 @@ export interface TechFeature {
 
 export interface SystemFeature {
   type: 'system'
+  /** official NPC feature id: rules implemented by the script `npc:<id>` (rules/effects/official.ts) */
+  script?: string
   name: string
   activation: 'quick' | 'full' | 'protocol'
-  target: 'self' | 'ally' | 'enemy' | 'self_burst' | 'tile_blast'
+  target: 'self' | 'ally' | 'enemy' | 'self_burst' | 'tile_blast' | 'line' | 'cone'
   range?: number
   radius?: number
   effects: Effect[]
@@ -180,6 +186,8 @@ export type HookTrigger = 'turn_start' | 'turn_end' | 'hit_by_melee' | 'damaged'
 
 export interface TraitFeature {
   type: 'trait'
+  /** official NPC feature id: rules implemented by the script `npc:<id>` (rules/effects/official.ts) */
+  script?: string
   name: string
   stats?: Partial<NpcStats>
   resist?: string[]
@@ -192,6 +200,8 @@ export interface TraitFeature {
 
 export interface ReactionFeature {
   type: 'reaction'
+  /** official NPC feature id: rules implemented by the script `npc:<id>` (rules/effects/official.ts) */
+  script?: string
   name: string
   trigger: 'hit_by_melee' | 'ally_attacked_adjacent' | 'enemy_moves_adjacent' | 'damaged' | 'attacked_and_missed'
   frequency?: '1/round' | '1/scene'

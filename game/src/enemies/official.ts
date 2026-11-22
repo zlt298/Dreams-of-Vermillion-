@@ -11,8 +11,8 @@ const KIND_MULT = { standard: 1, elite: 1.5, boss: 2 } as const
  *  (tuned with the balance sim against the LL0/LL5/LL10 sample squads). */
 const OFFICIAL_SCALE: Record<Tier, Record<'standard' | 'elite' | 'boss', number>> = {
   1: { standard: 1.4, elite: 1, boss: 1.2 },
-  2: { standard: 1.4, elite: 1.25, boss: 1 },
-  3: { standard: 1, elite: 0.9, boss: 0.7 },
+  2: { standard: 1.4, elite: 1.0, boss: 0.8 },
+  3: { standard: 0.85, elite: 0.75, boss: 0.7 },
 }
 
 /** One unit definition from an official class: all base features plus `optional` optional ones. */
@@ -25,7 +25,7 @@ export function officialUnitDef(cls: OfficialClass, tier: Tier, templates: Templ
     if (chosen.length >= optional) break
     if (rng.next() < (f.partial ? 0.35 : 0.7)) chosen.push(f)
   }
-  const features = [...cls.features.filter(f => f.base), ...chosen].map(f => f.byTier[tier - 1])
+  const features = [...cls.features.filter(f => f.base), ...chosen].map(f => ({ ...f.byTier[tier - 1], script: f.id }))
   const def: EnemyUnitDef = {
     name: cls.name, role: cls.role, templates, count, features, baseStats: { ...cls.stats[tier - 1] }, officialClass: cls.id,
     description: `Official ${cls.name} (tier ${tier})${chosen.length ? ` with ${chosen.map(f => f.name).join(', ')}` : ''}.`,

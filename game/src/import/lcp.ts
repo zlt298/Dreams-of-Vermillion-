@@ -10,6 +10,12 @@
 import { unzipSync, strFromU8 } from 'fflate'
 import type { Effect, StatusId, Stat } from '../rules/types'
 import type { Feature, NpcStats, Role, Tier, WeaponFeature } from '../enemies/ruleset'
+import { hasScript } from '../rules/effects/registry'
+
+/** Fully automated: structured data covers it, or a hand-written script implements it. */
+export function featureAutomated(f: OfficialFeature): boolean {
+  return !f.partial || hasScript(`npc:${f.id}`)
+}
 
 export interface OfficialFeature {
   id: string
@@ -139,19 +145,49 @@ export function parseEffects(text: string): { effects: Effect[]; complete: boole
 }
 
 /** "Blast/Burst N … <Stat> save or take X <type> damage (half on success)" → a system feature. */
-export function parseAreaSave(text: string): { target: 'tile_blast' | 'self_burst'; range?: number; radius: number; save: Stat; effects: Effect[] } | null {
-  const shape = text.match(/\b(Blast|Burst)\s+(\d+)/i)
+export function parseAreaSave(text: string): { target: 'tile_blast' | 'self_burst' | 'line' | 'cone'; range?: number; radius: number; save: Stat; effects: Effect[] } | null {
+  const shape = text.match(/\b(Blast|Burst|Line|Cone)\s+(\d+)/i)
   const dmg = text.match(/\b(hull|agility|systems|engineering) save or (?:take|be dealt)\s+(\d+(?:d\d+)?(?:\s*\+\s*\d+)?)\s+(kinetic|energy|explosive|burn|heat)\s+damage/i)
   if (!shape || !dmg) return null
   const save = SAVE_WORDS[dmg[1].toLowerCase()]
   const type = titleCase(dmg[3])
   const range = Number(text.match(/\bRange\s+(\d+)/i)?.[1]) || undefined
-  const burst = /burst/i.test(shape[1])
+  const kind = shape[1].toLowerCase()
+  const burst = kind === 'burst'
   const half = /half damage/i.test(text)
   return {
-    target: burst ? 'self_burst' : 'tile_blast', range: burst ? undefined : range ?? 8, radius: Number(shape[2]), save,
+    target: burst ? 'self_burst' : kind === 'line' ? 'line' : kind === 'cone' ? 'cone' : 'tile_blast', range: burst || kind === 'line' || kind === 'cone' ? undefined : range ?? 8, radius: Number(shape[2]), save,
     effects: [type === 'Heat' ? { do: 'heat', val: dmg[2].replace(/\s/g, '') } : { do: 'damage', damage: [{ type, val: dmg[2].replace(/\s/g, '') }], saveHalf: half }],
   }
+}
+
+const STATUS_IDS: Record<string, StatusId> = { slow: 'slowed', slowed: 'slowed', lock_on: 'lockon', lockon: 'lockon', impaired: 'impaired', immobilized: 'immobilized', jammed: 'jammed', shredded: 'shredded', stunned: 'stunned', prone: 'prone', exposed: 'exposed' }
+const DURATIONS = new Set(['end_of_turn', 'next_turn_end_target', 'next_turn_end_source', 'start_of_next_turn_target', 'until_cleared', 'scene'])
+
+/** On-hit / on-crit riders: plain text (v1) or structured `{ detail, add_status }` (v2/v3). */
+function riderOf(v: any, tier: Tier): { text: string; effects: Effect[]; complete: boolean } {
+  if (!v) return { text: '', effects: [], complete: true }
+  if (Array.isArray(v)) {
+    const parts = v.map(x => riderOf(x, tier))
+    return { text: parts.map(p => p.text).filter(Boolean).join(' '), effects: parts.flatMap(p => p.effects), complete: parts.every(p => p.complete) }
+  }
+  if (typeof v === 'object') {
+    const text = tierText(v.detail ?? '', tier)
+    const effects: Effect[] = []
+    for (const st of v.add_status ?? []) {
+      const id = STATUS_IDS[String(st.id ?? '').toLowerCase()]
+      if (!id) continue
+      const save = st.save ? SAVE_WORDS[String(st.save).toLowerCase()] : undefined
+      effects.push({ do: 'status', status: id, duration: DURATIONS.has(st.duration) ? st.duration : id === 'lockon' ? 'until_cleared' : 'next_turn_end_target', ...(save ? { save } : {}) })
+    }
+    // heat / burn / knockback riders only appear in the text
+    const extra = parseEffects(text).effects.filter(e => e.do !== 'status')
+    const structured = effects.length > 0
+    return { text, effects: [...effects, ...extra], complete: structured && !(v.add_special?.length) }
+  }
+  const text = tierText(v, tier)
+  const p = parseEffects(text)
+  return { text, effects: p.effects, complete: !text || p.complete }
 }
 
 const WEAPON_TYPES = ['Melee', 'CQB', 'Rifle', 'Cannon', 'Launcher', 'Nexus', 'Spool'] as const
@@ -171,15 +207,16 @@ function convertFeature(f: any): OfficialFeature | null {
   const byTier = ([1, 2, 3] as Tier[]).map((tier): Feature => {
     const name = titleCase(f.name)
     const trig = action?.trigger ?? f.trigger
-    const text = tierText([f.effect, trig && `Trigger: ${trig}`, action?.detail, f.on_hit && `On hit: ${f.on_hit}`].filter(Boolean).join(' '), tier)
+    const text = tierText([f.effect, trig && `Trigger: ${trig}`, action?.detail, f.on_hit && `On hit: ${riderOf(f.on_hit, tier).text}`].filter(Boolean).join(' '), tier)
     const recharge = tagNum(f, 'tg_recharge', tier)
     const uses = tagNum(f, 'tg_limited', tier)
     if (type === 'weapon') {
       const wt = String(f.weapon_type ?? '')
       const words = wt.split(/[\s/]+/)
-      const onHitText = tierText(f.on_hit ?? '', tier)
-      const parsed = parseEffects(onHitText)
-      if (onHitText && !parsed.complete) partial = true
+      const hit = riderOf(f.on_hit, tier)
+      const crit = riderOf(f.on_crit, tier)
+      const onHitText = hit.text
+      if ((hit.text && !hit.complete) || (crit.text && !crit.complete)) partial = true
       const w: WeaponFeature = {
         type: 'weapon', name,
         weaponType: (WEAPON_TYPES.find(t => words.includes(t)) ?? 'Rifle') as WeaponFeature['weaponType'],
@@ -190,7 +227,8 @@ function convertFeature(f: any): OfficialFeature | null {
         accuracy: Number(tierVal(f.accuracy, tier)) || undefined,
         attackBonus: Number(tierVal(f.attack_bonus, tier)) || 0,
         smart: (f.tags ?? []).some((t: any) => t?.id === 'tg_smart'),
-        onHit: [...parsed.effects, ...(onHitText ? [{ do: 'text' as const, text: onHitText }] : [])],
+        onHit: [...hit.effects, ...(onHitText ? [{ do: 'text' as const, text: onHitText }] : [])],
+        onCrit: [...crit.effects, ...(crit.text ? [{ do: 'text' as const, text: crit.text }] : [])],
         recharge, uses, text: tierText(f.effect, tier) || undefined,
       }
       if (!w.range.length) w.range = [{ type: w.weaponType === 'Melee' ? 'Threat' : 'Range', val: w.weaponType === 'Melee' ? 1 : 5 }] as any

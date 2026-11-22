@@ -30,3 +30,27 @@ if (list) for (const [name, rows] of Object.entries(sections)) {
   const m = rows.filter(r => r.c === 'manual' || r.c === 'partial')
   if (m.length) console.log(`\n## ${name} — manual / partial\n` + m.map(r => `  [${r.c}] ${r.id}  ${r.name}`).join('\n'))
 }
+
+// LCP=<path to .lcp>: also report official NPC class features (the pack is read at runtime, never stored)
+if (process.env.LCP) {
+  const { readFileSync } = await import('node:fs')
+  const { readLcp } = await import('../src/import/lcp')
+  const { getScript } = await import('../src/rules/effects/registry')
+  const pack = readLcp(new Uint8Array(readFileSync(process.env.LCP)))
+  const rows: { cls: string; id: string; name: string; base: boolean; c: Coverage }[] = []
+  for (const cls of pack.classes) for (const f of cls.features) {
+    const sc = getScript(`npc:${f.id}`)
+    const c: Coverage = sc ? (sc.partial ? 'partial' : 'scripted') : f.partial ? 'manual' : 'auto'
+    rows.push({ cls: cls.name, id: f.id, name: f.name, base: f.base, c })
+  }
+  console.log(`\nOfficial NPC features (${pack.name} ${pack.version})\n`)
+  console.log('features           scripted partial   auto  manual   done%')
+  for (const [label, rs] of [['Base', rows.filter(r => r.base)], ['Optional', rows.filter(r => !r.base)]] as const) {
+    const n = (c: Coverage) => rs.filter(r => r.c === c).length
+    console.log(`${label.padEnd(18)} ${String(n('scripted')).padStart(8)} ${String(n('partial')).padStart(7)} ${String(n('auto')).padStart(6)} ${String(n('manual')).padStart(7)} ${String(Math.round(((n('scripted') + n('auto')) / rs.length) * 100)).padStart(6)}%`)
+  }
+  if (list) {
+    const m = rows.filter(r => r.base && (r.c === 'manual' || r.c === 'partial'))
+    console.log('\n## Official base features — manual / partial\n' + m.map(r => `  [${r.c}] ${r.cls}: ${r.name}`).join('\n'))
+  }
+}

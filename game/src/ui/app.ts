@@ -13,7 +13,7 @@ import {
   repairOptions, applyRepair, rollRewards, applyReward, levelUp, replacePilots, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
 } from '../run/run'
 import { BattleScreen } from './battle-ui'
-import { loadPacks, readLcp, removePack, storePack, officialClasses } from '../import/lcp'
+import { featureAutomated, loadPacks, readLcp, removePack, storePack, officialClasses } from '../import/lcp'
 import { generateOfficialTeam } from '../enemies/official'
 import { Rng } from '../rules/rng'
 import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad } from './roster'
@@ -75,7 +75,7 @@ export class App {
     const mode = officialMode()
     const rows = packs.map(p => {
       const feats = p.classes.flatMap(c => c.features)
-      return `<tr><td><b>${esc(p.name)}</b> <span class="muted">v${esc(p.version)}</span></td><td>${p.classes.length} classes</td><td>${feats.filter(f => !f.partial).length}/${feats.length} features fully automated</td><td><button data-rm="${esc(p.name)}" class="warn">Remove</button></td></tr>`
+      return `<tr><td><b>${esc(p.name)}</b> <span class="muted">v${esc(p.version)}</span></td><td>${p.classes.length} classes</td><td>${feats.filter(featureAutomated).length}/${feats.length} features fully automated</td><td><button data-rm="${esc(p.name)}" class="warn">Remove</button></td></tr>`
     }).join('')
     this.root.innerHTML = `<div class="screen"><h2>Official NPCs</h2>
       <p>Import the official NPC classes from a LANCER content pack (<code>.lcp</code>) you own, such as <i>Lancer CORE NPCs</i>. The pack stays in <b>this browser only</b> (local storage); nothing is uploaded or added to the game files.</p>

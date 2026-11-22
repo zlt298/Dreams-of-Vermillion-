@@ -2,7 +2,7 @@
 // best plan through the normal Battle API, so the AI obeys exactly the same rules as players.
 import type { Battle } from '../rules/battle'
 import { Lancer } from '../data/lancer'
-import { blastTiles, burstTiles, key, unitsOnTiles } from '../rules/grid'
+import { blastTiles, lineTiles, coneTiles, burstTiles, key, unitsOnTiles } from '../rules/grid'
 import type { Effect, Pos, Unit, Weapon } from '../rules/types'
 import type { CustomAction } from '../rules/effects/registry'
 import { averageDice } from '../rules/rng'
@@ -145,7 +145,7 @@ function customValue(b: Battle, u: Unit, a: CustomAction, from: Pos): { value: n
       for (const h of hostiles) {
         const aim = h.pos
         if (a.range != null && b.distance(u, h) > a.range + 1) continue
-        const tiles = blastTiles(b.map, aim, a.area.size)
+        const tiles = a.area.shape === 'line' ? lineTiles(b.map, u, aim, a.area.size) : a.area.shape === 'cone' ? coneTiles(b.map, u, aim, a.area.size) : blastTiles(b.map, aim, a.area.size)
         let v = 0
         for (const t of unitsOnTiles(b.alive(), tiles)) if (t !== u) v += b.hostile(u, t) ? (f ? effectValue(b, u, t, effects) : (a.aiScore?.(b, u, t) ?? 3) * 0.6) : -4
         if (a.name.startsWith('Deploy')) v = 0.5

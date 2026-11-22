@@ -14,6 +14,7 @@ const v2Features = [
   { id: 'npcf_test_gun', name: 'Test Gun', base: true, type: 'Weapon', weapon_type: 'Main Rifle', attack_bonus: [1, 2, 3], damage: [{ type: 'Kinetic', val: [4, 5, 6] }], range: [{ type: 'Range', val: 8 }], tags: [{ id: 'tg_reliable', val: '{1/2/3}' }], on_hit: 'The target becomes Slowed until the end of their next turn.' },
   { id: 'npcf_test_mortar', name: 'Test Mortar', base: false, type: 'System', effect: 'Choose a space within Range 10. Characters in a Blast 1 area there must pass an Agility save or take {3/4/5} explosive damage. On a success they take half damage.' },
   { id: 'npcf_test_plating', name: 'Test Plating', base: false, type: 'Trait', effect: 'The Testbed gains +2 HP.', bonuses: [{ id: 'hp', val: 2 }] },
+  { id: 'npcf_test_hammer', name: 'Test Hammer', base: false, type: 'Weapon', weapon_type: 'Superheavy Melee', attack_bonus: [1, 2, 3], damage: [{ type: 'Explosive', val: [8, 10, 12] }], range: [{ type: 'Threat', val: 2 }], on_hit: { detail: 'Hull save or be Stunned.', add_status: [{ id: 'stunned', duration: 'next_turn_end_target', save: 'hull' }] } },
   { id: 'npcf_test_react', name: 'Test Reaction', base: false, type: 'Reaction', actions: [{ name: 'Test Reaction', activation: 'Reaction', frequency: '1/round', trigger: 'A melee attack hits the Testbed.', detail: 'Something narrative happens.' }] },
 ]
 
@@ -59,6 +60,12 @@ describe('LCP import', () => {
     expect(mortar).toMatchObject({ type: 'system', target: 'tile_blast', radius: 1, range: 10, save: 'agi' })
     expect((c.features.find(f => f.name === 'Test Plating')!.byTier[0] as any).stats).toEqual({ hp: 2 })
     expect(c.features.find(f => f.name === 'Test Reaction')!.partial).toBe(true)
+    if (_v === 'v2') {
+      const hammer = c.features.find(f => f.name === 'Test Hammer')!
+      expect(hammer.partial).toBe(false)
+      expect((hammer.byTier[0] as any).size).toBe('Superheavy')
+      expect((hammer.byTier[0] as any).onHit).toContainEqual({ do: 'status', status: 'stunned', duration: 'next_turn_end_target', save: 'hull' })
+    }
   })
   it('rejects files that are not packs', () => {
     expect(() => readLcp(strToU8('hello'))).toThrow(/zip/)
@@ -67,7 +74,8 @@ describe('LCP import', () => {
   it('parses common riders from rules text', () => {
     expect(parseEffects('On hit, the target takes 2 heat and is knocked back 2.').effects).toEqual(expect.arrayContaining([{ do: 'heat', val: 2 }, { do: 'push', val: 2 }]))
     expect(parseAreaSave('Burst 2: characters must succeed on a Hull save or take 4 energy damage.')).toMatchObject({ target: 'self_burst', radius: 2, save: 'hull' })
-    expect(parseAreaSave('Line 8: Hull save or take 4 kinetic damage')).toBeNull()
+    expect(parseAreaSave('Line 8: Hull save or take 4 kinetic damage')).toMatchObject({ target: 'line', radius: 8, save: 'hull' })
+    expect(parseAreaSave('A Cone 3 of flame: no save mentioned.')).toBeNull()
   })
 })
 
