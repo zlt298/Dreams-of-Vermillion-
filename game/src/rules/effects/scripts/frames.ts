@@ -120,6 +120,8 @@ registerScripts([
         if (!wreck) throw new Error('No adjacent destroyed allied mech')
         self.repairs -= 4
         Object.assign(wreck, { destroyed: false, hp: 1, structure: 1, stress: 1, heat: 0, activationsLeft: 0, statuses: [] })
+        wreck.flags.wreck = false
+        bt.invalidateTerrain()
         bt.say(`${wreck.name} is brought back online!`)
         bt.emit({ type: 'spawn', unitId: wreck.id })
       },

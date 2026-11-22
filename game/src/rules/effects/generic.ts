@@ -64,6 +64,7 @@ function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: 
     text: stripHtml(a.detail ?? ''),
     target: burst ? 'self' : area ? 'tile' : 'enemy',
     range: burst ? undefined : range,
+    techOption: a.activation === 'Invade' ? 'invade' : undefined,
     area,
     sourceUid: sys?.uid,
     usable: () => usesOk(sys),

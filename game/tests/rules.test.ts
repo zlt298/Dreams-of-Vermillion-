@@ -211,11 +211,11 @@ describe('tech', () => {
 })
 
 describe('rulings cross-checked against COMP/CON', () => {
-  it('armor applies to each damage type separately', () => {
+  it('armor is subtracted once from the attack total (core book)', () => {
     const { e, b } = duel()
     e.stats.armor = 2
     b.applyDamage(e, [{ type: 'Kinetic', amount: 3 }, { type: 'Energy', amount: 3 }])
-    expect(e.hp).toBe(e.stats.hp - 2)
+    expect(e.hp).toBe(e.stats.hp - 4)
   })
   it('resistance halves after armor, rounding up', () => {
     const { e, b } = duel()
@@ -408,5 +408,120 @@ describe('grunt rulings', () => {
     b.runEffects(a, g, [{ do: 'damage', damage: [{ type: 'Explosive', val: '2d6' }], save: 'agi', saveHalf: true }])
     expect(g.destroyed).toBe(false)
     expect(g.hp).toBe(1)
+  })
+})
+
+describe('core book rulings', () => {
+  it('reactions: one per turn, each reaction type once per round', () => {
+    const { a, e, b } = duel()
+    b.beginTurn(a)
+    expect(b.canSpend(a, 'reaction', 'overwatch')).toBe(true)
+    b.spend(a, 'reaction', 'overwatch')
+    expect(b.canSpend(a, 'reaction', 'brace')).not.toBe(true)
+    b.endTurn(a)
+    b.beginTurn(e) // another character's turn: reaction refreshes, overwatch stays used this round character's turn: reaction refreshes, overwatch stays used this round
+    expect(b.canSpend(a, 'reaction', 'brace')).toBe(true)
+    expect(b.canSpend(a, 'reaction', 'overwatch')).not.toBe(true)
+  })
+  it('quick tech can repeat with a different option, not the same one', () => {
+    const { a, e, b } = duel()
+    b.beginTurn(a)
+    b.lockOn(a, e)
+    expect(b.canQuickTech(a, 'lock_on')).not.toBe(true)
+    expect(b.canQuickTech(a, 'scan')).toBe(true)
+  })
+  it('biological targets are immune to tech other than Scan and Lock On', () => {
+    const { a, e, b } = duel()
+    e.role = 'Biological' as any
+    expect(b.techTargetValid(a, e, 'invade')).not.toBe(true)
+    expect(b.techTargetValid(a, e, 'lock_on')).toBe(true)
+  })
+  it('flying characters cannot be knocked Prone', () => {
+    const { a, b } = duel()
+    a.flying = true
+    b.addStatus(a, 'prone')
+    expect(b.has(a, 'prone')).toBe(false)
+  })
+  it('characters without a heat cap take heat as energy damage', () => {
+    const { e, b } = duel()
+    e.stats.heatcap = 0
+    e.stats.armor = 0
+    b.addHeat(e, 3)
+    expect(e.hp).toBe(e.stats.hp - 3)
+  })
+  it('allied units never obstruct; smaller hostiles do not either', () => {
+    const { a, e, b } = duel()
+    const ally = pregenUnit('Hacker')
+    ally.pos = { x: 2, y: 5 }
+    b.units.push(ally)
+    const pass = (at: { x: number; y: number }) => (b as any).passable(a, at, new Set([a.id]))
+    expect(pass(ally.pos)).not.toBe('blocked')
+    expect(pass(e.pos)).toBe('blocked')
+    e.stats.size = 0.5
+    expect(pass(e.pos)).not.toBe('blocked')
+  })
+  it('destroyed mechs leave wreckage that is hard cover', () => {
+    const { a, e, b } = duel()
+    e.pos = { x: 3, y: 5 }
+    const t = pregenUnit('Hacker', 'enemy')
+    t.pos = { x: 4, y: 5 }
+    b.units.push(t)
+    expect(b.cover(a, t)).toBe('none')
+    b.destroy(e, 'test')
+    expect(e.flags.wreck).toBe(true)
+    expect(b.cover(a, t)).toBe('hard')
+  })
+  it('hard cover must be at least as large as the target', () => {
+    const map = flatMap(12, 12, (x, y) => (x === 5 && y === 5 ? { h: 1, kind: 'block' } : undefined))
+    const a = pregenUnit('Assault'); a.pos = { x: 1, y: 5 }
+    const big = pregenUnit('Sniper', 'enemy'); big.pos = { x: 6, y: 5 }; big.stats.size = 2
+    expect(coverBetween(map, a, big)).not.toBe('hard')
+    big.stats.size = 1
+    expect(coverBetween(map, a, big)).toBe('hard')
+  })
+  it('a non-adjacent obstruction grants soft cover', () => {
+    const map = flatMap(12, 12, (x, y) => (x === 4 && y === 5 ? { h: 1, kind: 'block' } : undefined))
+    const a = pregenUnit('Assault'); a.pos = { x: 1, y: 5 }
+    const t = pregenUnit('Sniper', 'enemy'); t.pos = { x: 8, y: 5 }
+    expect(coverBetween(map, a, t)).toBe('soft')
+  })
+  it('grappled characters cannot Boost', () => {
+    const { a, b } = duel()
+    b.beginTurn(a)
+    b.addStatus(a, 'grappled')
+    expect(() => b.boost(a)).toThrow(/grappl/)
+  })
+  it('ending a turn in dangerous terrain can deal 5 energy damage', () => {
+    let hurt = false
+    for (let seed = 1; seed < 20 && !hurt; seed++) {
+      const a = pregenUnit('Assault'); a.pos = { x: 1, y: 5 }
+      const e = pregenUnit('Sniper', 'enemy'); e.pos = { x: 9, y: 5 }
+      const b = battle([a, e], flatMap(12, 12, (x, y) => (x === 1 && y === 5 ? { h: 0, kind: 'hazard' } : undefined)), seed)
+      b.beginTurn(a)
+      const hp = a.hp
+      b.endTurn(a)
+      expect(a.flags['round:hazard']).toBe(true)
+      if (a.hp < hp) hurt = true
+    }
+    expect(hurt).toBe(true)
+  })
+  it('Stabilize can reload all Loading weapons', () => {
+    const { a, b } = duel()
+    b.beginTurn(a)
+    a.weapons.forEach(w => (w.loaded = false))
+    b.stabilize(a, 'cool', { unit: a, status: 'reload' })
+    expect(a.weapons.every(w => w.loaded)).toBe(true)
+  })
+  it('Barrage fires an extra Auxiliary on a fired mount, without bonus damage', () => {
+    const { a, e, b } = duel()
+    e.pos = { x: 2, y: 5 }
+    b.beginTurn(a)
+    const main = a.weapons.filter(w => w.size !== 'Auxiliary' && !b.isAoE(b.profile(w)))
+    const aux = a.weapons.find(w => w.size === 'Auxiliary')
+    if (!aux || main.length < 1) return
+    aux.mountIndex = main[0].mountIndex
+    const r = b.barrage(a, { weapon: main[0], aim: { targetId: e.id } }, main[1] ? { weapon: main[1], aim: { targetId: e.id } } : undefined, [{ weapon: aux, aim: { targetId: e.id } }])
+    expect(r.ok).toBe(true)
+    if (b.validTarget(a, aux, e) === true) expect(b.firedThisTurn(a, aux)).toBe(true)
   })
 })

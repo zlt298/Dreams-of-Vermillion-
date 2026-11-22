@@ -13,7 +13,7 @@ import { esc } from './dom'
 type Mode =
   | { k: 'idle' }
   | { k: 'move' }
-  | { k: 'attack'; action: 'skirmish' | 'barrage' | 'aux'; weapon: Weapon; first?: { weapon: Weapon; aim: { targetId?: string; tile?: Pos } } }
+  | { k: 'attack'; action: 'skirmish' | 'barrage' | 'aux'; weapon: Weapon; first?: { weapon: Weapon; aim: { targetId?: string; tile?: Pos } }; via?: 'skirmish' | 'barrage'; queue?: Weapon[] }
   | { k: 'barrage-pick'; first: { weapon: Weapon; aim: { targetId?: string; tile?: Pos } } }
   | { k: 'tech'; tech: 'invade' | 'lockon' | 'bolster' | 'scan' }
   | { k: 'custom'; action: CustomAction }
@@ -150,6 +150,14 @@ export class BattleScreen {
     if (this.b.winner) setTimeout(() => { if (!this.ended) void this.advance() }, 1500)
   }
 
+  /** Prompt the optional auxiliary follow-up attacks (no bonus damage); Esc skips. */
+  private offerAux(a: Unit, queue: Weapon[], via: 'skirmish' | 'barrage') {
+    const usable = queue.filter(w => this.b.weaponUsable(a, w) === true && !this.b.firedThisTurn(a, w))
+    if (!usable.length || a.destroyed) return
+    const [aux, ...rest] = usable
+    this.mode = { k: 'attack', action: 'aux', weapon: aux, via, queue: rest }
+    this.toast(`Optional: fire ${aux.name} (auxiliary on a mount you fired, no bonus damage) — Esc to skip`)
+  }
   toast(msg: string) {
     const t = document.createElement('div')
     t.className = 'toast'
@@ -196,10 +204,12 @@ export class BattleScreen {
       if (!aoe && !target) return
       if (m.action === 'skirmish' || m.action === 'aux') {
         this.cmd(() => {
-          const r = m.action === 'aux' ? this.b.weaponAttack(a, m.weapon, aim, 'skirmish', { noBonusDamage: true }) : this.b.skirmish(a, m.weapon, aim)
+          const r = m.action === 'aux' ? this.b.weaponAttack(a, m.weapon, aim, m.via ?? 'skirmish', { noBonusDamage: true }) : this.b.skirmish(a, m.weapon, aim)
           if (!r.ok) throw new Error(r.reason)
           if (m.action === 'aux') this.b.markFired(a, m.weapon)
           this.mode = { k: 'move' }
+          // barrage: continue with the remaining mounts' auxiliaries (one per mount)
+          if (m.action === 'aux' && m.queue?.length) this.offerAux(a, m.queue.filter(w => w.mountIndex !== m.weapon.mountIndex), 'barrage')
           if (m.action === 'skirmish') {
             const aux = a.weapons.find(w => w !== m.weapon && w.size === 'Auxiliary' && w.mountIndex === m.weapon.mountIndex && m.weapon.mountIndex >= 0 && this.b.weaponUsable(a, w) === true && !this.b.firedThisTurn(a, w))
             if (aux && !a.destroyed) { this.mode = { k: 'attack', action: 'aux', weapon: aux }; this.toast(`Optional: fire ${aux.name} (same mount, no bonus damage) — Esc to skip`) }
@@ -207,11 +217,11 @@ export class BattleScreen {
         })
       } else if (m.action === 'barrage') {
         if (!m.first) {
-          if (m.weapon.size === 'Superheavy') this.cmd(() => { const r = this.b.barrage(a, { weapon: m.weapon, aim }); if (!r.ok) throw new Error(r.reason); this.mode = { k: 'move' } })
+          if (m.weapon.size === 'Superheavy') this.cmd(() => { const r = this.b.barrage(a, { weapon: m.weapon, aim }); if (!r.ok) throw new Error(r.reason); this.mode = { k: 'move' }; this.offerAux(a, this.b.auxFollowUps(a, [m.weapon]), 'barrage') })
           else { this.mode = { k: 'barrage-pick', first: { weapon: m.weapon, aim } }; this.render(); this.toast('Barrage: choose the second weapon') }
         } else {
           const first = m.first
-          this.cmd(() => { const r = this.b.barrage(a, first, { weapon: m.weapon, aim }); if (!r.ok) throw new Error(r.reason); this.mode = { k: 'move' } })
+          this.cmd(() => { const r = this.b.barrage(a, first, { weapon: m.weapon, aim }); if (!r.ok) throw new Error(r.reason); this.mode = { k: 'move' }; this.offerAux(a, this.b.auxFollowUps(a, [first.weapon, m.weapon]), 'barrage') })
         }
       }
       return
@@ -495,7 +505,7 @@ export class BattleScreen {
         ${b.has(u, 'prone') ? this.btn('standup', 'Stand Up', b.has(u, 'immobilized') ? 'Immobilized' : true) : ''}
         ${this.btn('boost', 'Boost [Q]', and(qa('boost'), b.has(u, 'slowed') || b.has(u, 'immobilized') ? 'Slowed/immobilized' : true))}
         ${this.btn('overcharge', 'Overcharge', u.overchargedThisTurn ? 'Once per turn' : u.kind === 'mech' ? true : 'Mechs only')}
-        ${this.btn('tech', 'Invade [QT]', and(qt, jam), 'invade')}${this.btn('tech', 'Lock On [QT]', and(qt, jam), 'lockon')}${this.btn('tech', 'Bolster [QT]', and(qt, jam), 'bolster')}${this.btn('tech', 'Scan [QT]', and(qt, jam), 'scan')}${this.btn('fulltech', 'Full Tech [F]', and(fu, jam))}
+        ${this.btn('tech', 'Invade [QT]', and(b.canQuickTech(u, 'invade'), jam), 'invade')}${this.btn('tech', 'Lock On [QT]', and(b.canQuickTech(u, 'lock_on'), jam), 'lockon')}${this.btn('tech', 'Bolster [QT]', and(b.canQuickTech(u, 'bolster'), jam), 'bolster')}${this.btn('tech', 'Scan [QT]', and(b.canQuickTech(u, 'scan'), jam), 'scan')}${this.btn('fulltech', 'Full Tech [F]', and(fu, jam))}
         ${this.btn('stab-cool', 'Stabilize: Cool [F]', fu)}${this.btn('stab-repair', 'Stabilize: Repair [F]', and(fu, u.repairs > 0 ? true : 'No repairs'))}
         ${this.btn('disengage', 'Disengage [F]', fu)}${this.btn('hide', 'Hide [Q]', and(qa('hide'), b.canHide(u) ? true : 'Need cover / out of sight'))}${this.btn('search', 'Search [Q]', qa('search'))}
         ${this.btn('melee', 'Ram [Q]', qa('ram'), 'ram')}${this.btn('melee', 'Grapple [Q]', qa('grapple'), 'grapple')}${this.btn('melee', 'Improvised [F]', fu, 'improvised')}

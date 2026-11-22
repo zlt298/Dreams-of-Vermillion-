@@ -58,6 +58,8 @@ export interface CustomAction {
   area?: { shape: 'blast' | 'burst' | 'line' | 'cone'; size: number }
   heat?: number
   sourceUid?: string
+  /** Quick Tech option this belongs to ('invade' for invasion options); different options may repeat in a turn */
+  techOption?: string
   /** return true if usable, or a reason string */
   usable(b: Battle, self: Unit): true | string
   run(b: Battle, self: Unit, target?: Unit | Pos): void

@@ -297,7 +297,7 @@ registerScripts([
   {
     id: 't_hacker:2', note: 'SAFE_CRACKER invade options',
     actions: (b, u) => [action({
-      key: 'safecracker-jam', name: 'Invade: Disable', activation: 'quick_tech', target: 'enemy', range: u.stats.sensors,
+      key: 'safecracker-jam', name: 'Invade: Disable', activation: 'quick_tech', techOption: 'invade', target: 'enemy', range: u.stats.sensors,
       text: 'Tech attack: 2 heat and the target is Jammed until the end of its next turn.',
       run: (bt, self, t) => {
         const ctx = bt.techAttackRoll(self, t as Unit, 'SAFE_CRACKER')

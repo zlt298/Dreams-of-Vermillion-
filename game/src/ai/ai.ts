@@ -257,16 +257,17 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
     const r = customValue(b, u, a, p)
     if (r && r.value > 0.5) opts.push({ kind: 'custom', action: a, target: r.target, value: r.value, cost: c })
   }
-  if (u.kind === 'mech' && b.canQuickTech(u) === true && !b.has(u, 'jammed')) {
+  if (u.kind === 'mech' && !b.has(u, 'jammed') && (b.canQuickTech(u, 'invade') === true || b.canQuickTech(u, 'lock_on') === true)) {
     for (const t of hostiles) {
       if (t.kind !== 'mech' && t.kind !== 'npc') continue
       const saved = u.pos
       u.pos = p
       try {
-        if (b.techTargetValid(u, t) !== true) continue
+        if (b.techTargetValid(u, t, 'lock_on') !== true) continue
+        const canInvade = b.canQuickTech(u, 'invade') === true && b.techTargetValid(u, t) === true
         const chance = Math.max(0.1, Math.min(0.95, (21 - (t.stats.edef - u.stats.techAttack)) / 20))
-        opts.push({ kind: 'invade', target: t, value: chance * (2 * (t.stats.heatcap ? 1 : 0) + 3), cost: 'quick' })
-        if (!b.has(t, 'lockon')) opts.push({ kind: 'lockon', target: t, value: 1.2, cost: 'quick' })
+        if (canInvade) opts.push({ kind: 'invade', target: t, value: chance * (2 * (t.stats.heatcap ? 1 : 0) + 3), cost: 'quick' })
+        if (!b.has(t, 'lockon') && b.canQuickTech(u, 'lock_on') === true) opts.push({ kind: 'lockon', target: t, value: 1.2, cost: 'quick' })
       } finally { u.pos = saved }
     }
   }
@@ -331,7 +332,11 @@ export function planFor(b: Battle, u: Unit): Plan {
 function execute(b: Battle, u: Unit, o: Option) {
   switch (o.kind) {
     case 'skirmish': return b.skirmish(u, o.weapon, o.aim)
-    case 'barrage': return b.barrage(u, o.a, o.b)
+    case 'barrage': {
+      // follow up with an Auxiliary on each mount fired, at the primary target (skipped if it can't reach)
+      const auxes = b.auxFollowUps(u, [o.a.weapon, ...(o.b ? [o.b.weapon] : [])]).map(w => ({ weapon: w, aim: o.a.aim }))
+      return b.barrage(u, o.a, o.b, auxes)
+    }
     case 'custom': return b.useCustom(u, o.action, o.target)
     case 'invade': return b.invade(u, o.target)
     case 'lockon': return b.lockOn(u, o.target)

@@ -166,7 +166,8 @@ export function coverBetween(map: GridMap, attacker: Unit, target: Unit, areas: 
   const tfp = footprint(target)
   const tSet = new Set(tfp.map(key))
   const afp = new Set(footprint(attacker, attackerPos).map(key))
-  const need = Math.max(1, unitHeight(target) / 2)
+  // hard cover must be adjacent and at least as large as the target (core rules)
+  const need = Math.max(1, Math.ceil(target.stats.size))
   let hard = false
   const seen = new Set<string>()
   for (const p of tfp) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
@@ -191,6 +192,9 @@ export function coverBetween(map: GridMap, attacker: Unit, target: Unit, areas: 
     const k = key(tp)
     if (afp.has(k) || tSet.has(k)) continue
     if (obscured(tp)) return 'soft'
+    // non-adjacent hard obstruction partially blocking the line: soft cover
+    const t = tileAt(map, tp)
+    if (t && t.h - eT >= 1 && !(eA >= t.h + 2)) return 'soft'
   }
   return 'none'
 }
