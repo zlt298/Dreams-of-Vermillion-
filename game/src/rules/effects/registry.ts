@@ -70,6 +70,14 @@ export interface CustomAction {
   aiScore?(b: Battle, self: Unit, target?: Unit | Pos): number
 }
 
+/** A persistent zone on the map. `effect` picks the overlay colour. */
+export interface FieldOverlay {
+  tiles: Pos[]
+  effect: 'protect' | 'harm' | 'control' | 'reveal' | 'barrier' | 'terrain'
+  label: string
+  ownerId?: string
+}
+
 export interface DamageCtx {
   source?: Unit
   attack?: AttackCtx
@@ -112,6 +120,8 @@ export interface ItemScript {
   afterAnyRoll?(b: Battle, self: Unit, ctx: AttackCtx): void
   /** extra accuracy (or difficulty, if negative) this unit grants `u` on a check or save */
   checkAccuracy?(b: Battle, self: Unit, u: Unit, kind: 'check' | 'save', stat?: string): number
+  /** persistent zones this unit's systems project (drawn as map overlays, listed in tooltips) */
+  fields?(b: Battle, self: Unit): FieldOverlay[]
   /** actions this unit's systems make available to another unit (`other`) */
   grantActions?(b: Battle, self: Unit, other: Unit): CustomAction[]
   /** any character took damage (after its own modifyIncoming): reduce it here (e.g. shield generators) */

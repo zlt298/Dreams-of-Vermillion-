@@ -9,7 +9,7 @@ import {
 import { Rng, rollDice, rollAccuracy, averageDice } from './rng'
 import { hasTag, tagVal, nextUid } from './stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, Weapon } from './types'
-import { type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from './effects/registry'
+import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from './effects/registry'
 import { genericActionsFor } from './effects/generic'
 
 export type BattleEvent =
@@ -1945,6 +1945,24 @@ export class Battle {
   }
 
   // ------------------------------------------------------------------ deployables / mines / areas
+  /** Every persistent zone on the map (terrain areas, drone and system fields), for overlays and tooltips. */
+  fieldOverlays(): FieldOverlay[] {
+    const out: FieldOverlay[] = []
+    for (const a of this.areas) {
+      const owner = a.ownerId ? this.unit(a.ownerId) : undefined
+      out.push({
+        tiles: a.tiles, ownerId: a.ownerId,
+        effect: a.kind === 'damage' ? 'harm' : a.kind === 'difficult' ? 'terrain' : 'protect',
+        label: `${a.kind === 'damage' ? 'Damaging area' : a.kind === 'difficult' ? 'Difficult terrain' : 'Soft cover (obscured)'}${owner ? ` — ${owner.name}` : ''}`,
+      })
+    }
+    for (const o of this.alive()) {
+      if (o.flags.revealRadius) out.push({ tiles: burstTiles(this.map, o, o.flags.revealRadius), effect: 'reveal', ownerId: o.ownerId, label: `${o.name}: hostiles can't Hide or stay Invisible` })
+      if (o.flags.iceoutRadius) out.push({ tiles: burstTiles(this.map, o, o.flags.iceoutRadius), effect: 'control', ownerId: o.ownerId, label: `${o.name}: no tech actions in or into the field` })
+      for (const s of scriptsFor(o)) if (s.fields) out.push(...s.fields(this, o).map(f => ({ ownerId: o.id, ...f })))
+    }
+    return out
+  }
   /** Hostile reveal fields (e.g. Lotus Projector): no Hiding, no Invisibility benefit, Hidden lost at turn end. */
   inRevealField(u: Unit): boolean {
     return this.alive().some(d => d.flags.revealRadius && this.hostile(d, u) && this.distance(d, u) <= d.flags.revealRadius)

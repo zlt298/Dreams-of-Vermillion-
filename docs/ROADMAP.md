@@ -141,6 +141,10 @@ Useful commands, all run from `game/`:
   - fields: OASIS Wall, Interdiction Field
   - Hydra's OROCHI core (companion drone plus Full Deployment)
   - Drone Commander's Shepherd and Invigorate
+- **Field overlays:**
+  - Every persistent zone is tinted on the map by effect: green protects, red harms, purple controls, yellow reveals, cyan is a barrier, brown is terrain.
+  - Zones include smoke, difficult and damaging terrain, drone fields, deployables, barriers and NPC domes.
+  - The hover tooltip lists the fields on that tile. **V** toggles the overlay.
 
 ### Rules fidelity snapshot
 Out of the 392 items in lancer-data, 278 (71%) are fully executed and 43 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
@@ -170,7 +174,6 @@ Out of the 392 items in lancer-data, 278 (71%) are fully executed and 43 are app
 
 Remaining here:
 - Approximations: Assassin Drone's reaction trigger, the Command Plate's ally flight, OASIS Wall's energy resistance and straight-line movement, Interdiction Field's teleport lockout.
-- On-screen field and barrier overlays (most fields are invisible on the map today).
 - Using the framework for the remaining deployable-based player items (Javelin Rockets, charges, NHP-driven drones).
 
 ### 2. Player content (L, in batches, each with a test)

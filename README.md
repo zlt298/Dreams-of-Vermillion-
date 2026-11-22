@@ -40,6 +40,7 @@ It uses the pilot's favourite mech and its active loadout: frame, weapons, mods,
 
 - **Campaign.** Three acts with branching node maps. Node types are ⚔ combat, ☠ elite, ⬢ supply, ⛺ rest and ♛ boss. Act *n* uses tier-*n* enemies. Sitreps include Basic Combat, Control, Holdout, Extraction and Assassination.
 - **Story.** In-universe Union documents bracket the campaign: a priority transmission at the start, an after-action report after act 1, an intercepted transmission after act 2 and a debrief after the final fight. They type out as a console readout. Hold any key or mouse button to skip; recovered documents can be replayed from **Title → Transmissions**. The final boss is always *The Voice of the Eye*, the Choir of the Second Dawn's prophet in the Cinnabar Annex casket vault. Texts: `game/src/data/story.ts`.
+- **Field overlays.** Smoke, terrain zones, drone fields, barriers and auras are tinted on the map by effect, and listed when you hover a tile. Press **V** to toggle.
 - **Persistent damage.** HP, structure, stress, repairs, destroyed gear, Limited uses and CORE power carry between fights.
 - **Recovery.** Spend Repairs at LANCER costs in field repairs. A rest is a full repair that reprints destroyed mechs.
 - **Progression.** Each act boss grants +5 License Levels (act 1 LL0, act 2 LL5, act 3 LL10, matching the core book NPC tiers), which raises grit and HP. Re-import updated COMP/CON builds to spend your talent, license and core-bonus points.

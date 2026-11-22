@@ -383,6 +383,7 @@ registerScripts([
   },
   {
     id: 'ms_lb_oc_cloaking_field', partial: true, note: 'Slowed; you and allies within burst 2 are Invisible (re-evaluated each turn)',
+    fields: (b, u) => (u.flags.lboc ? [{ tiles: burstTiles(b.map, u, 2), effect: 'protect' as const, label: `${u.name}'s cloaking field: allies inside are Invisible` }] : []),
     actions: (b, u) => [action({
       key: 'lboc', name: u.flags.lboc ? 'Deactivate Cloaking Field' : 'LB/OC Cloaking Field', activation: 'quick', target: 'none', text: 'Toggle: you are Slowed; you and allies wholly inside burst 2 are Invisible.',
       run: (bt, self) => { self.flags.lboc = !self.flags.lboc; if (self.flags.lboc) bt.addStatus(self, 'slowed', 'until_cleared', self, { lboc: true }); else self.statuses = self.statuses.filter(s => !s.data?.lboc) },
@@ -626,6 +627,7 @@ registerScripts([
   },
   {
     id: 'ms_enclave_pattern_support_shield', partial: true, note: 'Burst 3 dome: +1 difficulty to attacks from outside; Blinkfield Intervention (2 heat → resistance)',
+    fields: (b, u) => (u.flags.enclaveUntil && b.round <= u.flags.enclaveUntil ? [{ tiles: burstTiles(b.map, u, 3), effect: 'protect' as const, label: `${u.name}'s Enclave dome: +1 difficulty on attacks from outside` }] : []),
     actions: (b, u) => [action({ key: 'enclave', name: 'Enclave Support Shield', activation: 'quick', target: 'none', text: 'Burst 3 dome until the end of your next turn; you are Immobilized.', run: (bt, self) => { self.flags.enclaveUntil = bt.round + 1; bt.addStatus(self, 'immobilized', 'next_turn_end_target', self) } })],
     beforeAnyAttack(b, self, ctx) {
       if (!self.flags.enclaveUntil || b.round > self.flags.enclaveUntil || b.hostile(self, ctx.target) || b.distance(self, ctx.target) > 3 || b.distance(self, ctx.attacker) <= 3) return

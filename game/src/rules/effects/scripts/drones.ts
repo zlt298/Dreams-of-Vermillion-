@@ -2,11 +2,11 @@
 // Deployed drones and deployables are units (kind 'drone' | 'deployable', ownerId = the deployer); their
 // effects are implemented here on the *owner's* system script, finding its drones with `mine()`.
 import type { Battle } from '../../battle'
-import { chebyshev, distanceToTile, footprint, hasLineOfSightToTile, tileAt } from '../../grid'
+import { blastTiles, burstTiles, chebyshev, distanceToTile, footprint, hasLineOfSightToTile, tileAt } from '../../grid'
 import type { Pos, StatusId, SystemInst, Unit } from '../../types'
 import { Lancer } from '../../../data/lancer'
 import { deployableUnit } from '../generic'
-import { registerScripts, type CustomAction, type DamageCtx, type ItemScript } from '../registry'
+import { registerScripts, type CustomAction, type DamageCtx, type FieldOverlay, type ItemScript } from '../registry'
 
 // ------------------------------------------------------------------ framework
 const sys = (u: Unit, id: string) => u.systems.find(s => s.dataId === id && !s.destroyed)
@@ -264,7 +264,8 @@ const scripts: ItemScript[] = [
     },
   },
   {
-    id: 'ms_hive_drone', note: 'Hive Drone: Burst 2 greywash swarm; allies inside gain soft cover; hostiles starting or entering take 1 AP kinetic',
+    id: 'ms_hive_drone',
+    fields: (b, u) => mine(b, u, 'Hive Drone').map(d => ({ tiles: burstTiles(b.map, d, 2), effect: 'protect' as const, label: `${u.name}'s hive swarm: allies get soft cover; hostiles take 1 AP kinetic` })), note: 'Hive Drone: Burst 2 greywash swarm; allies inside gain soft cover; hostiles starting or entering take 1 AP kinetic',
     actions: (b, u) => droneKit(b, u, { ...HIVE, aiScore: earlyWhenEngaged() }),
     adjustCover(b, self, _attacker, target, c) {
       if (c !== 'none' || b.hostile(self, target)) return c
@@ -276,7 +277,8 @@ const scripts: ItemScript[] = [
     }),
   },
   {
-    id: 'ms_sentinel_drone', note: 'Sentinel Drone: hostiles within its Burst 2 take 3 kinetic before making any attack',
+    id: 'ms_sentinel_drone',
+    fields: (b, u) => mine(b, u, 'Sentinel Drone').map(d => ({ tiles: burstTiles(b.map, d, 2), effect: 'harm' as const, label: `${u.name}'s sentinel perimeter: hostiles take 3 kinetic before attacking` })), note: 'Sentinel Drone: hostiles within its Burst 2 take 3 kinetic before making any attack',
     actions: (b, u) => droneKit(b, u, { ...SENTINEL, aiScore: earlyWhenEngaged() }),
     beforeAnyAttack(b, self, ctx) {
       const a = ctx.attacker
@@ -289,7 +291,8 @@ const scripts: ItemScript[] = [
     },
   },
   {
-    id: 'ms_tempest_drone', note: 'Tempest Drone: characters starting or moving adjacent: Hull save or 4 energy and knocked back 3',
+    id: 'ms_tempest_drone',
+    fields: (b, u) => mine(b, u, 'Tempest Drone').map(d => ({ tiles: burstTiles(b.map, d, 1), effect: 'harm' as const, label: `${u.name}'s tempest drone: Hull save or 4 energy and knocked back 3` })), note: 'Tempest Drone: characters starting or moving adjacent: Hull save or 4 energy and knocked back 3',
     actions: (b, u) => droneKit(b, u, { ...TEMPEST, aiScore: earlyWhenEngaged() }),
     ...fieldTriggers('tempest', (b, self, u) => mine(b, self, 'Tempest Drone').some(d => b.distance(d, u) <= 1), (b, self, u) => {
       const d = mine(b, self, 'Tempest Drone').find(x => b.distance(x, u) <= 1)!
@@ -299,7 +302,8 @@ const scripts: ItemScript[] = [
     }),
   },
   {
-    id: 'ms_assassin_drone', note: 'Assassin Drone: deploy adjacent and mark a Blast 2 area; Area Denial attacks hostiles in it (grit to hit, 3 kinetic)', partial: true,
+    id: 'ms_assassin_drone',
+    fields: (b, u) => mine(b, u, 'Assassin Drone').filter(d => d.flags.denial).map(d => ({ tiles: blastTiles(b.map, d.flags.denial, 2), effect: 'harm' as const, label: `${u.name}'s Area Denial zone` })), note: 'Assassin Drone: deploy adjacent and mark a Blast 2 area; Area Denial attacks hostiles in it (grit to hit, 3 kinetic)', partial: true,
     actions: (b, u) => {
       const out: CustomAction[] = []
       const live = mine(b, u, 'Assassin Drone')
@@ -343,7 +347,8 @@ const scripts: ItemScript[] = [
     actions: (b, u) => droneKit(b, u, { ...LOTUS, aiScore: (bt, me) => (hostiles(bt, me).some(h => bt.has(h, 'invisible') || bt.has(h, 'hidden')) ? 3 : earlyWhenEngaged()(bt, me) * 0.4) }),
   },
   {
-    id: 'ms_perimeter_command_plate', note: 'Perimeter Command Plate: flat 2x2 plate; Repulse (Hull save or pushed 3) or Attract (Hull save or Immobilized)', partial: true,
+    id: 'ms_perimeter_command_plate',
+    fields: (b, u) => mine(b, u, 'Perimeter Command Plate').map(d => ({ tiles: footprint(d), effect: 'control' as const, label: `${u.name}'s command plate (${d.flags.pcp === 'repulse' ? 'Repulse: hostiles pushed 3' : 'Attract: Immobilized'}, Hull save)` })), note: 'Perimeter Command Plate: flat 2x2 plate; Repulse (Hull save or pushed 3) or Attract (Hull save or Immobilized)', partial: true,
     actions: (b, u) => [deployAction(b, u, PCP('repulse')), deployAction(b, u, PCP('attract'))].filter((x): x is CustomAction => !!x),
     ...fieldTriggers('pcp', (b, self, u) => mine(b, self, 'Perimeter Command Plate').some(d => footprint(d).some(p => footprint(u).some(q => q.x === p.x && q.y === p.y))), (b, self, u) => {
       const d = mine(b, self, 'Perimeter Command Plate')[0]
@@ -369,13 +374,15 @@ const scripts: ItemScript[] = [
     onDestroyed(b, self, v) { if (v.flags.pcp) for (const u of b.alive()) u.statuses = u.statuses.filter(s => s.data?.pcp !== v.id) },
   },
   {
-    id: 'ms_aegis_shield_generator', note: 'Aegis Shield Generator: Burst 1 shield; as a reaction, roll one of its 3 dice to reduce damage to an ally in the area',
+    id: 'ms_aegis_shield_generator',
+    fields: (b, u) => mine(b, u, 'Aegis Shield Generator').map(d => ({ tiles: burstTiles(b.map, d, 1), effect: 'protect' as const, label: `${u.name}'s shield generator: reduces damage to allies (${d.flags.aegisDice} dice left)` })), note: 'Aegis Shield Generator: Burst 1 shield; as a reaction, roll one of its 3 dice to reduce damage to an ally in the area',
     actions: (b, u) => droneKit(b, u, { ...AEGIS, aiScore: earlyWhenEngaged(10) }, { recall: false, redeploy: false }),
     modifyIncoming: (b, self, d) => reduceWithAegis(b, self, self, d),
     modifyAnyIncoming: (b, self, target, d) => reduceWithAegis(b, self, target, d),
   },
   {
-    id: 'ms_portable_bunker', note: 'Portable Bunker: open-topped 4x4 emplacement (unfolds next turn); inside: hard cover and AoE resistance vs attacks from outside',
+    id: 'ms_portable_bunker',
+    fields: (b, u) => mine(b, u, 'Portable Bunker').map(d => ({ tiles: footprint(d), effect: 'protect' as const, label: b.round >= (d.flags.unfoldRound ?? 0) ? `${u.name}'s bunker: hard cover and area-attack resistance inside` : `${u.name}'s bunker (unfolds next turn)` })), note: 'Portable Bunker: open-topped 4x4 emplacement (unfolds next turn); inside: hard cover and AoE resistance vs attacks from outside',
     actions: (b, u) => droneKit(b, u, { ...BUNKER, aiScore: earlyWhenEngaged(12) }, { recall: false, redeploy: false }),
     adjustCover(b, self, attacker, target, c) {
       const bk = bunkerHolding(b, self, target)
@@ -387,7 +394,8 @@ const scripts: ItemScript[] = [
     },
   },
   {
-    id: 'ms_oasis_wall', note: 'OASIS Wall: your movement leaves a light barrier; adjacent characters get hard cover from it (energy resistance not modelled)', partial: true,
+    id: 'ms_oasis_wall',
+    fields: (_b, u) => (u.flags.oasis?.length ? [{ tiles: u.flags.oasis as Pos[], effect: 'barrier' as const, label: `${u.name}'s OASIS wall: hard cover to adjacent characters` }] : []), note: 'OASIS Wall: your movement leaves a light barrier; adjacent characters get hard cover from it (energy resistance not modelled)', partial: true,
     actions: () => [{
       key: 'oasis', name: 'OASIS Wall', activation: 'protocol', heat: 2, target: 'none', text: 'Until your next turn, your movement leaves a barrier that gives hard cover.',
       usable: () => true,
@@ -403,7 +411,8 @@ const scripts: ItemScript[] = [
     },
   },
   {
-    id: 'ms_stasis_barrier', note: 'Stasis Barrier: Line 4 obstruction; soft cover; attacks on characters it covers are consumed on 4+',
+    id: 'ms_stasis_barrier',
+    fields: (b, u) => { const segs = mine(b, u, 'Stasis Barrier'); return segs.length ? [{ tiles: segs.map(sg => sg.pos), effect: 'barrier' as const, label: `${u.name}'s stasis barrier: soft cover; attacks on covered characters fail on 4+` }] : [] }, note: 'Stasis Barrier: Line 4 obstruction; soft cover; attacks on characters it covers are consumed on 4+',
     actions: (b, u) => {
       const segs = mine(b, u, 'Stasis Barrier')
       if (segs.length) return [{ key: 'stasis_off', name: 'Deactivate Stasis Barrier', activation: 'quick', target: 'none', text: 'Dismiss the barrier.', usable: () => true, run: bt => segs.forEach(s => bt.removeUnit(s, 'fades')) }]
@@ -448,7 +457,8 @@ const scripts: ItemScript[] = [
     },
   },
   {
-    id: 'ms_interdiction_field', note: 'Interdiction Field: Burst 3 around you (you are Slowed); hostiles starting in it or entering: Systems save or Slowed', partial: true,
+    id: 'ms_interdiction_field',
+    fields: (b, u) => (u.flags.interdiction ? [{ tiles: burstTiles(b.map, u, 3), effect: 'control' as const, label: `${u.name}'s interdiction field: hostiles save (Systems) or are Slowed` }] : []), note: 'Interdiction Field: Burst 3 around you (you are Slowed); hostiles starting in it or entering: Systems save or Slowed', partial: true,
     actions: (_b, u) => [{
       key: 'interdiction', name: u.flags.interdiction ? 'Deactivate Interdiction Field' : 'Interdiction Field', activation: 'quick', target: 'none', text: 'Toggle a Burst 3 field: you are Slowed; hostiles in it save (Systems) or are Slowed.',
       usable: () => true,
@@ -547,6 +557,7 @@ const merge = (...parts: Partial<ItemScript>[]): Partial<ItemScript> => {
 registerScripts([
   {
     id: 'core:mf_hydra',
+    fields: (b, u) => myOrochi(b, u).map((d): FieldOverlay => ({ tiles: burstTiles(b.map, d, 1), effect: d.flags.orochi === 'Guardian' ? 'protect' : 'control', label: `${d.name}: ${({ Guardian: 'ranged attacks on adjacent allies +1 difficulty', Snare: 'Agility save or Immobilized', Shredder: 'Hull save or 1 kinetic and Shredded', Hunter: 'Systems save or Lock On' } as Record<string, string>)[d.flags.orochi]}` })),
     note: 'OROCHI: one companion drone (Guardian/Snare/Shredder/Hunter) to deploy, recall, redeploy and move; Full Deployment deploys all four',
     actions: (b, u) => {
       const out: CustomAction[] = []

@@ -114,7 +114,8 @@ registerScripts([
   },
   // ---------------------------------------------------------------- Aegis
   {
-    id: 'npc:npcf_defense_net_aegis', note: 'Defense Net: burst 3 shield (+2 difficulty, no crits from outside; allies inside shrug off Impaired/Slowed); Immobilized while active', partial: true,
+    id: 'npc:npcf_defense_net_aegis',
+    fields: (b, u) => (u.flags.defenseNet ? [{ tiles: burstTiles(b.map, u, 3), effect: 'protect' as const, label: `${u.name}'s Defense Net: +2 difficulty and no crits on attacks from outside` }] : []), note: 'Defense Net: burst 3 shield (+2 difficulty, no crits from outside; allies inside shrug off Impaired/Slowed); Immobilized while active', partial: true,
     actions: (_b, u) => [action({
       key: 'defense_net', name: u.flags.defenseNet ? 'End Defense Net' : 'Defense Net', activation: u.flags.defenseNet ? 'protocol' : 'full', target: 'self', area: { shape: 'burst', size: 3 },
       text: 'Toggle the Burst 3 repulsion shield. You are Immobilized while it is active.',

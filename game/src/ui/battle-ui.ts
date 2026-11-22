@@ -76,6 +76,7 @@ export class BattleScreen {
     this.view.dispose()
   }
   private hoverKey = ''
+  showFields = true
   private highlightKey = ''
   private previewCache = new Map<string, ReturnType<Battle['previewDetail']>>()
   private cachedPreview(a: Unit, w: Weapon, t: Unit) {
@@ -96,6 +97,7 @@ export class BattleScreen {
       const ready = this.b.combatants('player').filter(u => u.activationsLeft > 0 || u.activeTurn)
       if (ready.length) { const i = ready.indexOf(this.selected!); this.select(ready[(i + 1) % ready.length]) }
     }
+    if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey) { this.showFields = !this.showFields; this.toast(this.showFields ? 'Field overlays on [V]' : 'Field overlays off [V]'); this.updateHighlights() }
     if (e.key === 'Enter' && this.b.active?.side === 'player') this.cmd(() => this.b.endTurn(this.b.active!), true)
     if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && this.b.active?.side === 'player' && this.b.canUndoMove(this.b.active)) { e.preventDefault(); this.cmd(() => this.b.undoMove(this.b.active!)) }
   }
@@ -335,10 +337,12 @@ export class BattleScreen {
     // highlights only depend on the mode, the acting unit, the hovered tile and battle state
     const m = this.mode
     const modeKey = m.k + ('weapon' in m ? m.weapon.uid : '') + ('tech' in m ? m.tech : '') + ('action' in m && typeof m.action === 'object' ? m.action.key : '') + ('what' in m ? m.what : '')
-    const key = `${modeKey}|${a?.id}|${a?.pos.x},${a?.pos.y}|${a?.moveLeft}|${this.hoverKey}|${this.b.eventCount}`
+    const key = `${modeKey}|${a?.id}|${a?.pos.x},${a?.pos.y}|${a?.moveLeft}|${this.hoverKey}|${this.b.eventCount}|${this.showFields}`
     if (key === this.highlightKey) return
     this.highlightKey = key
     const hs: Highlight[] = []
+    // persistent fields first, so action highlights draw on top
+    if (this.showFields) for (const f of this.b.fieldOverlays()) hs.push({ tiles: f.tiles, color: FIELD_COLORS[f.effect], opacity: f.effect === 'barrier' ? 0.4 : 0.22 })
     this.view.setPath(null)
     if (a && a.side === 'player') {
       const m = this.mode
@@ -423,6 +427,12 @@ export class BattleScreen {
         const tile = this.b.map.tiles[this.hoverTile.y * this.b.map.w + this.hoverTile.x]
         html = `move cost ${p.cost}/${a.moveLeft} · elevation ${tile.h}${tile.kind !== 'ground' ? ' · ' + tile.kind : ''}`
       }
+    }
+    // fields covering the hovered tile
+    if (this.hoverTile && this.showFields) {
+      const h = this.hoverTile
+      const fs = this.b.fieldOverlays().filter(f => f.tiles.some(q => q.x === h.x && q.y === h.y))
+      if (fs.length) html += `${html ? '<hr>' : ''}${[...new Set(fs.map(f => f.label))].map(l => `<div class="small"><span style="color:#${FIELD_COLORS[fs.find(f => f.label === l)!.effect].toString(16).padStart(6, '0')}">■</span> ${esc(l)}</div>`).join('')}`
     }
     this.tooltip.innerHTML = html
     this.tooltip.style.display = html ? 'block' : 'none'
@@ -566,3 +576,8 @@ export function unitTooltip(b: Battle, u: Unit): string {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 export { hasTag, tagVal, key }
+
+/** Overlay colours for persistent fields, by what they do. */
+const FIELD_COLORS: Record<string, number> = {
+  protect: 0x45d483, harm: 0xff5a5a, control: 0xc77dff, reveal: 0xffd166, barrier: 0x7ff3ff, terrain: 0x9c6b3c,
+}
