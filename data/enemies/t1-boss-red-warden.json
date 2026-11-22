@@ -140,7 +140,7 @@
       "templates": [
         "Grunt"
       ],
-      "count": 6,
+      "count": 8,
       "color": "#c0392b",
       "features": [
         {
@@ -215,6 +215,43 @@
               "type": "Kinetic",
               "val": "1d3+1"
             }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Warden Bulwark",
+      "role": "Defender",
+      "color": "#7f8c8d",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Shield Bash",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ],
+          "onHit": [
+            {
+              "do": "push",
+              "val": 2
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Tower Shield",
+          "resist": [
+            "Kinetic"
           ]
         }
       ]

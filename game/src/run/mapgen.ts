@@ -4,21 +4,26 @@ import type { GridMap, Tile, TileKind } from '../rules/grid'
 import { Rng } from '../rules/rng'
 import type { Pos } from '../rules/types'
 
+export const MAP_W = 18
+export const MAP_H = 36
+
 export type Biome = 'colony' | 'wastes' | 'forest' | 'industrial'
 
 export interface MapOptions { w?: number; h?: number; biome?: Biome; density?: number }
 
 export function generateMap(seed: number, opts: MapOptions = {}): GridMap {
   const rng = new Rng(seed)
-  const w = opts.w ?? 18, h = opts.h ?? 18
+  // 18 wide × 36 long: the two deployment zones are ~30 spaces apart, leaving room to manoeuvre
+  const w = opts.w ?? MAP_W, h = opts.h ?? MAP_H
   const biome = opts.biome ?? rng.pick(['colony', 'wastes', 'forest', 'industrial'] as const)
-  const density = opts.density ?? 1
+  // feature counts were tuned for 18×18; scale them with area so density stays the same
+  const density = (opts.density ?? 1) * ((w * h) / 324)
   const tiles: Tile[] = Array.from({ length: w * h }, () => ({ h: 0, kind: 'ground' as TileKind }))
   const at = (x: number, y: number) => tiles[y * w + x]
   const inb = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h
 
   // --- rolling elevation: a few smoothed hills / plateaus
-  const hills = 2 + rng.int(0, 2)
+  const hills = Math.round((2 + rng.int(0, 2)) * ((w * h) / 324))
   for (let i = 0; i < hills; i++) {
     const cx = rng.int(2, w - 3), cy = rng.int(4, h - 5), r = rng.int(2, 4), ht = rng.int(1, 2)
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -68,7 +73,7 @@ export function generateMap(seed: number, opts: MapOptions = {}): GridMap {
   }
   // --- hazards
   if (biome === 'industrial' || biome === 'wastes') {
-    const n = rng.int(1, 2)
+    const n = Math.round(rng.int(1, 2) * ((w * h) / 324))
     for (let i = 0; i < n; i++) {
       const x = rng.int(2, w - 3), y = rng.int(5, h - 6)
       if (at(x, y).kind === 'ground') at(x, y).kind = 'hazard'

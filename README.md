@@ -105,7 +105,7 @@ Massif's NPC data is a paid content pack, so enemies use an **original ruleset**
 - Teams: `data/enemies/*.json`. The game loads every valid file automatically. Twelve teams ship, covering all tiers and including three bosses.
 - **Generate more with Claude.** The project skill [`.claude/skills/generate-enemies`](.claude/skills/generate-enemies/SKILL.md) designs teams from the ruleset, writes the JSON and validates it. Ask Claude Code something like *"generate two tier-2 enemy teams themed around rogue terraforming drones"* or *"make a tier 3 boss"*.
 - Validate: `cd game && npm run validate-enemies`.
-- Balance check: `npx tsx scripts/simulate.ts 6` runs AI vs AI with the pregen squad levelled to the tier.
+- Balance check: `npx tsx scripts/simulate.ts 10 [team-id]` runs AI vs AI on 18×36 maps. Tier 1 faces the LL0 pregens, tier 2 the LL3 sample squad and tier 3 the LL6 sample squad.
 
 ## Roadmap
 

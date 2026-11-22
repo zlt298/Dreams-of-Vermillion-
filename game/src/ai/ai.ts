@@ -200,7 +200,11 @@ function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAg
       const allies = b.alive().filter(a => a !== u && !b.hostile(u, a) && a.kind === 'npc')
       if (allies.length) v -= Math.min(...allies.map(a => b.distance(u, a))) * 0.25
     }
-    if (u.kind === 'mech') v -= Math.max(0, nearest - 8) * 0.3
+    // advance pull: on long maps, units out of their own reach close the distance
+    // (artillery/controllers more gently, so they settle near their preferred range)
+    const myReach = Math.max(1, ...u.weapons.filter(w => !w.destroyed).map(w => b.weaponReach(u, w)))
+    const k = role === 'Artillery' || role === 'Controller' ? 0.25 : 0.35
+    if (nearest > myReach) v -= (nearest - myReach) * k
     // sitrep objectives
     const zone = b.sitrep.zone
     if (zone && (b.sitrep.id === 'control' || (b.sitrep.id === 'extraction' && u.side === 'player'))) {

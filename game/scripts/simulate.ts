@@ -28,12 +28,12 @@ for (const f of readdirSync(dir).filter(f => f.endsWith('.json'))) {
   for (let s = 1; s <= N; s++) {
     const squad = squads[team.tier].map(raw => buildMechUnit(importPilots(raw)[0]))
     const enemies = buildTeam(team, 4)
-    const map = generateMap(s * 977, { w: 18, h: 18 })
+    const map = generateMap(s * 977)
     squad.forEach((u, i) => (u.pos = map.deployPlayer[i]))
     enemies.forEach((u, i) => (u.pos = map.deployEnemy[i % map.deployEnemy.length]))
     const b = new Battle({ map, units: [...squad, ...enemies], seed: s })
     b.start()
-    autoBattle(b, Number(process.env.MAX_ROUNDS ?? 12))
+    autoBattle(b, Number(process.env.MAX_ROUNDS ?? 30))
     if (b.winner === 'player') wins++
     rounds += b.round
     lost += squad.filter(u => u.destroyed).length

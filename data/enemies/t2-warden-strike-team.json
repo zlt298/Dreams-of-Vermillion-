@@ -74,6 +74,71 @@
       ]
     },
     {
+      "name": "Warden Duelist",
+      "role": "Striker",
+      "templates": [
+        "Elite"
+      ],
+      "color": "#e74c3c",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Hardlight Sabre",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+5"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_ap"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Arc Pistol",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 6
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+2"
+            }
+          ],
+          "smart": true
+        },
+        {
+          "type": "trait",
+          "name": "Phase Thrusters",
+          "stats": {
+            "speed": 1,
+            "evasion": 1
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Riposte",
+          "trigger": "hit_by_melee",
+          "frequency": "1/round",
+          "attackWith": "Hardlight Sabre"
+        }
+      ]
+    },
+    {
       "name": "Warden Hexer",
       "role": "Controller",
       "templates": [

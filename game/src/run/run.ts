@@ -119,7 +119,7 @@ export function nodeTier(n: RunNode): Tier {
 export function sitrepFor(n: RunNode, map: { zones?: { name: string; tiles: { x: number; y: number }[] }[] }, targetId?: string): Sitrep {
   const zone = (name: string) => map.zones?.find(z => z.name === name)?.tiles
   switch (n.sitrep) {
-    case 'holdout': return { id: 'holdout', name: 'Holdout', rounds: 6, description: 'Survive 6 rounds or destroy all hostiles.' }
+    case 'holdout': return { id: 'holdout', name: 'Holdout', rounds: 8, description: 'Survive 8 rounds or destroy all hostiles.' }
     case 'control': return { id: 'control', name: 'Control', rounds: 3, zone: zone('control'), description: 'Hold the marked zone (no hostiles inside) at the end of 3 rounds, or destroy all hostiles.' }
     case 'extraction': return { id: 'extraction', name: 'Extraction', zone: zone('extraction'), description: 'Get every surviving lancer into the extraction zone, or destroy all hostiles.' }
     case 'assassination': return { id: 'assassination', name: 'Assassination', targetId, description: 'Destroy the marked high-value target.' }

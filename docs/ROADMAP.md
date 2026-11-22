@@ -1,8 +1,8 @@
-# Dreams of Vermillion: Roadmap
+# Dreams of Vermillion: roadmap
 
-These are the fixes and improvements planned after the first playable build. The milestones are listed in priority order.
+This file has two parts: what has been built so far, and what's next in priority order.
 
-Each item is sized:
+Each upcoming item is sized:
 
 | size | effort |
 |---|---|
@@ -10,97 +10,173 @@ Each item is sized:
 | M | a few hours |
 | L | a day or more |
 
-Sprite art is shelved for now; Milestone 6 replaces it with procedural models.
+Useful commands, all run from `game/`:
 
-✅ marks finished items. Notes on how they were done:
-- **M1.1 rulings:** checked against COMP/CON's own combat code in `vendor/compcon`, which encodes the core book. Changes: armor now applies per damage type; Skirmish is limited to once per turn; reaching 0 stress schedules a meltdown at the end of the next turn instead of an instant explosion; Grunts are destroyed by external heat; Ultra NPCs refresh reactions every turn. Each ruling has a test.
-- **M1.2 performance:** caches for the map, line of sight and cover, plus per-unit script lists and a single pathfinding pass. Mean AI turn went from 29 ms to about 17–20 ms (`npm run bench`). The p95 is still around 50 ms.
-- **M2.1 reactions:** each mech has a per-reaction policy of auto, ask or off. "Ask" currently uses a synchronous browser confirm dialog, because the engine resolves attacks synchronously.
-- **M2.4 previews:** attack previews now run inside a state sandbox. This also fixed a bug where hovering an attack or running AI evaluation triggered script side effects, such as Shrike Armor damage or consuming once-per-round bonuses.
+| command | what it does |
+|---|---|
+| `npm test` | 118 unit tests |
+| `npm run e2e` | browser campaign run plus a GPU-leak check |
+| `npm run bench` | AI speed per turn |
+| `npm run coverage -- --list` | rules fidelity report |
+| `npm run validate-enemies` | checks the enemy team files |
+| `npx tsx scripts/simulate.ts 10` | balance sweep, AI vs AI |
 
-### Milestone 1: Correctness and stability (do first)
-1. ✅ **Verify rules rulings against the core book (M).** These are assumptions I made while building that need confirming:
-   - excess heat and excess damage carry over after stress/structure
-   - Resistance rounds up
-   - each weapon attacks once per turn
-   - NPCs can't crit
-   - 1-stress NPCs become Exposed instead of rolling the overheating table
-   - Grunts ignore damage from misses and successful saves
-   - stand-up rules for Prone
+---
 
-   Each ruling becomes a named test in `tests/rules.test.ts`, with the logic in `game/src/rules/battle.ts`.
-2. ✅ **Performance hotspots (M).**
-   - `Battle.effectiveMap()` copies the whole tile array on every line-of-sight and cover call. Cache it and invalidate the cache only when cover deployables spawn or are destroyed.
-   - `cover()` loops over every unit's scripts. Precompute which units have `adjustCover`.
-   - AI `planFor` evaluates around 120 positions × targets. Cache line of sight per position and turn.
-   - Target: under 50 ms per AI turn on an 18×18 map.
-3. ✅ **Animation pacing (S).** The backlog catch-up in `render/scene.ts` `wait()` works, but long AI turns still lag. Add a "skip animations" toggle and cap each turn's queue time.
-4. ✅ **Battle-end robustness (S).** `BattleScreen.advance()` depends on `busy` and `view.idle()`. Add a timeout fallback so the debrief always appears. Add a Playwright regression test based on the scratchpad `run.cjs`.
-5. ✅ **Save migration (S).** `run/run.ts` saves to `dov.run.v1` with no migration. Add `version` handling and wipe incompatible saves gracefully.
-6. ✅ **Import edge cases (S).**
-   - Pilots are currently matched on re-import by id *or* callsign, which can collide. Prefer id and confirm when matching by callsign.
-   - Handle pilots with no mechs or a missing favourite mech.
-   - Test against real COMP/CON exports from the user.
+## Done
 
-### Milestone 2: Playability and UX
-1. ✅ **Reaction prompts (M).** Brace, Overwatch and the chosen talent/system reactions are currently auto-policy only. Add an optional "ask me" mode: the engine pauses with a pending-reaction state, and the HUD shows a yes/no prompt. Files: `battle.ts`, `ui/battle-ui.ts`.
-2. ✅ **Undo the last move (S),** allowed only if nothing was revealed or triggered. Store the position and moveLeft before each standard move.
-3. ✅ **Turn-order and initiative bar (S).** Show which units have activated and which are still ready on each side.
-4. ✅ **Attack-preview polish (S).** Show the damage range, the crit chance, and whether the attack would kill the target or cause structure damage. Do this before committing to the attack.
-5. **Threat overlay (M).** A toggle that shades every tile hostiles can hit next turn, using reach plus speed and overwatch threat.
-6. **Campaign map edges (S).** Draw connection lines between nodes and show sitrep and enemy-tier previews on hover (`ui/app.ts`).
-7. **Hangar quality of life (S):** sort and filter the roster, a mech sheet modal, an SP-overflow warning, and highlighting of LCP content.
-8. **Settings screen (S):** animation speed, auto-policies by default, colour-blind palette, camera sensitivity.
-9. **Mobile and touch support (M):** tap to select, long-press for tooltips, collapsible panels.
+### Foundation
+- **COMP/CON:**
+  - COMP/CON v3 is a pinned submodule in `vendor/compcon`.
+  - The importer reads v3 exports, v2 pilot data and COMP/CON's pregen templates, and flags content that isn't in lancer-data (LCP items).
+- **Rules engine:**
+  - grid, line of sight and cover on a 3D height map
+  - movement and engagement
+  - attacks, accuracy, crits and damage
+  - heat, the official structure and overheating tables
+  - statuses with Lancer durations
+  - tech, Brace and Overwatch
+  - deployables and mines
+- **Enemy ruleset:** an original NPC framework (roles, tiers, templates, feature DSL, budgets), with a validator, a `generate-enemies` Claude skill and 12 teams covering every tier and kind.
+- **AI and presentation:**
+  - a utility-based tactical AI
+  - a Three.js isometric view
+  - the battle HUD
+  - a three-act campaign with persistent damage, repairs, rewards, level-ups and COMP/CON re-import
 
-### Milestone 3: Rules fidelity
-Driven by `npm run coverage -- --list`. Currently manual: 1 trait, 8 core systems, 8 weapons, 46 systems, 2 mods, 22 talent ranks, plus 39 partial items.
+### Rules corrections
+- Ambiguous rulings were cross-checked against COMP/CON's own combat code:
+  - armor applies per damage type
+  - resistance rounds up
+  - reaching 0 stress means a meltdown at the end of the next turn
+  - Grunts die to external heat
+  - Ultras refresh reactions every turn
+  - NPCs and tech attacks can't crit
+- A quick action can't be repeated in a turn from normal actions. It can be repeated when paid with a free-action quick: Overcharge, Everest Initiative, ASURA. Full Tech still gives two quick techs.
 
-1. **Finish the partial scripts first (M).** Covers Drake Fortress cover sections, Mourning Cloak teleport moves, Goblin Reactive Code, Napoleon Heavy Shielding everywhere, and the leadership dice, exemplar and stormbringer choices.
-2. **Remaining core systems (L):**
+### Stability and performance
+- Caches for the map, line of sight and cover, plus per-unit script lists and single-pass AI pathing. The AI takes about 15 ms per turn on average (p95 about 35 ms).
+- **GPU memory leak fixed:**
+  - tile highlights and effects are allocated once and reused
+  - each battle view frees everything it used when it closes
+  - event and log history is capped
+  - hover work only happens when the hovered tile changes
+  - the e2e test fails if the leak comes back
+- Animation speed control with a skip option and a per-turn time budget. Battles always reach the end screen.
+- Versioned run saves with validation (damaged or newer saves are discarded with a message), safer re-import matching, and a cleaned-up roster.
+
+### UX
+- Reaction policies per mech: auto, ask or off, for Brace and Overwatch.
+- Undo a move that revealed nothing.
+- Initiative bar showing who is ready, acting, done or destroyed.
+- Detailed attack preview: hit and crit chance, damage range, chance to destroy or cause structure damage. It runs in a state sandbox, which also fixed preview side effects.
+- **Auto (AI)** turn button.
+- **Open COMP/CON** link and export hint in the Hangar.
+
+### Content and balance
+- Legal LL3 and LL6 sample squads, also available from Hangar buttons.
+- The balance sim matches squad to tier (LL0 pregens vs T1, LL3 vs T2, LL6 vs T3).
+- Team rosters were retuned for the long map. Results from AI vs AI runs on 18×36 maps:
+
+  | kind | player wins | mechs lost per fight |
+  |---|---|---|
+  | standard | 90–100% | 0.2–1.2 |
+  | elite | 50–70% | about 1.8 |
+  | boss | 58–90% | 1.9–2.9 |
+
+### Presentation and map
+- Procedural low-poly unit models, shaped by manufacturer or role, carrying their actual weapons, with marks for templates; creatures for biological enemies.
+- The battlefield is 18 wide × 36 long, with terrain features scaled by area.
+  - The camera fits the map's width and pans along its length.
+  - The AI's "advance pull" brings units forward until they're in range.
+  - Holdout lasts 8 rounds.
+
+### Rules fidelity snapshot
+Out of the 392 items in lancer-data, 266 (68%) are fully executed and 39 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
+
+| section | scripted | partial | auto | manual |
+|---|---|---|---|---|
+| Frame traits | 26 | 2 | 0 | 1 |
+| Core systems | 19 | 2 | 0 | 8 |
+| Weapons | 19 | 5 | 53 | 8 |
+| Systems | 59 | 15 | 4 | 46 |
+| Mods | 2 | 1 | 3 | 2 |
+| Talent ranks | 49 | 10 | 6 | 22 |
+| Core bonuses | 9 | 4 | 17 | 0 |
+
+---
+
+## Next
+
+### 1. Encounters and pacing (new)
+1. **Level-aware encounters (M).**
+   - Choose the enemy tier from the squad's average License Level, with the act as a minimum.
+   - Warn in the Hangar when pilot levels don't match the act.
+   - Show the expected level per act on the campaign map.
+2. **Long tier-3 fights (M).**
+   - On long maps, tier-3 battles average 17–25 rounds in the sim.
+   - Investigate passive AI (artillery that never advances, Controllers stalling) and sustain loops (healer + overshield + regen).
+   - Target: 8–14 rounds.
+3. **Tier-1 openers are trivial (S).** On long maps, grunt-heavy T1 teams die on the approach (0.1–0.2 mechs lost). Give them ranged pressure or flanking deployments.
+4. **Deployment variety (M):** flank and ambush deployments, and objectives that start mid-map, so long maps aren't always a straight march.
+
+### 2. UX
+1. **Minimap or overview toggle (S, new):** one key to zoom out and back, plus click-to-jump. More useful now that maps are long.
+2. **In-HUD reaction prompts (M, new).** Replace the browser `confirm()` used by "ask" reactions. This needs a resumable engine: attack resolution as a generator that can pause for a decision.
+3. **Threat overlay (M):** shade every tile hostiles can hit next turn.
+4. **Campaign map edges (S):** draw node connections, and preview the sitrep and tier on hover.
+5. **Hangar quality of life (S):** sort and filter, a mech-sheet modal, an SP-overflow warning, and highlighting of LCP content.
+6. **Settings screen (S):** animation speed, default reaction policies, colour-blind palette, camera sensitivity.
+7. **Touch support (M):** tap to select, long-press for tooltips, collapsible panels.
+8. **Overcharge clarity (S, new):** show the free-action quick as its own pip, and mark which actions it can repeat.
+
+### 3. AI
+1. **Focus fire and kill priority (M):** coordinate attacks on one target instead of each unit choosing greedily.
+2. **Role tactics (M):** Defenders body-block, Support stays near damaged allies, Controllers apply Lock On before allies attack.
+3. **Reactions and options (S):** decide when to react, Grapple, Ram and Hide.
+4. **Use Overcharge (S, new)** to repeat a strong quick action when the heat is affordable.
+5. **Difficulty levels (S):** scale AI caution and randomness, and the encounter budget.
+
+### 4. Rules fidelity
+Driven by `npm run coverage -- --list`.
+1. **Finish the partial scripts (M):** Drake cover sections, Mourning Cloak teleport moves, Goblin Reactive Code, Napoleon Heavy Shielding, and the leadership, exemplar and stormbringer choices.
+2. **The 8 missing CORE systems (L):**
    - Barbarossa Apocalypse Rail
    - Raleigh Thunder God
    - Hydra OROCHI drones
    - Goblin Symbiosis
-   - Pegasus Ushabti Omnigun
+   - Pegasus Omnigun
    - Sherman COREBURN
    - Black Witch Mag Field
    - Dusk Wing Hall of Mirrors
-3. **Drone and deployable framework (L).** Drones that move and act on the owner's turn, recall and redeploy, and deployable auras. These unlock many systems: Aegis, Sentinel, Assassin, Hive, Lotus, ICEOUT, Perimeter Command Plate.
-4. **Remaining systems and talents (L)** in batches by manufacturer, with a unit test per script.
-5. **Pilots on foot (L):** Eject, Mount, Dismount, Jockey, pilot weapons and armour from `pilot_gear`.
-6. **Grapple rules completion (M):** contested-hull drag, size interactions, and grapple ending on movement.
-7. **Missing environment rules (M):** elevation and LOS for flying units, zero-g and difficult areas from systems, and lingering object damage to cover.
+3. **Drone and deployable framework (L):** drones that act on their owner's turn, recall and redeploy, auras. This unlocks Aegis, Sentinel, Assassin, Hive, Lotus, ICEOUT and the Perimeter Command Plate.
+4. **The remaining 46 systems and 22 talent ranks (L),** in batches, each with a test.
+5. **Pilots on foot (L):** Eject, Mount, Dismount, Jockey, and pilot gear.
+6. **Grapple completion (M)** and **environment rules (M):** flying line of sight, zero-g, object damage to cover.
+7. **Open rulings (S, new).** COMP/CON doesn't settle these:
+   - whether "Activate" counts as one action for repeat purposes, or one per system as it works now
+   - whether Grunts are immune to damage from misses and successful saves
 
-### Milestone 4: AI
-1. **Lookahead for focus fire and kill priority (M).** Make units coordinate on one target rather than each picking a greedy one.
-2. **Role scripts (M).** Defenders body-block, Support stays in range of damaged allies, Controllers sequence lock-on before allied attacks.
-3. **Use reactions and the remaining NPC options (S),** including grapple and ram and when to Hide.
-4. **Difficulty levels (S).** Scale AI caution and randomness, and the encounter budget multiplier, in `enemies/ruleset.ts` `BUDGET_PER_PC`.
+### 5. Content and balance
+1. **More teams (S each)** with the skill, aiming for 4+ per tier and kind.
+2. **Sitrep variety (M):** Escort and Recon, and use each team's `sitrep` hint.
+3. **Map biomes and set pieces (M),** plus boss arenas.
+4. **Campaign events (M)** and **lancer-data reserves as rewards (S).**
+5. **Re-run the balance sweep (S)** after any rules or AI change. Targets are in the `generate-enemies` skill.
 
-### Milestone 5: Content and balance
-1. ✅ **Balance pass with levelled builds (M).** The sim currently uses LL0 pregens at LL3 and LL6, which skews results. Add sample LL3 and LL6 COMP/CON builds as fixtures, and tune T2/T3 teams and the Furnace Saint so player wins fall within the skill's target ranges.
-2. **More teams via the `generate-enemies` skill (S each).** Aim for 4+ teams per tier per kind so runs don't repeat.
-3. **Sitrep variety (M).** Use each team's `sitrep` hint, and add Escort and Recon (scan targets) objectives.
-4. **Map biomes and set pieces (M).** Hand-authored chunks spliced into `run/mapgen.ts`, plus boss arenas.
-5. **Campaign events (M).** Narrative nodes with choices: reserves, bonds, risk and reward.
-6. **Reserves from lancer-data (S).** Replace the custom rewards with `reserves.json` entries where they're mechanically usable.
+### 6. Presentation
+1. **Model polish (M):** walk bob, weapon recoil, visible part damage, tinted wrecks.
+2. **Effects (M):** muzzle flashes, smoke and fire particles, shield domes, hit sparks.
+3. **Terrain detail and a skybox (S),** and **audio (M).**
+4. **Sprites (optional, later):** a consistent pipeline, for example rendering the procedural models out as images.
 
-### Milestone 6: Presentation (sprites shelved)
-1. ✅ **Procedural low-poly mech kit (L).** Instead of sprites, build each token in `render/scene.ts` from modular primitives: torso, legs, arms and a weapon-type prop chosen from the unit's loadout. Size, role and manufacturer palette drive the shapes. This gives distinct silhouettes per frame and NPC without generated art.
-2. **Effects (M):** particle muzzle flashes, explosions, smoke and fire areas, shield domes and hit sparks.
-3. **Terrain detail (S):** procedural texture variation, building props, a skybox.
-4. **Audio (M):** sounds for weapon types, impacts, UI clicks and ambient music, with volume settings.
-5. **Revisit sprites later (optional).** Use a consistent pipeline, for example rendering the procedural models out as sprites, or a single-model generator with img2img from those renders.
+### 7. Tooling
+1. **CI (S):** typecheck, tests, validate-enemies, coverage (fail if it drops) and e2e.
+2. **Split `battle.ts` (M):** it's about 2,000 lines. Split it into combat, movement, damage, tech and sandbox modules.
+3. **Deterministic replays (M):** log intents plus the seed, with a "copy replay" button for bug reports.
+4. **Parallel balance sim (S, new):** a full sweep takes about 15 minutes on one core. Use worker threads.
+5. **Bundle code-splitting (S)** and **verify that the vendored COMP/CON runs locally (S).**
 
-### Milestone 7: Tooling and tech debt
-1. **CI (S):** a GitHub Action that runs typecheck, vitest, validate-enemies and coverage, and fails if coverage drops.
-2. **Split `battle.ts` (M).** It's now about 1,300 lines. Split it into `combat.ts`, `movement.ts`, `damage.ts` and `tech.ts`, as originally planned.
-3. **Deterministic replays (M).** Log battle intents plus the seed to reproduce bugs, and add a "copy replay" button.
-4. **Bundle size (S).** Code-split Three.js and the UI. Vite warns about chunks over 500 kB.
-5. **Verify vendored COMP/CON runs locally (S).** Check that `yarn && yarn dev` works in `vendor/compcon`, and document Node version requirements.
-
-### Suggested order
-- **Next session:** M1.1–1.4 and M2.1–2.4.
-- **After that:** M5.1 balance, then M6.1 procedural models.
-- **Ongoing:** M3 in batches, and M7.1 CI early.
+### Suggested next session
+- Encounters 1.1–1.3 and UX 2.1, since the long map makes these matter most.
+- Then AI 3.1–3.2, which should also help with tier-3 pacing.

@@ -47,7 +47,7 @@ try {
   await page.evaluate(() => { const s = window.__dov.battle; s.mode = { k: 'move' }; s.render() })
 
   const t0 = Date.now()
-  while (Date.now() - t0 < 180000) {
+  while (Date.now() - t0 < 300000) {
     const done = await page.evaluate(() => !window.__dov.battle)
     if (done) break
     await page.evaluate(() => {

@@ -91,7 +91,7 @@ export class BattleView {
     const sun = new THREE.DirectionalLight(0xffe2c0, 1.6)
     sun.position.set(-20, 40, 15)
     sun.castShadow = true
-    sun.shadow.mapSize.set(2048, 2048)
+    sun.shadow.mapSize.set(this.map.h > 24 || this.map.w > 24 ? 4096 : 2048, this.map.h > 24 || this.map.w > 24 ? 4096 : 2048)
     const s = Math.max(this.map.w, this.map.h)
     Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 1, far: 120 })
     sun.target.position.set(this.map.w / 2, 0, this.map.h / 2)
@@ -178,7 +178,8 @@ export class BattleView {
     const h = this.container.clientHeight || window.innerHeight
     this.renderer.setSize(w, h)
     const aspect = w / h
-    const span = (Math.max(this.map.w, this.map.h) * 0.75) / this.zoom
+    // fit the map's width (long maps are panned, not shrunk to fit)
+    const span = (Math.min(this.map.w, this.map.h) * 0.75) / this.zoom
     this.camera.left = -span * aspect
     this.camera.right = span * aspect
     this.camera.top = span

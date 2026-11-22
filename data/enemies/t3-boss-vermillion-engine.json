@@ -24,13 +24,13 @@
           "range": [
             {
               "type": "Range",
-              "val": 12
+              "val": 8
             }
           ],
           "damage": [
             {
               "type": "Kinetic",
-              "val": "2d6+4"
+              "val": "2d6+2"
             }
           ]
         },
@@ -64,7 +64,7 @@
           "range": [
             {
               "type": "Range",
-              "val": 12
+              "val": 10
             },
             {
               "type": "Blast",
@@ -74,7 +74,7 @@
           "damage": [
             {
               "type": "Explosive",
-              "val": "1d6+4"
+              "val": "1d6+2"
             }
           ],
           "tags": [
@@ -173,61 +173,6 @@
       }
     },
     {
-      "name": "Engine Acolyte",
-      "role": "Support",
-      "color": "#27ae60",
-      "features": [
-        {
-          "type": "system",
-          "name": "Mending Hymn",
-          "activation": "quick",
-          "target": "ally",
-          "range": 6,
-          "effects": [
-            {
-              "do": "heal",
-              "val": "2d6"
-            }
-          ],
-          "recharge": 5
-        },
-        {
-          "type": "system",
-          "name": "Ward of Red Glass",
-          "activation": "quick",
-          "target": "ally",
-          "range": 6,
-          "effects": [
-            {
-              "do": "overshield",
-              "val": 5
-            },
-            {
-              "do": "clear_status",
-              "status": "any_negative"
-            }
-          ]
-        },
-        {
-          "type": "weapon",
-          "name": "Rivet Gun",
-          "weaponType": "CQB",
-          "range": [
-            {
-              "type": "Range",
-              "val": 6
-            }
-          ],
-          "damage": [
-            {
-              "type": "Kinetic",
-              "val": "1d6+2"
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "Dreamer Husk",
       "role": "Biological",
       "templates": [
@@ -250,6 +195,58 @@
             {
               "type": "Kinetic",
               "val": "1d6+4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Engine Acolyte",
+      "role": "Support",
+      "color": "#27ae60",
+      "features": [
+        {
+          "type": "system",
+          "name": "Mending Hymn",
+          "activation": "quick",
+          "target": "ally",
+          "range": 6,
+          "effects": [
+            {
+              "do": "heal",
+              "val": "1d6+2"
+            }
+          ],
+          "recharge": 6
+        },
+        {
+          "type": "system",
+          "name": "Ward of Red Glass",
+          "activation": "quick",
+          "target": "ally",
+          "range": 6,
+          "effects": [
+            {
+              "do": "overshield",
+              "val": 3
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "weapon",
+          "name": "Rivet Gun",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 6
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
             }
           ]
         }

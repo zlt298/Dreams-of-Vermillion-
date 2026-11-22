@@ -15,7 +15,7 @@ const times: number[] = []
 for (let s = 1; s <= 3; s++) {
   const squad = ['Vanguard', 'Assault', 'Sniper', 'Fire Support'].map(n => buildMechUnit(importPilots((pregens as any[]).find(p => p.name === n))[0]))
   const enemies = buildTeam(team, 4)
-  const map = generateMap(s * 31, { w: 18, h: 18 })
+  const map = generateMap(s * 31)
   squad.forEach((u, i) => (u.pos = map.deployPlayer[i]))
   enemies.forEach((u, i) => (u.pos = map.deployEnemy[i]))
   const b = new Battle({ map, units: [...squad, ...enemies], seed: s })
