@@ -22,7 +22,7 @@ function perFiring(id: string, f: (b: Battle, self: Unit, ctx: AttackCtx) => voi
   return {
     afterAttack(b, self, ctx, role) {
       if (role !== 'attacker' || !is(ctx, id) || !primary(ctx)) return
-      const k = `firing:${id}:${b.events.length}`
+      const k = `firing:${id}:${b.eventCount}`
       if (self.flags.lastFiring === k) return
       self.flags.lastFiring = k
       f(b, self, ctx)

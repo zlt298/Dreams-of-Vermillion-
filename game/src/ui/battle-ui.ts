@@ -50,7 +50,14 @@ export class BattleScreen {
     this.tooltip = root.querySelector('.tooltip') as HTMLDivElement
     this.view.onTileClick = (p, e) => this.clickTile(p, e)
     this.view.onUnitClick = (u, e) => this.clickUnit(u, e)
-    this.view.onTileHover = p => { this.hoverTile = p; this.updateHover() }
+    this.view.onTileHover = p => {
+      // pointermove fires many times per tile: only do work when the hovered tile changes
+      const k = p ? `${p.x},${p.y}` : ''
+      if (k === this.hoverKey) return
+      this.hoverKey = k
+      this.hoverTile = p
+      this.updateHover()
+    }
     // 'ask' reaction policies: the engine needs a synchronous answer mid-attack
     b.decide = q => window.confirm(q.text)
     this.hud.addEventListener('click', e => this.onHudClick(e))
@@ -64,7 +71,22 @@ export class BattleScreen {
 
   dispose() {
     window.removeEventListener('keydown', this.onKey)
+    this.b.decide = undefined
+    this.previewCache.clear()
     this.view.dispose()
+  }
+  private hoverKey = ''
+  private highlightKey = ''
+  private previewCache = new Map<string, ReturnType<Battle['previewDetail']>>()
+  private cachedPreview(a: Unit, w: Weapon, t: Unit) {
+    const k = `${a.id}:${a.pos.x},${a.pos.y}:${w.uid}:${w.profileIndex}:${t.id}:${this.b.eventCount}`
+    let d = this.previewCache.get(k)
+    if (!d) {
+      if (this.previewCache.size > 200) this.previewCache.clear()
+      d = this.b.previewDetail(a, w, t, 600)
+      this.previewCache.set(k, d)
+    }
+    return d
   }
 
   private onKey = (e: KeyboardEvent) => {
@@ -300,6 +322,12 @@ export class BattleScreen {
   // ------------------------------------------------------------------ highlights & preview
   private updateHighlights() {
     const a = this.b.active
+    // highlights only depend on the mode, the acting unit, the hovered tile and battle state
+    const m = this.mode
+    const modeKey = m.k + ('weapon' in m ? m.weapon.uid : '') + ('tech' in m ? m.tech : '') + ('action' in m && typeof m.action === 'object' ? m.action.key : '') + ('what' in m ? m.what : '')
+    const key = `${modeKey}|${a?.id}|${a?.pos.x},${a?.pos.y}|${a?.moveLeft}|${this.hoverKey}|${this.b.eventCount}`
+    if (key === this.highlightKey) return
+    this.highlightKey = key
     const hs: Highlight[] = []
     this.view.setPath(null)
     if (a && a.side === 'player') {
@@ -364,7 +392,7 @@ export class BattleScreen {
       if (v !== true) html = `<b>${esc(t.name)}</b><br><span class="bad">${esc(v)}</span>`
       else {
         const p = this.b.previewAttack(a, this.mode.weapon, t)
-        const d = this.b.previewDetail(a, this.mode.weapon, t)
+        const d = this.cachedPreview(a, this.mode.weapon, t)
         const pct = (x: number) => `${Math.round(x * 100)}%`
         const lethal = d.lethal > 0
           ? `<br><span class="${d.lethal >= 0.5 ? 'good' : 'warnc'}">${d.lethalLabel === 'destroy' ? 'Destroys target' : 'Causes STRUCTURE damage'}: ${pct(d.lethal)}</span>`

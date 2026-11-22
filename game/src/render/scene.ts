@@ -7,6 +7,20 @@ import type { Pos, Unit } from '../rules/types'
 
 export const LEVEL = 0.55 // world units per elevation level
 
+/** Geometries shared by every view: allocated once, never per frame / per hover. */
+const SHARED = {
+  tile: new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2),
+  flashTile: new THREE.PlaneGeometry(0.95, 0.95).rotateX(-Math.PI / 2),
+  hover: new THREE.PlaneGeometry(0.96, 0.96).rotateX(-Math.PI / 2),
+  sphere: new THREE.SphereGeometry(1, 10, 8),
+  box: new THREE.BoxGeometry(1, 1, 1),
+  tree: new THREE.ConeGeometry(0.22, 0.9, 6),
+  rubble: new THREE.BoxGeometry(0.22, 0.14, 0.18),
+  window: new THREE.BoxGeometry(1.01, 0.08, 1.01),
+  wreck: new THREE.BoxGeometry(0.6, 0.15, 0.5),
+}
+const SHARED_GEOMETRIES = new Set<THREE.BufferGeometry>(Object.values(SHARED))
+
 const KIND_COLOR: Record<string, number> = {
   ground: 0x5d6b52, block: 0x7d7f86, forest: 0x3e6b3a, rubble: 0x6e5f4e, water: 0x2f5d7c, hazard: 0x8a3b1e,
 }
@@ -44,7 +58,16 @@ export class BattleView {
   turnBudgetMs = 3500
   private drainStart = 0
   private disposed = false
+  private rafId = 0
   private hoverMesh: THREE.Mesh
+  /** per-view material cache (keyed by colour/opacity/kind); disposed with the view */
+  private materials = new Map<string, THREE.Material>()
+  /** instanced highlight layers keyed by colour+opacity, reused across calls */
+  private layers = new Map<string, THREE.InstancedMesh>()
+  private pathLine: THREE.Line | null = null
+  private tracer: THREE.Line | null = null
+  private battleListener = (e: BattleEvent) => this.onEvent(e)
+  private dummy = new THREE.Object3D()
   private zoneMeshes: THREE.Object3D[] = []
 
   constructor(container: HTMLElement, battle: Battle) {
@@ -76,31 +99,75 @@ export class BattleView {
     this.buildTerrain()
     this.buildZones()
     for (const u of battle.units) this.addUnit(u)
-    this.hoverMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.96), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false }))
-    this.hoverMesh.rotation.x = -Math.PI / 2
+    this.hoverMesh = new THREE.Mesh(SHARED.hover, this.basic(0xffffff, 0.25))
     this.hoverMesh.visible = false
     this.scene.add(this.hoverMesh)
     this.target.set(this.map.w / 2, 0, this.map.h / 2)
     this.zoom = 1
     this.resize()
     this.bindInput()
-    battle.listeners.push(e => this.onEvent(e))
+    battle.listeners.push(this.battleListener)
     const loop = () => {
       if (this.disposed) return
       this.renderer.render(this.scene, this.camera)
       this.updateLabels()
-      requestAnimationFrame(loop)
+      this.rafId = requestAnimationFrame(loop)
     }
     loop()
   }
 
+  /** Cached transparent basic material (highlights, effects). */
+  private basic(color: number, opacity = 1, depthWrite = false): THREE.MeshBasicMaterial {
+    const k = `b:${color}:${opacity}:${depthWrite}`
+    let m = this.materials.get(k) as THREE.MeshBasicMaterial | undefined
+    if (!m) {
+      m = new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite })
+      this.materials.set(k, m)
+    }
+    return m
+  }
+  private standard(color: number, roughness = 1): THREE.MeshStandardMaterial {
+    const k = `s:${color}:${roughness}`
+    let m = this.materials.get(k) as THREE.MeshStandardMaterial | undefined
+    if (!m) {
+      m = new THREE.MeshStandardMaterial({ color, roughness })
+      this.materials.set(k, m)
+    }
+    return m
+  }
+
+  /** Free every GPU resource this view created and detach from the battle and the window. */
   dispose() {
+    if (this.disposed) return
     this.disposed = true
+    cancelAnimationFrame(this.rafId)
+    const i = this.battle.listeners.indexOf(this.battleListener)
+    if (i >= 0) this.battle.listeners.splice(i, 1)
+    this.animQueue.length = 0
+    const geos = new Set<THREE.BufferGeometry>()
+    const mats = new Set<THREE.Material>()
+    this.scene.traverse(o => {
+      const m = o as THREE.Mesh
+      if (m.geometry && !SHARED_GEOMETRIES.has(m.geometry)) geos.add(m.geometry)
+      if (m.material) for (const x of Array.isArray(m.material) ? m.material : [m.material]) mats.add(x)
+      if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose()
+    })
+    for (const g of geos) g.dispose()
+    for (const m of mats) m.dispose()
+    for (const m of this.materials.values()) m.dispose()
+    this.materials.clear()
+    this.layers.clear()
+    this.units.clear()
+    this.labels.clear()
+    this.scene.clear()
+    this.renderer.renderLists.dispose()
+    this.renderer.forceContextLoss()
     this.renderer.dispose()
     this.renderer.domElement.remove()
     this.overlay.remove()
     window.removeEventListener('resize', this.onResize)
     window.removeEventListener('keydown', this.onKey)
+    window.removeEventListener('pointerup', this.onPointerUp)
   }
 
   // --------------------------------------------------------------- camera
@@ -172,7 +239,7 @@ export class BattleView {
       if (t.kind === 'forest') {
         const n = 1 + ((x * 7 + y * 3) % 2)
         for (let i = 0; i < n; i++) {
-          const tree = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.9, 6), new THREE.MeshStandardMaterial({ color: 0x2f5a2c, roughness: 1 }))
+          const tree = new THREE.Mesh(SHARED.tree, this.standard(0x2f5a2c))
           tree.position.set(x + 0.3 + i * 0.4, top + 0.45, y + 0.35 + ((x + i) % 2) * 0.3)
           tree.castShadow = true
           this.scene.add(tree)
@@ -180,7 +247,7 @@ export class BattleView {
       }
       if (t.kind === 'rubble') {
         for (let i = 0; i < 3; i++) {
-          const r = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.18), new THREE.MeshStandardMaterial({ color: 0x80705c }))
+          const r = new THREE.Mesh(SHARED.rubble, this.standard(0x80705c))
           r.position.set(x + 0.25 + (i * 0.27), top + 0.07, y + 0.3 + ((i * 37) % 5) * 0.1)
           r.rotation.y = i
           this.scene.add(r)
@@ -188,7 +255,7 @@ export class BattleView {
       }
       if (t.kind === 'block' && t.h >= 2) {
         // window strips on buildings
-        const win = new THREE.Mesh(new THREE.BoxGeometry(1.01, 0.08, 1.01), new THREE.MeshBasicMaterial({ color: 0xffc46b }))
+        const win = new THREE.Mesh(SHARED.window, this.basic(0xffc46b))
         win.position.set(x + 0.5, top - 0.35, y + 0.5)
         this.scene.add(win)
       }
@@ -323,29 +390,63 @@ export class BattleView {
   }
 
   // --------------------------------------------------------------- highlights
-  setHighlights(hs: Highlight[]) {
-    this.highlightGroup.clear()
-    for (const h of hs) {
-      const mat = new THREE.MeshBasicMaterial({ color: h.color, transparent: true, opacity: h.opacity ?? 0.35, depthWrite: false })
-      for (const p of h.tiles) {
-        const m = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.92), mat)
-        m.rotation.x = -Math.PI / 2
-        m.position.set(p.x + 0.5, this.topY(p) + 0.03, p.y + 0.5)
-        this.highlightGroup.add(m)
-      }
+  /** Get (or lazily create) the instanced layer for a colour/opacity; capacity = every tile twice. */
+  private layer(color: number, opacity: number, geometry = SHARED.tile): THREE.InstancedMesh {
+    const k = `${color}:${opacity}:${geometry.uuid}`
+    let l = this.layers.get(k)
+    if (!l) {
+      l = new THREE.InstancedMesh(geometry, this.basic(color, opacity), this.map.w * this.map.h * 2)
+      l.frustumCulled = false
+      l.count = 0
+      this.layers.set(k, l)
+      this.highlightGroup.add(l)
     }
+    return l
+  }
+  private fillLayer(l: THREE.InstancedMesh, tiles: Pos[], lift: number, start = 0): number {
+    let n = start
+    const cap = l.instanceMatrix.count
+    for (const p of tiles) {
+      if (n >= cap) break
+      this.dummy.position.set(p.x + 0.5, this.topY(p) + lift, p.y + 0.5)
+      this.dummy.updateMatrix()
+      l.setMatrixAt(n++, this.dummy.matrix)
+    }
+    l.count = n
+    l.instanceMatrix.needsUpdate = true
+    return n
+  }
+  /** Replace the tile highlights. Reuses instanced layers: no allocation after warm-up. */
+  setHighlights(hs: Highlight[]) {
+    const used = new Map<THREE.InstancedMesh, number>()
+    const mine = [...this.layers.values()].filter(l => l.geometry === SHARED.tile)
+    for (const l of mine) l.count = 0
+    for (const h of hs) {
+      const l = this.layer(h.color, h.opacity ?? 0.35)
+      used.set(l, this.fillLayer(l, h.tiles, 0.03, used.get(l) ?? 0))
+    }
+    for (const l of mine) l.visible = l.count > 0
   }
   setPath(path: Pos[] | null) {
-    const old = this.highlightGroup.getObjectByName('path')
-    if (old) this.highlightGroup.remove(old)
-    if (!path || path.length < 2) return
-    const pts = path.map(p => new THREE.Vector3(p.x + 0.5, this.topY(p) + 0.12, p.y + 0.5))
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x9ae6ff, linewidth: 2 }))
-    line.name = 'path'
-    this.highlightGroup.add(line)
+    if (!this.pathLine) {
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.map.w * this.map.h * 3 * 2), 3))
+      this.pathLine = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x9ae6ff }))
+      this.pathLine.frustumCulled = false
+      this.highlightGroup.add(this.pathLine)
+    }
+    const line = this.pathLine
+    if (!path || path.length < 2) { line.visible = false; return }
+    const attr = line.geometry.getAttribute('position') as THREE.BufferAttribute
+    const n = Math.min(path.length, attr.count)
+    for (let i = 0; i < n; i++) attr.setXYZ(i, path[i].x + 0.5, this.topY(path[i]) + 0.12, path[i].y + 0.5)
+    attr.needsUpdate = true
+    line.geometry.setDrawRange(0, n)
+    line.visible = true
   }
 
   // --------------------------------------------------------------- input
+  private onPointerUp: () => void = () => {}
   private onKey = (e: KeyboardEvent) => {
     if ((e.target as HTMLElement)?.tagName === 'INPUT') return
     const k = e.key.toLowerCase()
@@ -366,7 +467,8 @@ export class BattleView {
     let drag: { x: number; y: number; moved: boolean } | null = null
     el.addEventListener('contextmenu', e => e.preventDefault())
     el.addEventListener('pointerdown', e => { if (e.button === 2 || e.button === 1) drag = { x: e.clientX, y: e.clientY, moved: false } })
-    window.addEventListener('pointerup', () => (drag = null))
+    this.onPointerUp = () => (drag = null)
+    window.addEventListener('pointerup', this.onPointerUp)
     el.addEventListener('pointermove', e => {
       if (drag) {
         const k = (this.camera.right - this.camera.left) / el.clientWidth
@@ -491,12 +593,25 @@ export class BattleView {
     const ap = a.group.position.clone().add(new THREE.Vector3(0, 0.7, 0))
     const tp = t.group.position.clone().add(new THREE.Vector3(hit ? 0 : 0.6, 0.6, hit ? 0 : 0.4))
     a.group.rotation.y = Math.atan2(tp.x - ap.x, tp.z - ap.z)
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([ap, tp]), new THREE.LineBasicMaterial({ color: crit ? 0xfff066 : hit ? 0xffa64d : 0x8899aa }))
-    this.fxGroup.add(line)
+    if (!this.tracer) {
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3))
+      this.tracer = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffa64d }))
+      this.tracer.frustumCulled = false
+      this.tracer.visible = false
+      this.fxGroup.add(this.tracer)
+    }
+    const attr = this.tracer.geometry.getAttribute('position') as THREE.BufferAttribute
+    attr.setXYZ(0, ap.x, ap.y, ap.z)
+    attr.setXYZ(1, tp.x, tp.y, tp.z)
+    attr.needsUpdate = true
+    ;(this.tracer.material as THREE.LineBasicMaterial).color.setHex(crit ? 0xfff066 : hit ? 0xffa64d : 0x8899aa)
+    this.tracer.visible = true
     await this.wait(160)
-    this.fxGroup.remove(line)
+    this.tracer.visible = false
     if (hit) {
-      const flash = new THREE.Mesh(new THREE.SphereGeometry(crit ? 0.45 : 0.3, 10, 8), new THREE.MeshBasicMaterial({ color: crit ? 0xfff066 : 0xff8c3a, transparent: true, opacity: 0.85 }))
+      const flash = new THREE.Mesh(SHARED.sphere, this.basic(crit ? 0xfff066 : 0xff8c3a, 0.85))
+      flash.scale.setScalar(crit ? 0.45 : 0.3)
       flash.position.copy(tp)
       this.fxGroup.add(flash)
       await this.wait(120)
@@ -508,33 +623,32 @@ export class BattleView {
   private async animateDestroyed(id: string) {
     const vis = this.units.get(id)
     if (!vis) return
-    const boom = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.9 }))
+    // the fading material is animated, so it is per-explosion and disposed right after
+    const boomMat = new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.9 })
+    const boom = new THREE.Mesh(SHARED.sphere, boomMat)
     boom.position.copy(vis.group.position).add(new THREE.Vector3(0, 0.5, 0))
     this.fxGroup.add(boom)
     for (let i = 0; i < 10; i++) {
-      boom.scale.setScalar(1 + i * 0.6)
-      ;(boom.material as THREE.MeshBasicMaterial).opacity = 0.9 - i * 0.08
+      boom.scale.setScalar(0.2 * (1 + i * 0.6))
+      boomMat.opacity = 0.9 - i * 0.08
       vis.group.position.y -= 0.03
       await this.wait(25)
     }
     this.fxGroup.remove(boom)
+    boomMat.dispose()
     vis.group.visible = false
-    const wreck = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.15, 0.5), new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 1 }))
+    const wreck = new THREE.Mesh(SHARED.wreck, this.standard(0x2b2b2b))
     wreck.position.copy(vis.group.position).add(new THREE.Vector3(0, 0.1, 0))
     this.scene.add(wreck)
   }
   private async flashTiles(tiles: Pos[], color: number) {
-    const g = new THREE.Group()
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, depthWrite: false })
-    for (const p of tiles) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.95), mat)
-      m.rotation.x = -Math.PI / 2
-      m.position.set(p.x + 0.5, this.topY(p) + 0.06, p.y + 0.5)
-      g.add(m)
-    }
-    this.fxGroup.add(g)
+    if (this.skipping) return
+    const l = this.layer(color, 0.5, SHARED.flashTile)
+    this.fillLayer(l, tiles, 0.06)
+    l.visible = true
     await this.wait(220)
-    this.fxGroup.remove(g)
+    l.count = 0
+    l.visible = false
   }
   private async floatText(id: string, text: string, color: string) {
     const vis = this.units.get(id)

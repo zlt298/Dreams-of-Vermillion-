@@ -93,12 +93,20 @@ export class Battle {
   }
 
   // ------------------------------------------------------------------ utils
+  /** Monotonic count of events ever emitted (the `events` array itself is trimmed). */
+  eventCount = 0
+  private sandboxDepth = 0
+  static readonly MAX_EVENTS = 600
+  static readonly MAX_LOG = 400
   emit(e: BattleEvent) {
     this.events.push(e)
+    this.eventCount++
+    if (!this.sandboxDepth && this.events.length > Battle.MAX_EVENTS * 2) this.events.splice(0, this.events.length - Battle.MAX_EVENTS)
     for (const l of this.listeners) l(e)
   }
   say(text: string, kind: LogEntry['kind'] = 'info') {
     this.log.push({ round: this.round, text, kind })
+    if (!this.sandboxDepth && this.log.length > Battle.MAX_LOG * 2) this.log.splice(0, this.log.length - Battle.MAX_LOG)
     this.emit({ type: 'text', text })
   }
   unit(id: string | undefined | null): Unit | undefined {
@@ -787,7 +795,7 @@ export class Battle {
     if (!p) throw new Error('Unreachable')
     if (p.path.length <= 1) return true
     const snapshot = opts.mode === 'standard'
-      ? { unitId: u.id, pos: { ...u.pos }, moveLeft: u.moveLeft, acted: u.actedThisTurn, moved: !!u.flags['turn:moved'], round: this.round, startEvents: this.events.length, endEvents: -1 }
+      ? { unitId: u.id, pos: { ...u.pos }, moveLeft: u.moveLeft, acted: u.actedThisTurn, moved: !!u.flags['turn:moved'], round: this.round, startEvents: this.eventCount, endEvents: -1 }
       : null
     this.lastMove = null
     if (opts.mode === 'standard') u.moveLeft -= p.cost
@@ -800,9 +808,9 @@ export class Battle {
     this.followPath(u, p.path)
     // undo is only allowed if the move revealed/triggered nothing: its sole event is the move itself
     if (snapshot) {
-      const added = this.events.slice(snapshot.startEvents)
-      if (added.length === 1 && added[0].type === 'move' && added[0].unitId === u.id && !u.destroyed) {
-        snapshot.endEvents = this.events.length
+      const last = this.events[this.events.length - 1]
+      if (this.eventCount - snapshot.startEvents === 1 && last?.type === 'move' && last.unitId === u.id && !u.destroyed) {
+        snapshot.endEvents = this.eventCount
         this.lastMove = snapshot
       }
     }
@@ -814,7 +822,7 @@ export class Battle {
 
   canUndoMove(u: Unit): boolean {
     const m = this.lastMove
-    return !!m && m.unitId === u.id && u.activeTurn && m.round === this.round && this.events.length === m.endEvents
+    return !!m && m.unitId === u.id && u.activeTurn && m.round === this.round && this.eventCount === m.endEvents
   }
 
   undoMove(u: Unit) {
@@ -1059,7 +1067,8 @@ export class Battle {
   sandbox<T>(fn: () => T): T {
     const listeners = this.listeners
     this.listeners = []
-    const rng = this.rng.state, logLen = this.log.length, evLen = this.events.length, nUnits = this.units.length
+    const rng = this.rng.state, logLen = this.log.length, evLen = this.events.length, evCount = this.eventCount, nUnits = this.units.length
+    this.sandboxDepth++
     const areas = this.areas.slice(), mines = this.mines.slice(), lastMove = this.lastMove
     const snap = this.units.map(u => ({
       u,
@@ -1097,6 +1106,8 @@ export class Battle {
       this.rng.state = rng
       this.log.length = logLen
       this.events.length = evLen
+      this.eventCount = evCount
+      this.sandboxDepth--
       this.listeners = listeners
     }
   }
