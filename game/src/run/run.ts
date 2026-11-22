@@ -274,15 +274,30 @@ export function levelUp(run: RunState) {
 }
 
 /** Replace pilots with re-imported COMP/CON builds (matched by id or callsign). */
-export function replacePilots(run: RunState, builds: PilotBuild[]) {
+export interface ReplaceReport { replaced: string[]; byCallsign: string[]; ambiguous: string[]; unmatched: string[] }
+
+/**
+ * Replace squad pilots with re-imported COMP/CON builds. Match by COMP/CON id first; fall back to
+ * callsign only when exactly one squad pilot has that callsign (otherwise it's reported as ambiguous).
+ */
+export function replacePilots(run: RunState, builds: PilotBuild[]): ReplaceReport {
+  const report: ReplaceReport = { replaced: [], byCallsign: [], ambiguous: [], unmatched: [] }
+  const taken = new Set<number>()
   for (const b of builds) {
-    const i = run.squad.findIndex(p => p.id === b.id || p.callsign === b.callsign)
-    if (i >= 0) {
-      const old = run.squad[i]
-      run.squad[i] = { ...b, id: old.id }
-      run.condition[old.id] = freshCondition(run.squad[i])
+    let i = run.squad.findIndex(p => p.id === b.id)
+    if (i >= 0) report.replaced.push(b.callsign)
+    else {
+      const same = run.squad.map((p, k) => (p.callsign.toLowerCase() === b.callsign.toLowerCase() && !taken.has(k) ? k : -1)).filter(k => k >= 0)
+      if (same.length === 1) { i = same[0]; report.byCallsign.push(b.callsign) }
+      else if (same.length > 1) { report.ambiguous.push(b.callsign); continue }
+      else { report.unmatched.push(b.callsign); continue }
     }
+    taken.add(i)
+    const old = run.squad[i]
+    run.squad[i] = { ...b, id: old.id }
+    run.condition[old.id] = freshCondition(run.squad[i])
   }
+  return report
 }
 
 export function chooseTeam(run: RunState, node: RunNode, teams: EnemyTeam[]): EnemyTeam {
@@ -293,15 +308,59 @@ export function chooseTeam(run: RunState, node: RunNode, teams: EnemyTeam[]): En
 }
 
 // ------------------------------------------------------------------ persistence
+export const SAVE_VERSION = 1
+
+/** Upgrade functions keyed by the version they upgrade *from*. Add one per breaking change. */
+const MIGRATIONS: Record<number, (r: any) => any> = {}
+
+/** Set when the last loadRun() had to discard or repair a save; the title screen shows it. */
+export let lastLoadProblem: string | null = null
+
 export function saveRun(run: RunState | null) {
   try {
-    if (run) localStorage.setItem(SAVE_KEY, JSON.stringify(run))
+    if (run) localStorage.setItem(SAVE_KEY, JSON.stringify({ ...run, version: SAVE_VERSION }))
     else localStorage.removeItem(SAVE_KEY)
   } catch { /* storage unavailable */ }
 }
+
+/** Structural check so a corrupted or foreign save can't crash the game. */
+export function validateRun(r: any): string | null {
+  if (!r || typeof r !== 'object') return 'not an object'
+  if (!Array.isArray(r.squad) || !r.squad.length) return 'no squad'
+  for (const p of r.squad) if (!p?.id || !p?.mech?.frameId || !Array.isArray(p.mech.mounts)) return 'malformed pilot'
+  if (!Array.isArray(r.nodes) || !r.nodes.length) return 'no campaign map'
+  if (!r.condition || typeof r.condition !== 'object') return 'no mech condition'
+  if (r.current != null && !r.nodes.some((n: any) => n.id === r.current)) return 'current node missing'
+  return null
+}
+
+export function migrateRun(raw: any): RunState | null {
+  let r = raw
+  let v = typeof r?.version === 'number' ? r.version : 0
+  if (v > SAVE_VERSION) { lastLoadProblem = 'This save was made by a newer version of the game and was not loaded.'; return null }
+  while (v < SAVE_VERSION) {
+    const m = MIGRATIONS[v]
+    if (!m) { lastLoadProblem = `Your saved run (format v${v}) is from an incompatible older version and was discarded.`; return null }
+    r = m(r)
+    v++
+  }
+  r.version = SAVE_VERSION
+  const bad = validateRun(r)
+  if (bad) { lastLoadProblem = `Your saved run was damaged (${bad}) and was discarded.`; return null }
+  // repair: make sure every squad pilot has a condition entry
+  for (const p of r.squad) if (!r.condition[p.id]) r.condition[p.id] = freshCondition(p)
+  return r as RunState
+}
+
 export function loadRun(): RunState | null {
-  try {
-    const s = localStorage.getItem(SAVE_KEY)
-    return s ? (JSON.parse(s) as RunState) : null
-  } catch { return null }
+  lastLoadProblem = null
+  let raw: string | null = null
+  try { raw = localStorage.getItem(SAVE_KEY) } catch { return null }
+  if (!raw) return null
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) } catch { lastLoadProblem = 'Your saved run could not be read and was discarded.'; return null }
+  let run: RunState | null = null
+  try { run = migrateRun(parsed) } catch (e) { lastLoadProblem = `Your saved run could not be loaded (${(e as Error).message}).` }
+  if (!run) { try { localStorage.removeItem(SAVE_KEY) } catch { /* ignore */ } }
+  return run
 }

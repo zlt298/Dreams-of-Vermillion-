@@ -10,7 +10,7 @@ import { catalog, teamsFor, validTeams } from '../enemies/catalog'
 import { generateMap } from '../run/mapgen'
 import {
   type RunState, type RunNode, newRun, availableNodes, nodeTier, sitrepFor, squadUnits, recordBattle, fullRepair,
-  repairOptions, applyRepair, rollRewards, applyReward, levelUp, replacePilots, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT,
+  repairOptions, applyRepair, rollRewards, applyReward, levelUp, replacePilots, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
 } from '../run/run'
 import { BattleScreen } from './battle-ui'
 import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles } from './roster'
@@ -50,6 +50,7 @@ export class App {
         <button data-go="skirmish">Quick skirmish</button>
         <button data-go="help">How to play</button>
       </div>
+      ${lastLoadProblem ? `<p class="bad small">${esc(lastLoadProblem)}</p>` : ''}
       <p class="muted small">${validTeams().length} enemy teams loaded${bad.length ? ` · <span class="bad">${bad.length} invalid team file(s): ${bad.map(b => esc(b.file)).join(', ')}</span>` : ''} · lancer-data ${esc('4.0.12')}</p>
       <p class="muted small">Unofficial fan project for personal use. LANCER is © Massif Press; COMP/CON and lancer-data are GPL-3.0.</p>
     </div>`
@@ -100,11 +101,23 @@ export class App {
     const input = this.root.querySelector('input[type=file]') as HTMLInputElement
     const doImport = async (files: FileList | File[]) => {
       const { builds, errors } = await readFiles(files)
-      if (purpose === 'reimport' && this.run) { replacePilots(this.run, builds); saveRun(this.run) }
+      let note = ''
+      if (purpose === 'reimport' && this.run) {
+        const r = replacePilots(this.run, builds)
+        saveRun(this.run)
+        const parts = [
+          r.replaced.length ? `Updated: ${r.replaced.join(', ')}` : '',
+          r.byCallsign.length ? `Matched by callsign: ${r.byCallsign.join(', ')}` : '',
+          r.ambiguous.length ? `Not updated (several squad pilots share the callsign): ${r.ambiguous.join(', ')}` : '',
+          r.unmatched.length ? `Not in this run's squad: ${r.unmatched.join(', ')}` : '',
+        ].filter(Boolean)
+        note = parts.join(' · ')
+      }
       this.roster = addToRoster(this.roster, builds)
       builds.forEach(b => this.squadPick.size < MAX_SQUAD && this.squadPick.add(b.id))
       this.hangar(purpose)
-      if (errors.length) (this.root.querySelector('.errors') as HTMLElement).innerHTML = errors.map(e => `<div class="bad">${esc(e)}</div>`).join('')
+      const box = this.root.querySelector('.errors') as HTMLElement
+      box.innerHTML = (note ? `<div class="muted">${esc(note)}</div>` : '') + errors.map(e => `<div class="bad">${esc(e)}</div>`).join('')
     }
     input.addEventListener('change', () => input.files && doImport(input.files))
     const drop = this.root.querySelector('.screen') as HTMLElement

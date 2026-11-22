@@ -7,7 +7,11 @@ const KEY = 'dov.roster.v1'
 export function loadRoster(): PilotBuild[] {
   try {
     const s = localStorage.getItem(KEY)
-    if (s) return JSON.parse(s)
+    if (s) {
+      const r = JSON.parse(s)
+      // drop anything malformed rather than crashing the hangar
+      if (Array.isArray(r)) return r.filter((p: any) => p?.id && p?.mech?.frameId && Array.isArray(p.mech.mounts))
+    }
   } catch { /* ignore */ }
   return []
 }
