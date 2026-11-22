@@ -38,7 +38,11 @@ export class BattleView {
   onTileClick?: (p: Pos, e: MouseEvent) => void
   onTileHover?: (p: Pos | null) => void
   onUnitClick?: (u: Unit, e: MouseEvent) => void
-  speed = 1
+  /** animation speed multiplier; 0 = skip animations entirely */
+  speed = loadSpeed()
+  /** max real time one drain of the queue may take before animations fast-forward */
+  turnBudgetMs = 3500
+  private drainStart = 0
   private disposed = false
   private hoverMesh: THREE.Mesh
   private zoneMeshes: THREE.Object3D[] = []
@@ -433,6 +437,7 @@ export class BattleView {
   }
   private async drain() {
     this.animating = true
+    this.drainStart = performance.now()
     while (this.animQueue.length) {
       const f = this.animQueue.shift()!
       try { await f() } catch (err) { console.error(err) }
@@ -441,13 +446,22 @@ export class BattleView {
     this.syncUnits()
   }
   /** Resolves once all queued animations have played. */
-  idle(): Promise<void> {
+  idle(timeoutMs = 10000): Promise<void> {
+    const t0 = performance.now()
     return new Promise(res => {
-      const check = () => (!this.animating && !this.animQueue.length ? res() : setTimeout(check, 30))
+      const check = () => (!this.animating && !this.animQueue.length) || performance.now() - t0 > timeoutMs ? res() : setTimeout(check, 30)
       check()
     })
   }
+  get skipping(): boolean {
+    return this.speed === 0 || performance.now() - this.drainStart > this.turnBudgetMs
+  }
+  setSpeed(v: number) {
+    this.speed = v
+    try { localStorage.setItem('dov.animSpeed', String(v)) } catch { /* ignore */ }
+  }
   private wait(ms: number) {
+    if (this.skipping) return Promise.resolve()
     // catch up quickly when a long chain of events (e.g. an AI turn) has queued up
     const backlog = this.animQueue.length > 24 ? 8 : 1
     return new Promise<void>(r => setTimeout(r, ms / (this.speed * backlog)))
@@ -524,7 +538,7 @@ export class BattleView {
   }
   private async floatText(id: string, text: string, color: string) {
     const vis = this.units.get(id)
-    if (!vis) return
+    if (!vis || this.skipping) return
     const el = document.createElement('div')
     el.className = 'float-text'
     el.textContent = text
@@ -542,4 +556,11 @@ export class BattleView {
     this.renderer.render(this.scene, this.camera)
     return this.renderer.domElement.toDataURL('image/png')
   }
+}
+
+function loadSpeed(): number {
+  try {
+    const v = Number(localStorage.getItem('dov.animSpeed'))
+    return [0, 1, 2, 4].includes(v) && localStorage.getItem('dov.animSpeed') !== null ? v : 1
+  } catch { return 1 }
 }

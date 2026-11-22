@@ -12,7 +12,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "tsx scripts/coverage.ts",
-    "validate-enemies": "tsx scripts/validate-enemies.ts"
+    "validate-enemies": "tsx scripts/validate-enemies.ts",
+    "e2e": "node e2e/campaign.mjs",
+    "bench": "tsx scripts/bench-ai.ts"
   },
   "dependencies": {
     "@massif/lancer-data": "4.0.12",

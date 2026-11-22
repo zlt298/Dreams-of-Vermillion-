@@ -97,10 +97,11 @@ export class BattleScreen {
       this.busy = false
     }
     if (this.b.winner && !this.ended) {
-      this.ended = true
       this.render()
-      await this.view.idle()
+      await this.view.idle(4000)
       await sleep(600)
+      if (this.ended) return
+      this.ended = true
       this.onEnd(this.b.winner as 'player' | 'enemy')
       return
     }
@@ -121,6 +122,7 @@ export class BattleScreen {
     if (this.b.active?.side === 'player' && this.mode.k === 'idle') this.mode = { k: 'move' }
     this.render()
     if (thenAdvance || !this.b.activeId || this.b.winner) void this.advance()
+    if (this.b.winner) setTimeout(() => { if (!this.ended) void this.advance() }, 1500)
   }
 
   toast(msg: string) {
@@ -236,7 +238,8 @@ export class BattleScreen {
       case 'cancel': this.mode = a ? { k: 'move' } : { k: 'idle' }; this.render(); return
       case 'rotl': this.view.rotate(-1); return
       case 'rotr': this.view.rotate(1); return
-      case 'speed': this.view.speed = this.view.speed >= 4 ? 1 : this.view.speed * 2; this.render(); return
+      case 'speed': { const order = [1, 2, 4, 0]; this.view.setSpeed(order[(order.indexOf(this.view.speed) + 1) % order.length]); this.render(); return }
+      case 'finish': if (this.b.winner && !this.ended) { this.ended = true; this.onEnd(this.b.winner as 'player' | 'enemy') } return
       case 'policy': if (sel && arg) { (sel.policies as any)[arg] = !(sel.policies as any)[arg]; this.render() } return
     }
     if (!a) return
@@ -379,7 +382,7 @@ export class BattleScreen {
     const top = `<div class="topbar">
       <div><b>${esc(this.title)}</b> · ${esc(s.name)}${s.rounds && s.id === 'holdout' ? ` (${b.round}/${s.rounds})` : ''}${s.id === 'control' ? ` (held ${b.sitrepScore ?? 0}/${s.rounds})` : ''} — <span class="muted">${esc(s.description)}</span></div>
       <div>Round ${b.round} · <span class="${b.currentSide}">${b.winner ? (b.winner === 'player' ? 'VICTORY' : 'DEFEAT') : b.currentSide === 'player' ? 'Your move' : 'Enemy activity'}</span>
-      <button data-act="rotl" title="Rotate (Q)">⟲</button><button data-act="rotr" title="Rotate (E)">⟳</button><button data-act="speed" title="Animation speed">×${this.view.speed}</button></div></div>`
+      <button data-act="rotl" title="Rotate (Q)">⟲</button><button data-act="rotr" title="Rotate (E)">⟳</button><button data-act="speed" title="Animation speed (click to cycle; ⏭ skips animations)">${this.view.speed === 0 ? '⏭ skip' : '×' + this.view.speed}</button>${b.winner && !this.ended ? '<button data-act="finish" class="primary">Continue ▶</button>' : ''}</div></div>`
     const roster = (side: 'player' | 'enemy') => b.units.filter(u => u.side === side && (u.kind === 'mech' || u.kind === 'npc')).map(u => {
       const hp = Math.max(0, u.hp)
       return `<div class="card ${u === sel ? 'sel' : ''} ${u.destroyed ? 'dead' : ''} ${u.activeTurn ? 'active' : ''}" data-act="select" data-arg="${u.id}">
