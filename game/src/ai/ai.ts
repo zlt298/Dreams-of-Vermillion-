@@ -57,7 +57,11 @@ function attackValue(b: Battle, u: Unit, w: Weapon, t: Unit, from: Pos): number 
   v += p.chance * effectValue(b, u, t, pr.onHit)
   const hp = t.hp + t.overshield
   if (p.expectedDamage / Math.max(0.01, p.chance) >= hp) v += 4 * p.chance * (t.isGrunt ? 0.5 : 1) // likely kill / structure
-  if (t.isGrunt) v = Math.min(v, 3 * p.chance + 1)
+  if (t.isGrunt) {
+    // a grunt dies to any hit, and to Reliable damage on a miss
+    const kill = tagVal(pr.tags, 'tg_reliable') ? 1 : p.chance
+    v = 3 * kill + 1
+  }
   if (t.kind === 'deployable' || t.kind === 'drone') v *= 0.4
   const heat = tagVal(pr.tags, 'tg_heat_self') ?? 0
   if (heat && u.stats.heatcap > 0) v -= heat * (u.heat + heat > u.stats.heatcap ? 4 : 0.5)

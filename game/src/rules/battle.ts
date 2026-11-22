@@ -1174,7 +1174,7 @@ export class Battle {
         const invisible = this.has(target, 'invisible') || ctx.forceInvisible
         const hit = !(invisible && rng.d(6) <= 3) && total >= def
         if (!hit) {
-          if (rel && !target.isGrunt) { const d = reduce([{ type: pr.damage[0]?.type ?? 'Kinetic', amount: rel }]); if (d >= pool) lethal++ }
+          if (rel) { const d = reduce([{ type: pr.damage[0]?.type ?? 'Kinetic', amount: rel }]); if (d >= pool) lethal++ }
           continue
         }
         hits++
@@ -1348,7 +1348,8 @@ export class Battle {
         if (ctx.crit) this.runEffects(u, t, pr.onCrit.filter(e => e.do !== 'bonus_damage'), ctx)
       } else {
         const rel = tagVal(pr.tags, 'tg_reliable')
-        if (rel && !t.isGrunt) {
+        // Reliable damage applies to grunts too (it kills them); only successful saves leave grunts unharmed
+        if (rel) {
           this.say(`  Reliable: ${rel} damage.`)
           this.applyDamage(t, [{ type: pr.damage[0]?.type ?? 'Kinetic', amount: rel }], { source: u, ap: hasTag(pr.tags, 'tg_ap') })
         }

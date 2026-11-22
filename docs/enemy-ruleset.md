@@ -122,7 +122,7 @@ Tech attack = attack bonus + Sys (if positive). Every unit starts with 1 structu
 
 | Template | Effect | Feature slots |
 |---|---|---|
-| **Grunt** | 1 HP. Ignores damage from misses and successful saves (Reliable, half damage). Any hit destroys it. | −1 |
+| **Grunt** | 1 HP. Any damage destroys it, including Reliable damage on a miss and heat from an enemy. A successful save leaves it completely unharmed (no half damage). Grunts are glass cannons: dangerous, and they soak up player actions. | −1 |
 | **Veteran** | +4 HP, +1 attack bonus, +1 Evasion | +1 |
 | **Elite** | 2 structure and 2 stress (rolls on the structure and overheating tables), +2 HP | +1 |
 | **Commander** | Aura: allies within 3 get +1 accuracy. Rally: when an ally within 5 is destroyed, allies within 5 gain 2 overshield. 2 structure and 2 stress. | +1 |

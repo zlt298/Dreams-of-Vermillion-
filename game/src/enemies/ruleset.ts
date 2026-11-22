@@ -85,7 +85,7 @@ export const TEMPLATE_RULES: Record<Template, TemplateRule> = {
   Grunt: {
     budget: 0.25, featureSlots: -1,
     apply: s => { s.hp = 1; s.structure = 1; s.stress = 1; s.armor = 0 },
-    notes: '1 HP; ignore damage from misses and successful saves (Reliable, half damage); destroyed by any hit. One fewer feature.',
+    notes: '1 HP; destroyed by any damage (hits, Reliable on a miss, enemy heat); unharmed on a successful save (no half damage). One fewer feature.',
   },
   Veteran: {
     budget: 1.5, featureSlots: 1,

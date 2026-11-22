@@ -153,9 +153,9 @@ Driven by `npm run coverage -- --list`.
 4. **The remaining 46 systems and 22 talent ranks (L),** in batches, each with a test.
 5. **Pilots on foot (L):** Eject, Mount, Dismount, Jockey, and pilot gear.
 6. **Grapple completion (M)** and **environment rules (M):** flying line of sight, zero-g, object damage to cover.
-7. **Open rulings (S, new).** COMP/CON doesn't settle these:
-   - whether "Activate" counts as one action for repeat purposes, or one per system as it works now
-   - whether Grunts are immune to damage from misses and successful saves
+7. ✅ **Rulings settled.**
+   - Each system's quick ability is its own action for the no-repeat rule (unchanged).
+   - Reliable damage kills grunts. A successful save leaves a grunt unharmed.
 
 ### 5. Content and balance
 1. **More teams (S each)** with the skill, aiming for 4+ per tier and kind.

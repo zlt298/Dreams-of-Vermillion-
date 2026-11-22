@@ -385,3 +385,28 @@ describe('previews are side-effect free', () => {
     expect(b.previewDetail(a, rifle, e).lethal).toBeGreaterThan(0.2)
   })
 })
+
+describe('grunt rulings', () => {
+  it('Reliable damage on a miss destroys a grunt', () => {
+    const { a, b } = duel()
+    const g = pregenUnit('Hacker', 'enemy')
+    g.isGrunt = true; g.hp = 1; g.stats.hp = 1; g.stats.evasion = 99
+    g.pos = { x: 4, y: 5 }
+    b.units.push(g)
+    b.beginTurn(a)
+    const rifle = a.weapons.find(w => w.dataId === 'mw_assault_rifle')! // Reliable 2
+    const r = b.skirmish(a, rifle, { targetId: g.id })
+    expect(r.ctxs[0].hit).toBe(false)
+    expect(g.destroyed).toBe(true)
+  })
+  it('a grunt that passes a save takes no damage', () => {
+    const { a, b } = duel()
+    const g = pregenUnit('Hacker', 'enemy')
+    g.isGrunt = true; g.hp = 1; g.stats.hp = 1; g.stats.agi = 99
+    g.pos = { x: 4, y: 5 }
+    b.units.push(g)
+    b.runEffects(a, g, [{ do: 'damage', damage: [{ type: 'Explosive', val: '2d6' }], save: 'agi', saveHalf: true }])
+    expect(g.destroyed).toBe(false)
+    expect(g.hp).toBe(1)
+  })
+})
