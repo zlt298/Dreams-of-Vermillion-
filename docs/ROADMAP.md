@@ -142,87 +142,95 @@ Out of the 392 items in lancer-data, 266 (68%) are fully executed and 39 are app
 
 ## Next
 
-### 0. Official NPC fidelity
-1. **Optional features (L):** 173 are left, about 15% automated. Script them in batches the same way, starting with the classes that appear most often.
-2. **Deployables and mines (M):** Engineer turrets, Seeder mines, Rainmaker Javelin Rockets, Barricade printer, Hive swarms. These depend on the drone and deployable framework (§4.3).
-3. **Tighten the partial scripts (S):** Barrel Roll's free movement, Suppress triggering *as* the target starts to move, Earthshaker cover segments, Mirage Dataveil transfer.
-4. **An official-encounter preview (S):** a list of classes and features with automation markers.
+**Priorities (set by the owner):**
+- Player content and deployables come first.
+- Pilot combat (on-foot pilots) is out of scope.
+- Official NPCs can stay sparse.
+- **No balance retesting until the content is in.** One full rebalance happens at the end.
 
-### 0b. Story (optional ideas from the story handoff)
-1. A "failed run" readout (iteration ended, rewinding…) on the squad-lost screen.
-2. Short between-mission lines: Choir radio chatter, the NHP breaking into comms.
-3. Flavor for the other act bosses and Choir teams (solar-eye sigils, singing on open channel).
+### 1. Deployables and drones (L)
+A drone and deployable framework:
+- Drones act on their owner's turn, with Recall and Redeploy.
+- Deployables have HP and evasion and can be targeted.
+- Persistent zones and auras.
 
-### 1. Encounters and pacing
-1. **Level-aware encounters (M).**
-   - Choose the enemy tier from the squad's average License Level, with the act as a minimum.
-   - Warn in the Hangar when pilot levels don't match the act.
-   - Show the expected level per act on the campaign map.
-2. **Long tier-3 fights (M).**
-   - On long maps, tier-3 battles average 17–25 rounds in the sim.
-   - Investigate passive AI (artillery that never advances, Controllers stalling) and sustain loops (healer + overshield + regen).
-   - Target: 8–14 rounds.
-3. **Hunter Cell (T1 elite) is slightly easy (S):** 90% wins in the sim, target 50–80%.
-4. **Tier-1 openers are trivial (S).** On long maps, grunt-heavy T1 teams die on the approach (0.1–0.2 mechs lost). Give them ranged pressure or flanking deployments.
-5. **Deployment variety (M):** flank and ambush deployments, and objectives that start mid-map, so long maps aren't always a straight march.
+This unlocks:
+- Drones: Restock, ICEOUT, Hive, Sentinel, Tempest, Assassin, Autoloader
+- Fields and walls: Lotus Projector, Perimeter Command Plate, Aegis Shield Generator, Portable Bunker, OASIS Wall, Stasis Barrier, Interdiction Field
+- Hydra's OROCHI core
+- Drone Commander 3
+- the official NPC turrets and mines
 
-### 2. UX
-1. **Minimap or overview toggle (S, new):** one key to zoom out and back, plus click-to-jump. More useful now that maps are long.
-2. **In-HUD reaction prompts (M, new).** Replace the browser `confirm()` used by "ask" reactions. This needs a resumable engine: attack resolution as a generator that can pause for a decision.
-3. **Threat overlay (M):** shade every tile hostiles can hit next turn.
-4. **Campaign map edges (S):** draw node connections, and preview the sitrep and tier on hover.
-5. **Hangar quality of life (S):** sort and filter, a mech-sheet modal, an SP-overflow warning, and highlighting of LCP content.
-6. **Settings screen (S):** animation speed, default reaction policies, colour-blind palette, camera sensitivity.
-7. **Touch support (M):** tap to select, long-press for tooltips, collapsible panels.
-8. **Overcharge clarity (S, new):** show the free-action quick as its own pip, and mark which actions it can repeat.
-
-### 3. AI
-1. **Focus fire and kill priority (M):** coordinate attacks on one target instead of each unit choosing greedily.
-2. **Role tactics (M):** Defenders body-block, Support stays near damaged allies, Controllers apply Lock On before allies attack.
-3. **Reactions and options (S):** decide when to react, Grapple, Ram and Hide.
-4. **Use Overcharge (S, new)** to repeat a strong quick action when the heat is affordable.
-5. **Difficulty levels (S):** scale AI caution and randomness, and the encounter budget.
-
-### 4. Rules fidelity
+### 2. Player content (L, in batches, each with a test)
 Driven by `npm run coverage -- --list`.
-1. **Finish the partial scripts (M):** Drake cover sections, Mourning Cloak teleport moves, Goblin Reactive Code, Napoleon Heavy Shielding, and the leadership, exemplar and stormbringer choices.
-2. **The 8 missing CORE systems (L):**
-   - Barbarossa Apocalypse Rail
+1. **The 8 missing CORE systems:**
    - Raleigh Thunder God
-   - Hydra OROCHI drones
-   - Goblin Symbiosis
-   - Pegasus Omnigun
-   - Sherman COREBURN
    - Black Witch Mag Field
-   - Dusk Wing Hall of Mirrors
-3. **Drone and deployable framework (L):** drones that act on their owner's turn, recall and redeploy, auras. This unlocks Aegis, Sentinel, Assassin, Hive, Lotus, ICEOUT and the Perimeter Command Plate.
-4. **The remaining 46 systems and 22 talent ranks (L),** in batches, each with a test.
-5. **Pilots on foot (L):** Eject, Mount, Dismount, Jockey, and pilot gear.
-6. **Grapple completion (M)** and **environment rules (M):** flying line of sight, zero-g, object damage to cover.
-7. ✅ **Rulings settled.**
-   - Each system's quick ability is its own action for the no-repeat rule (unchanged).
-   - Reliable damage kills grunts. A successful save leaves a grunt unharmed.
+   - Dusk Wing DHIYED
+   - Goblin INSTINCT
+   - Hydra OROCHI (after §1)
+   - Pegasus Omnigun
+   - Barbarossa Apocalypse Rail
+   - Sherman SOLIDCORE
+2. **The remaining manual systems:**
+   - charges (Flash, Mesmer, Grounding, Roller, Clamp Bombs, BB)
+   - NHPs (SEKHMET, TLALOC, ATHENA, SISYPHUS, NOAH)
+   - Armor-Lock, FADE Cloak, Tesseract, Blinkshield and the rest
+3. **The 22 manual talent ranks:**
+   - Heavy Gunner, Leader, Juggernaut, Spotter, Infiltrator
+   - Technophile, Exemplar, Stormbringer, Grease Monkey
+   - the others
+4. **Manual weapons and mods:**
+   - Vorpal Gun, Mimic Gun, Siege Cannon, Autopod
+   - prototype weapons
+   - Throughbolt Rounds, UNCLE
+5. **Finish the partial scripts** (39 items).
+6. **Grapple completion and environment rules (M).**
 
-### 5. Content and balance
-1. **More teams (S each)** with the skill, aiming for 4+ per tier and kind.
-2. **Sitrep variety (M):** Escort and Recon, and use each team's `sitrep` hint.
-3. **Map biomes and set pieces (M),** plus boss arenas.
-4. **Campaign events (M)** and **lancer-data reserves as rewards (S).**
-5. **Re-run the balance sweep (S)** after any rules or AI change. Targets are in the `generate-enemies` skill.
+### 3. UX
+1. Minimap or overview toggle (S).
+2. In-HUD reaction prompts instead of `confirm()` (M).
+3. Threat overlay (M).
+4. Campaign map edges and hover previews (S).
+5. Overcharge clarity (S).
+6. Settings screen (S).
+7. Hangar quality of life (S).
+8. Touch support (M).
 
-### 6. Presentation
-1. **Model polish (M):** walk bob, weapon recoil, visible part damage, tinted wrecks.
-2. **Effects (M):** muzzle flashes, smoke and fire particles, shield domes, hit sparks.
-3. **Terrain detail and a skybox (S),** and **audio (M).**
-4. **Sprites (optional, later):** a consistent pipeline, for example rendering the procedural models out as images.
+### 4. AI
+1. Focus fire (M).
+2. Role tactics (M).
+3. Reactions, Grapple, Ram and Hide (S).
+4. Use Overcharge (S).
+5. Difficulty levels (S).
+6. Using new drones and deployables well (M, after §1).
+
+### 5. Content, story and presentation
+1. More teams (S each).
+2. Sitrep variety (M).
+3. Map biomes and boss arenas (M).
+4. Campaign events (M).
+5. Story extras: a failed-run readout, Choir chatter, act-boss flavour (S each).
+6. Model polish, effects, terrain, audio (M).
+
+### 6. Balance (after content)
+One full pass once §1–§2 are in. Includes:
+- tier-3 fight length (17–25 rounds; target 8–14)
+- Hunter Cell
+- tier-1 openers
+- official-encounter scale
+- the final boss
 
 ### 7. Tooling
-1. **CI (S):** typecheck, tests, validate-enemies, coverage (fail if it drops) and e2e.
-2. **Split `battle.ts` (M):** it's about 2,000 lines. Split it into combat, movement, damage, tech and sandbox modules.
-3. **Deterministic replays (M):** log intents plus the seed, with a "copy replay" button for bug reports.
-4. **Parallel balance sim (S, new):** a full sweep takes about 15 minutes on one core. Use worker threads.
-5. **Bundle code-splitting (S)** and **verify that the vendored COMP/CON runs locally (S).**
+1. CI (S).
+2. Split `battle.ts` (M).
+3. Deterministic replays (M).
+4. Bundle code-splitting (S).
 
-### Suggested next session
-- Encounters 1.1–1.3 and UX 2.1, since the long map makes these matter most.
-- Then AI 3.1–3.2, which should also help with tier-3 pacing.
+### Later or optional
+- Official NPC optional features (173 left).
+- Official NPC deployables and the partial NPC scripts.
+- Level-aware encounter warnings.
+
+### Out of scope
+- Pilots on foot: Eject, Mount, Dismount, Jockey, pilot gear.
