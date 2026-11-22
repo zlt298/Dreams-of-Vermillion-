@@ -180,7 +180,6 @@ registerScripts([
     },
   },
   // ---------------- Drone Commander
-  { id: 't_drone_commander:1', note: 'Shepherd: drone HP via bonus' },
   {
     id: 't_drone_commander:2', note: 'Energized Swarm',
     afterAttack(b, self, ctx, role) {

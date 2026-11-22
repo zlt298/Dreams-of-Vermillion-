@@ -64,6 +64,8 @@ export interface CustomAction {
   /** return true if usable, or a reason string */
   usable(b: Battle, self: Unit): true | string
   run(b: Battle, self: Unit, target?: Unit | Pos): void
+  /** AI: where to aim this action (tile or unit); return null to skip it this turn */
+  aiTarget?(b: Battle, self: Unit): Unit | Pos | null
   /** AI hint: rough value of using this action now */
   aiScore?(b: Battle, self: Unit, target?: Unit | Pos): number
 }
@@ -110,6 +112,10 @@ export interface ItemScript {
   afterAnyRoll?(b: Battle, self: Unit, ctx: AttackCtx): void
   /** extra accuracy (or difficulty, if negative) this unit grants `u` on a check or save */
   checkAccuracy?(b: Battle, self: Unit, u: Unit, kind: 'check' | 'save', stat?: string): number
+  /** actions this unit's systems make available to another unit (`other`) */
+  grantActions?(b: Battle, self: Unit, other: Unit): CustomAction[]
+  /** any character took damage (after its own modifyIncoming): reduce it here (e.g. shield generators) */
+  modifyAnyIncoming?(b: Battle, self: Unit, target: Unit, d: DamageCtx): void
   onAnyTurnStart?(b: Battle, self: Unit, unit: Unit): void
   onAnyTurnEnd?(b: Battle, self: Unit, unit: Unit): void
   onHeat?(b: Battle, self: Unit, amount: number): void

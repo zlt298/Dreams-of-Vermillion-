@@ -72,13 +72,13 @@ It is deterministic (seeded) and has no UI code, so tests and the AI run headles
 ```
 section            scripted partial   auto  manual   done%
 Frame traits             26       2      0       1     90%
-Core systems             19       2      0       8     66%
+Core systems             20       2      0       7     69%
 Weapons                  19       5     53       8     85%
-Systems                  59      15      4      46     51%
+Systems                  69      19      4      32     59%
 Mods                      2       1      3       2     63%
-Talent ranks             49      10      6      22     63%
+Talent ranks             50      10      6      21     64%
 Core bonuses              9       4     17       0     87%
-TOTAL 266/392 (68%) fully executed by the engine, 39 partially
+TOTAL 278/392 (71%) fully executed by the engine, 43 partially
 ```
 
 - **auto**: fully described by structured data (bonuses, damage, ranges, tags, on-hit statuses).

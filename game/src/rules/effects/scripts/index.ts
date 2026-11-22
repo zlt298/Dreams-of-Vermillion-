@@ -6,4 +6,5 @@ import './frames'
 import './talents'
 import './systems'
 import './weapons'
+import './drones'
 export {}

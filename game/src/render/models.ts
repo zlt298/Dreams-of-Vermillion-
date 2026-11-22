@@ -234,6 +234,12 @@ export function buildUnitModel(u: Unit, mats: ModelMaterials): UnitModel {
     b.part(G.box, dark, 0.08, 0.03, 0.5, 0, 0.92, 0)
     b.part(G.sphere, b.glow(), 0.08, 0.08, 0.08, 0, 0.86, 0.12)
     height = 1.05
+  } else if (arch === 'deployable' && u.flags.flat) {
+    // flat plates and open-topped emplacements
+    b.part(G.box, paint, fs * 0.96, 0.06, fs * 0.96, 0, 0.03, 0)
+    b.part(G.box, b.trim(), fs * 0.98, 0.1, 0.08, 0, 0.05, fs * 0.45)
+    b.part(G.box, b.trim(), fs * 0.98, 0.1, 0.08, 0, 0.05, -fs * 0.45)
+    height = 0.15
   } else if (arch === 'deployable') {
     const w = fs * 0.9, h = Math.max(0.5, u.stats.size) * 0.8
     b.part(G.box, paint, w, h, fs * 0.25, 0, h / 2, 0)

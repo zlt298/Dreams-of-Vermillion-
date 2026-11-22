@@ -125,17 +125,34 @@ Useful commands, all run from `game/`:
   - The AI's "advance pull" brings units forward until they're in range.
   - Holdout lasts 8 rounds.
 
+### Drones and deployables
+- A framework in `rules/effects/scripts/drones.ts`:
+  - deploy, recall, redeploy and move
+  - placement rules (adjacent, Sensors or range; line of sight; free space)
+  - Limited charges
+  - field triggers on starting a turn in, or first entering, an area each round
+  - actions offered to other units (activating an ally's drone)
+  - damage reduction from allied systems
+  - flat deployables, reveal fields and ICEOUT fields
+  - AI aiming hints
+- Scripted:
+  - drones: Restock, ICEOUT, Hive, Sentinel, Tempest, Assassin, Autoloader, Lotus Projector
+  - deployables: Perimeter Command Plate, Aegis Shield Generator, Portable Bunker, Stasis Barrier
+  - fields: OASIS Wall, Interdiction Field
+  - Hydra's OROCHI core (companion drone plus Full Deployment)
+  - Drone Commander's Shepherd and Invigorate
+
 ### Rules fidelity snapshot
-Out of the 392 items in lancer-data, 266 (68%) are fully executed and 39 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
+Out of the 392 items in lancer-data, 278 (71%) are fully executed and 43 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
 
 | section | scripted | partial | auto | manual |
 |---|---|---|---|---|
 | Frame traits | 26 | 2 | 0 | 1 |
-| Core systems | 19 | 2 | 0 | 8 |
+| Core systems | 20 | 2 | 0 | 7 |
 | Weapons | 19 | 5 | 53 | 8 |
-| Systems | 59 | 15 | 4 | 46 |
+| Systems | 69 | 19 | 4 | 32 |
 | Mods | 2 | 1 | 3 | 2 |
-| Talent ranks | 49 | 10 | 6 | 22 |
+| Talent ranks | 50 | 10 | 6 | 21 |
 | Core bonuses | 9 | 4 | 17 | 0 |
 
 ---
@@ -148,18 +165,13 @@ Out of the 392 items in lancer-data, 266 (68%) are fully executed and 39 are app
 - Official NPCs can stay sparse.
 - **No balance retesting until the content is in.** One full rebalance happens at the end.
 
-### 1. Deployables and drones (L)
-A drone and deployable framework:
-- Drones act on their owner's turn, with Recall and Redeploy.
-- Deployables have HP and evasion and can be targeted.
-- Persistent zones and auras.
+### 1. Deployables and drones
+✅ The framework and 16 drone/deployable items are done (see Done).
 
-This unlocks:
-- Drones: Restock, ICEOUT, Hive, Sentinel, Tempest, Assassin, Autoloader
-- Fields and walls: Lotus Projector, Perimeter Command Plate, Aegis Shield Generator, Portable Bunker, OASIS Wall, Stasis Barrier, Interdiction Field
-- Hydra's OROCHI core
-- Drone Commander 3
-- the official NPC turrets and mines
+Remaining here:
+- Approximations: Assassin Drone's reaction trigger, the Command Plate's ally flight, OASIS Wall's energy resistance and straight-line movement, Interdiction Field's teleport lockout.
+- On-screen field and barrier overlays (most fields are invisible on the map today).
+- Using the framework for the remaining deployable-based player items (Javelin Rockets, charges, NHP-driven drones).
 
 ### 2. Player content (L, in batches, each with a test)
 Driven by `npm run coverage -- --list`.

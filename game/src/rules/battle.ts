@@ -382,6 +382,7 @@ export class Battle {
 
   endTurn(u: Unit = this.active!) {
     if (!u || u.id !== this.activeId) throw new Error('Not the active unit')
+    if (this.has(u, 'hidden') && this.inRevealField(u)) this.removeStatus(u, 'hidden')
     // dangerous terrain: ending a turn in it also requires the (once per round) Engineering check
     if (!u.destroyed && !u.flying && !u.flags.ignoreHazard && !u.flags['round:hazard'] && footprint(u).some(q => tileAt(this.map, q)?.kind === 'hazard')) {
       u.flags['round:hazard'] = true
@@ -699,6 +700,7 @@ export class Battle {
     }
     const dctx: DamageCtx = { source: opts.source, attack: opts.attack, amount: hpDmg, kind: 'hp' }
     for (const s of scriptsFor(t)) s.modifyIncoming?.(this, t, dctx)
+    for (const o of this.alive()) if (o !== t) for (const s of scriptsFor(o)) s.modifyAnyIncoming?.(this, o, t, dctx)
     hpDmg = Math.max(0, dctx.amount)
     if (burn > 0 && t.immune.includes('burn')) { this.say(`${t.name} is immune to burn.`); burn = 0 }
     if (burn > 0) {
@@ -758,6 +760,7 @@ export class Battle {
       if (o.destroyed && !o.flags.wreck) continue
       if (!footprint(o).some(p => fp.has(key(p)))) continue
       if (o.destroyed) { res = 'pass'; continue } // wreckage: difficult terrain you can cross (not end a move on, simplification)
+      if (o.flags.flat) continue // flat deployables (plates, open-topped bunkers) don't obstruct
       if (o.kind === 'deployable' && !o.flags.isCover && o.stats.size < 1) continue
       if (o.flags.isCover || o.kind === 'deployable') return 'blocked'
       // obstructed by hostile characters the same SIZE or larger; smaller ones (and allies) can be passed through
@@ -1429,7 +1432,7 @@ export class Battle {
       this.emit({ type: 'attack', attackerId: ctx.attacker.id, targetId: t.id, hit: false, crit: false, weapon: ctx.weapon?.name ?? 'tech', total: 0 })
       return
     }
-    const seesThrough = t.flags.trackedBy === ctx.attacker.id || (ctx.attacker.flags.horusUntil && this.round <= ctx.attacker.flags.horusUntil)
+    const seesThrough = t.flags.trackedBy === ctx.attacker.id || (ctx.attacker.flags.horusUntil && this.round <= ctx.attacker.flags.horusUntil) || this.inRevealField(t)
     if ((this.has(t, 'invisible') || ctx.forceInvisible) && !seesThrough && this.rng.d(6) <= 3) {
       ctx.hit = false
       ctx.crit = false
@@ -1700,6 +1703,7 @@ export class Battle {
   /** Hide: needs to be out of LoS of all hostiles or in cover from them. */
   canHide(u: Unit): boolean {
     if (u.flags.trackedBy && !this.unit(u.flags.trackedBy)?.destroyed) return false
+    if (this.inRevealField(u)) return false
     if (this.has(u, 'invisible')) return true
     if (this.isEngaged(u)) return false
     const insideSoft = footprint(u).every(p => tileAt(this.map, p)?.kind === 'forest' || this.areas.some(a => a.kind === 'soft_cover' && a.tiles.some(t => t.x === p.x && t.y === p.y)))
@@ -1833,6 +1837,8 @@ export class Battle {
   // ------------------------------------------------------------------ tech
   techTargetValid(u: Unit, t: Unit, option?: string): true | string {
     if (this.has(u, 'jammed')) return 'Jammed'
+    if (this.inIceout(u)) return 'Inside an ICEOUT field: no tech actions'
+    if (this.inIceout(t)) return 'Target is protected by an ICEOUT field'
     if (t.role === 'Biological' && option !== 'scan' && option !== 'lock_on') return 'Biological characters are immune to tech actions (except Scan and Lock On)'
     if (t.destroyed) return 'Destroyed'
     if (this.has(t, 'shutdown')) return 'Target is shut down (immune to tech)'
@@ -1848,6 +1854,7 @@ export class Battle {
     this.spend(u, 'quick', `quick_tech:${option}`)
   }
   canQuickTech(u: Unit, option?: string): true | string {
+    if (this.inIceout(u)) return 'Inside an ICEOUT field: no tech actions'
     if ((u.flags.fullTechLeft ?? 0) > 0) return true
     return this.canSpend(u, 'quick', option ? `quick_tech:${option}` : undefined)
   }
@@ -1938,6 +1945,24 @@ export class Battle {
   }
 
   // ------------------------------------------------------------------ deployables / mines / areas
+  /** Hostile reveal fields (e.g. Lotus Projector): no Hiding, no Invisibility benefit, Hidden lost at turn end. */
+  inRevealField(u: Unit): boolean {
+    return this.alive().some(d => d.flags.revealRadius && this.hostile(d, u) && this.distance(d, u) <= d.flags.revealRadius)
+  }
+  /** ICEOUT fields: characters inside are immune to tech actions and can't take them. */
+  inIceout(u: Unit): boolean {
+    return this.alive().some(d => d.flags.iceoutRadius && d !== u && this.distance(d, u) <= d.flags.iceoutRadius)
+  }
+  /** Take a drone/deployable off the field without destroying it (recall, expiry, disintegration). */
+  removeUnit(u: Unit, why: string) {
+    if (u.destroyed) return
+    u.destroyed = true
+    u.flags.removed = true
+    u.flags.wreck = false
+    this.invalidateTerrain()
+    this.emit({ type: 'destroyed', unitId: u.id })
+    this.say(`${u.name} ${why}.`)
+  }
   spawn(u: Unit) {
     this.units.push(u)
     this.invalidateTerrain()
@@ -1973,6 +1998,8 @@ export class Battle {
   customActions(u: Unit): CustomAction[] {
     const out: CustomAction[] = []
     for (const s of scriptsFor(u)) if (s.actions) out.push(...s.actions(this, u))
+    // actions other units' systems make available to this one (e.g. activating an ally's restock drone)
+    if (u.kind === 'mech' || u.kind === 'npc') for (const o of this.alive()) if (o !== u) for (const s of scriptsFor(o)) if (s.grantActions) out.push(...s.grantActions(this, o, u))
     out.push(...genericActionsFor(this, u))
     return out
   }

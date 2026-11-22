@@ -248,6 +248,17 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
   for (const a of b.customActions(u)) {
     const c = costOf(a)
     if (!c) continue
+    if (a.aiTarget) {
+      // scripts that know how to aim themselves (drones, deployables, fields)
+      if (a.usable(b, u) !== true) continue
+      const saved = u.pos
+      u.pos = p
+      let t: Unit | Pos | null = null
+      let v = 0
+      try { t = a.aiTarget(b, u); v = t ? a.aiScore?.(b, u, t) ?? 1 : 0 } finally { u.pos = saved }
+      if (t && v > 0.5) opts.push({ kind: 'custom', action: a, target: t, value: v, cost: c })
+      continue
+    }
     if (a.text && a.name.startsWith('Deploy') && !u.flags[`ai_deployed_${a.key}`]) {
       // deploy cover/drones once, early
       const tgt = a.target === 'tile' ? { x: Math.max(0, Math.min(b.map.w - 1, p.x + 1)), y: p.y } : undefined
