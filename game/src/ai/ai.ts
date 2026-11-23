@@ -45,6 +45,24 @@ function effectValue(b: Battle, src: Unit, t: Unit, effects: Effect[]): number {
 }
 
 /** Expected value of attacking `t` with `w` from position `from`. */
+/**
+ * Value of a hit with Fragment Signal: 2 heat plus Impaired and Slowed. Statuses the target already has are
+ * worth nothing (repeat invades on a disabled target used to crowd out weapon attacks). Heat destroys a Grunt,
+ * is Energy damage to a character without a Heat Cap, and matters most when it would overheat the target.
+ */
+function invadeValue(b: Battle, u: Unit, t: Unit): number {
+  const status = effectValue(b, u, t, [{ do: 'status', status: 'impaired' } as Effect, { do: 'status', status: 'slowed' } as Effect])
+  return status + invadeHeatValue(t)
+}
+/** The 2 heat every Invade deals on a hit (see invadeValue). */
+function invadeHeatValue(t: Unit): number {
+  return t.isGrunt ? 4 : !t.stats.heatcap ? 2 : t.heat + 2 > t.stats.heatcap ? 4 : 1
+}
+/** Chance that a tech attack from `u` hits `t` (d20 + Tech Attack vs E-Defense). */
+function techHitChance(u: Unit, t: Unit): number {
+  return Math.max(0.1, Math.min(0.95, (21 - (t.stats.edef - u.stats.techAttack)) / 20))
+}
+
 function attackValue(b: Battle, u: Unit, w: Weapon, t: Unit, from: Pos): number {
   if (!b.hostile(u, t) || t.destroyed) return 0
   const saved = u.pos
@@ -140,7 +158,10 @@ function customValue(b: Battle, u: Unit, a: CustomAction, from: Pos): { value: n
       for (const t of hostiles) {
         if (a.range != null && b.distance(u, t) > a.range) continue
         if (!b.los(u, t)) continue
-        const v = f ? effectValue(b, u, t, effects) * (f.save ? 0.6 : 1) : (a.aiScore?.(b, u, t) ?? 0) * 0.6
+        let v = f ? effectValue(b, u, t, effects) * (f.save ? 0.6 : 1) : (a.aiScore?.(b, u, t) ?? 0) * 0.6
+        // scripted tech attacks (system invades, full techs): weigh by the hit chance, and count an invade's
+        // own 2 heat, so they compare fairly with Fragment Signal (which is valued the same way)
+        if (!f && a.aiScore && /tech/.test(a.activation)) v = techHitChance(u, t) * ((a.aiScore(b, u, t) ?? 0) + (a.techOption === 'invade' ? invadeHeatValue(t) : 0))
         if (!best || v > best.value) best = { value: v, target: t }
       }
       return best ? { ...best, value: best.value - heatPenalty } : null
@@ -309,8 +330,8 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
       try {
         if (b.techTargetValid(u, t, 'lock_on') !== true) continue
         const canInvade = b.canQuickTech(u, 'invade') === true && b.techTargetValid(u, t) === true
-        const chance = Math.max(0.1, Math.min(0.95, (21 - (t.stats.edef - u.stats.techAttack)) / 20))
-        if (canInvade) opts.push({ kind: 'invade', target: t, value: chance * (2 * (t.stats.heatcap ? 1 : 0) + 3), cost: 'quick' })
+        const chance = techHitChance(u, t)
+        if (canInvade) opts.push({ kind: 'invade', target: t, value: chance * invadeValue(b, u, t), cost: 'quick' })
         if (!b.has(t, 'lockon') && b.canQuickTech(u, 'lock_on') === true) opts.push({ kind: 'lockon', target: t, value: 1.2, cost: 'quick' })
       } finally { u.pos = saved }
     }

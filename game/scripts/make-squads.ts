@@ -7,6 +7,7 @@ import { Lancer, type WeaponData, type SystemData } from '../src/data/lancer'
 import type { PilotBuild } from '../src/import/compcon'
 import { validateBuild } from '../src/rules/legality'
 import { mechSP } from '../src/rules/stats'
+import { averageDice } from '../src/rules/rng'
 import { newDraft, setFrame, weaponOptions, systemOptions, setWeapon, syncMounts, EVEREST } from '../src/ui/builder'
 
 type Theme = 'brawl' | 'long' | 'ghost' | 'drone'
@@ -29,6 +30,8 @@ interface SquadSpec { id: string; name: string; theme: Theme; blurb: string; pil
 
 const text = (x: { effect?: string; description?: string }) => `${x.effect ?? ''} ${(x as any).description ?? ''}`.toLowerCase()
 const maxRange = (w: WeaponData) => Math.max(0, ...((w.range ?? []) as any[]).map(r => (r.type === 'Range' || r.type === 'Line' || r.type === 'Cone' ? r.val : r.val * 0.5) ?? 0))
+/** Average damage of a weapon's first profile (0 for no-attack weapons). */
+const avgDamage = (w: WeaponData) => ((((w as any).damage ?? (w as any).profiles?.[0]?.damage) ?? []) as { val: string | number }[]).reduce((a, d) => a + averageDice(d.val as any), 0)
 const hasTag = (x: { tags?: { id: string }[] }, t: string) => !!x.tags?.some(g => g.id === t)
 
 function weaponScore(theme: Theme, w: WeaponData, spec: PilotSpec, frameLic: string, p: PilotBuild): number {
@@ -41,7 +44,8 @@ function weaponScore(theme: Theme, w: WeaponData, spec: PilotSpec, frameLic: str
   const r = maxRange(w)
   if (theme === 'brawl') s += w.type === 'Melee' ? 10 : w.type === 'CQB' ? 6 : r <= 5 ? 2 : 0
   if (theme === 'long') s += w.type === 'Melee' ? -8 : Math.min(r, 20) * 0.6 + (['Rifle', 'Cannon', 'Launcher'].includes(w.type) ? 3 : 0)
-  if (theme === 'ghost') s += w.type === 'Nexus' ? 6 : w.type === 'CQB' ? 4 : w.type === 'Rifle' ? 3 : w.type === 'Melee' ? 2 : 0
+  // ghosts: favour light, quiet weapons, but weigh damage too, or every mount fills with 2-damage Nexus/Pistols
+  if (theme === 'ghost') s += (w.type === 'Nexus' ? 6 : w.type === 'CQB' ? 4 : w.type === 'Rifle' ? 3 : w.type === 'Melee' ? 2 : 0) + avgDamage(w) * 1.5
   if (theme === 'drone') s += w.type === 'Nexus' ? 10 : w.type === 'Launcher' ? 3 : 1
   return s
 }
@@ -116,7 +120,7 @@ const SQUADS: SquadSpec[] = [
         hase: { 0: H(1, 0, 0, 1), 5: H(3, 1, 0, 3), 10: H(5, 2, 1, 4) }, cbs: { 5: ['cb_reinforced_frame'], 10: ['cb_reinforced_frame', 'cb_sloped_plating', 'cb_overpower_caliber'] } },
       { callsign: 'Gaff', prefer: ['mw_charged_blade', 'mw_tactical_knife', 'mw_pistol', 'ms_rapid_burst_jump_jet_system'], name: 'Ines Maro', frame: 'mf_vlad', extra: ['mf_blackbeard', 'mf_lancaster', 'mf_nelson'], talents: ['t_duelist', 't_hunter', 't_brawler', 't_skirmisher', 't_juggernaut'],
         hase: { 0: H(1, 1, 0, 0), 5: H(3, 3, 0, 1), 10: H(4, 5, 1, 2) }, cbs: { 5: ['cb_sloped_plating'], 10: ['cb_sloped_plating', 'cb_reinforced_frame', 'cb_auto_stabilizing_hardpoints'] } },
-      { callsign: 'Cinder', prefer: ['mw_thermal_lance', 'mw_thermal_pistol', 'mw_thermal_rifle', 'ms_pattern_a_smoke_charges'], name: 'Ruth Okafor', frame: 'mf_genghis', extra: ['mf_barbarossa', 'mf_sherman', 'mf_tokugawa'], talents: ['t_heavy_gunner', 't_walking_armory', 't_brutal', 't_juggernaut', 't_vanguard'],
+      { callsign: 'Cinder', prefer: ['mw_thermal_lance', 'mw_thermal_pistol', 'mw_thermal_rifle', 'ms_pattern_a_smoke_charges'], name: 'Ruth Okafor', frame: 'mf_barbarossa', extra: ['mf_genghis', 'mf_sherman', 'mf_tokugawa'], talents: ['t_heavy_gunner', 't_walking_armory', 't_brutal', 't_juggernaut', 't_vanguard'],
         hase: { 0: H(1, 0, 0, 1), 5: H(3, 0, 1, 3), 10: H(4, 1, 2, 5) }, cbs: { 5: ['cb_heatfall_coolant_system'], 10: ['cb_heatfall_coolant_system', 'cb_adaptive_reactor', 'cb_improved_armament'] } },
       { callsign: 'Bulwark', prefer: ['mw_heavy_machine_gun', 'mw_tactical_melee_weapon', 'ms_pattern_a_jericho_deployable_cover', 'ms_type_3_projected_shield'], name: 'Sefa Lindqvist', frame: 'mf_tortuga', extra: ['mf_lancaster', 'mf_drake', 'mf_raleigh'], talents: ['t_vanguard', 't_juggernaut', 't_combined_arms', 't_leader', 't_brawler'],
         hase: { 0: H(1, 0, 0, 1), 5: H(4, 0, 1, 2), 10: H(6, 1, 2, 3) }, cbs: { 5: ['cb_titanomachy_mesh'], 10: ['cb_titanomachy_mesh', 'cb_gyges_frame', 'cb_improved_armament'] } },
@@ -125,13 +129,13 @@ const SQUADS: SquadSpec[] = [
   {
     id: 'longguns', name: 'Long Guns', theme: 'long', blurb: 'Hold the back line: rifles, cannons and missiles at long range.',
     pilots: [
-      { callsign: 'Plumb', prefer: ['mw_anti_materiel_rifle', 'mw_assault_rifle', 'ms_manipulators'], name: 'Aster Vey', frame: 'mf_deaths_head', extra: ['mf_monarch', 'mf_swallowtail', 'mf_mourning_cloak'], talents: ['t_crack_shot', 't_spotter', 't_ace', 't_gunslinger', 't_tactician'],
+      { callsign: 'Plumb', prefer: ['mw_anti_materiel_rifle', 'mw_assault_rifle', 'ms_manipulators'], name: 'Aster Vey', frame: 'mf_metalmark', extra: ['mf_monarch', 'mf_deaths_head', 'mf_swallowtail'], talents: ['t_crack_shot', 't_spotter', 't_ace', 't_gunslinger', 't_tactician'],
         hase: { 0: H(0, 1, 1, 0), 5: H(1, 3, 2, 1), 10: H(2, 4, 4, 2) }, cbs: { 5: ['cb_neurolink_targeting'], 10: ['cb_neurolink_targeting', 'cb_all_theater_movement_suite', 'cb_auto_stabilizing_hardpoints'] } },
       { callsign: 'Thresh', prefer: ['mw_howitzer', 'mw_mortar', 'ms_stable_structure'], name: 'Corin Hale', frame: 'mf_sherman', extra: ['mf_barbarossa', 'mf_napoleon', 'mf_saladin'], talents: ['t_heavy_gunner', 't_siege_specialist', 't_spotter', 't_crack_shot', 't_engineer'],
         hase: { 0: H(1, 0, 0, 1), 5: H(2, 0, 2, 3), 10: H(3, 1, 3, 5) }, cbs: { 5: ['cb_adaptive_reactor'], 10: ['cb_adaptive_reactor', 'cb_heatfall_coolant_system', 'cb_overpower_caliber'] } },
-      { callsign: 'Salvo', prefer: ['mw_missile_rack', 'mw_rocket_propelled_grenade', 'mw_assault_rifle', 'ms_turret_drones'], name: 'Mira Duenas', frame: 'mf_monarch', extra: ['mf_deaths_head', 'mf_metalmark', 'mf_white_witch'], talents: ['t_siege_specialist', 't_combined_arms', 't_spotter', 't_tactician', 't_crack_shot'],
+      { callsign: 'Salvo', prefer: ['mw_missile_rack', 'mw_rocket_propelled_grenade', 'mw_assault_rifle', 'ms_turret_drones'], name: 'Mira Duenas', frame: 'mf_monarch', extra: ['mf_deaths_head', 'mf_metalmark', 'mf_black_witch'], talents: ['t_siege_specialist', 't_combined_arms', 't_spotter', 't_tactician', 't_crack_shot'],
         hase: { 0: H(0, 1, 1, 0), 5: H(2, 2, 2, 1), 10: H(3, 3, 3, 3) }, cbs: { 5: ['cb_neurolink_targeting'], 10: ['cb_neurolink_targeting', 'cb_integrated_nerveweave', 'cb_improved_armament'] } },
-      { callsign: 'Longwatch', prefer: ['mw_heavy_machine_gun', 'mw_thermal_rifle', 'ms_pattern_a_jericho_deployable_cover'], name: 'Pell Ansari', frame: 'mf_barbarossa', extra: ['mf_sherman', 'mf_iskander', 'mf_genghis'], talents: ['t_heavy_gunner', 't_walking_armory', 't_siege_specialist', 't_spotter', 't_juggernaut'],
+      { callsign: 'Longwatch', prefer: ['mw_heavy_machine_gun', 'mw_thermal_rifle', 'ms_pattern_a_jericho_deployable_cover'], name: 'Pell Ansari', frame: 'mf_napoleon', extra: ['mf_barbarossa', 'mf_sherman', 'mf_saladin'], talents: ['t_heavy_gunner', 't_walking_armory', 't_siege_specialist', 't_spotter', 't_juggernaut'],
         hase: { 0: H(1, 0, 0, 1), 5: H(3, 0, 1, 3), 10: H(5, 0, 2, 5) }, cbs: { 5: ['cb_armory_sculpted_chassis'], 10: ['cb_armory_sculpted_chassis', 'cb_superior_by_design', 'cb_overpower_caliber'] } },
     ],
   },
@@ -142,9 +146,9 @@ const SQUADS: SquadSpec[] = [
         hase: { 0: H(0, 1, 1, 0), 5: H(1, 3, 2, 1), 10: H(1, 5, 4, 2) }, cbs: { 5: ['cb_ghostweave'], 10: ['cb_ghostweave', 'cb_all_theater_movement_suite', 'cb_auto_stabilizing_hardpoints'] } },
       { callsign: 'Glitch', prefer: ['mw_nexus_light', 'mw_pistol', 'ms_pattern_b_hex_charges'], name: 'Oren Sato', frame: 'mf_goblin', extra: ['mf_minotaur', 'mf_hydra', 'mf_manticore'], talents: ['t_hacker', 't_technophile', 't_tactician', 't_infiltrator', 't_skirmisher'],
         hase: { 0: H(0, 0, 2, 0), 5: H(0, 2, 4, 1), 10: H(1, 3, 6, 2) }, cbs: { 5: ['cb_the_lesson_of_the_open_door'], 10: ['cb_the_lesson_of_the_open_door', 'cb_the_lesson_of_disbelief', 'cb_integrated_weapon'] } },
-      { callsign: 'Snare', prefer: ['mw_nexus_hunter_killer', 'mw_segment_knife', 'ms_pattern_a_smoke_charges'], name: 'Ilse Varga', frame: 'mf_minotaur', extra: ['mf_goblin', 'mf_balor', 'mf_gorgon'], talents: ['t_hacker', 't_tactician', 't_technophile', 't_leader', 't_infiltrator'],
+      { callsign: 'Snare', prefer: ['mw_nexus_hunter_killer', 'mw_segment_knife', 'ms_pattern_a_smoke_charges'], name: 'Ilse Varga', frame: 'mf_gorgon', extra: ['mf_minotaur', 'mf_goblin', 'mf_balor'], talents: ['t_hacker', 't_tactician', 't_technophile', 't_leader', 't_infiltrator'],
         hase: { 0: H(0, 0, 1, 1), 5: H(1, 1, 3, 2), 10: H(2, 2, 5, 3) }, cbs: { 5: ['cb_the_lesson_of_disbelief'], 10: ['cb_the_lesson_of_disbelief', 'cb_the_lesson_of_the_held_image', 'cb_improved_armament'] } },
-      { callsign: 'Shade', prefer: ['mw_assault_rifle', 'mw_pistol', 'ms_rapid_burst_jump_jet_system'], name: 'Juno Reyes', frame: 'mf_swallowtail', extra: ['mf_mourning_cloak', 'mf_white_witch', 'mf_dusk_wing'], talents: ['t_infiltrator', 't_spotter', 't_skirmisher', 't_hacker', 't_ace'],
+      { callsign: 'Shade', prefer: ['mw_assault_rifle', 'mw_pistol', 'ms_rapid_burst_jump_jet_system'], name: 'Juno Reyes', frame: 'mf_deaths_head', extra: ['mf_swallowtail', 'mf_mourning_cloak', 'mf_black_witch'], talents: ['t_infiltrator', 't_spotter', 't_skirmisher', 't_hacker', 't_ace'],
         hase: { 0: H(0, 1, 1, 0), 5: H(0, 3, 3, 1), 10: H(1, 5, 4, 2) }, cbs: { 5: ['cb_all_theater_movement_suite'], 10: ['cb_all_theater_movement_suite', 'cb_ghostweave', 'cb_universal_compatibility'] } },
     ],
   },
