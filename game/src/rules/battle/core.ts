@@ -319,9 +319,10 @@ export class Battle {
     return this.alive().some(o => o !== u && this.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc') && !this.has(o, 'hidden') &&
       this.adjacent(u, o, at))
   }
+  /** symmetric: both sides use ground elevation (flying doesn't lift a unit out of reach of its neighbours) */
   adjacent(a: Unit, b: Unit, aAt: Pos = a.pos): boolean {
     const fa = footprint(a, aAt), fb = footprint(b)
-    return fa.some(p => fb.some(q => chebyshev(p, q) <= 1)) && Math.abs(elevationAt(this.map, a, aAt) - this.elevation(b)) <= Math.max(a.stats.size, b.stats.size) + 1
+    return fa.some(p => fb.some(q => chebyshev(p, q) <= 1)) && Math.abs(elevationAt(this.map, a, aAt) - elevationAt(this.map, b, b.pos)) <= Math.max(a.stats.size, b.stats.size) + 1
   }
 
   addStatus(u: Unit, id: StatusId, duration: Duration = 'until_cleared', source?: Unit, data?: any): boolean {
@@ -527,9 +528,9 @@ export class Battle {
   stepCost(u: Unit, from: Pos, to: Pos): number { return movement.stepCost(this, u, from, to) }
 
   /** Dijkstra over anchor positions. Returns reachable stop positions with cost and path. */
-  reachable(u: Unit, budget: number, opts: { ignoreEngagement?: boolean } = {}): Map<string, { pos: Pos; cost: number; prev?: string }> { return movement.reachable(this, u, budget, opts) }
+  reachable(u: Unit, budget: number, opts: { ignoreEngagement?: boolean; noTakeOff?: boolean } = {}): Map<string, { pos: Pos; cost: number; prev?: string }> { return movement.reachable(this, u, budget, opts) }
 
-  pathTo(u: Unit, dest: Pos, budget: number, opts: { ignoreEngagement?: boolean } = {}): { path: Pos[]; cost: number } | null { return movement.pathTo(this, u, dest, budget, opts) }
+  pathTo(u: Unit, dest: Pos, budget: number, opts: { ignoreEngagement?: boolean; noTakeOff?: boolean } = {}): { path: Pos[]; cost: number } | null { return movement.pathTo(this, u, dest, budget, opts) }
 
   canMove(u: Unit, mode: MoveOpts['mode']): true | string { return movement.canMove(this, u, mode) }
 

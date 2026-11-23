@@ -69,10 +69,15 @@ export function sandbox<T>(bt: Battle, fn: () => T): T {
     systems: u.systems.map(s => ({ s, destroyed: s.destroyed, usesLeft: s.usesLeft, charged: s.charged })),
     stats: { ...u.stats },
   }))
+  const terrainV = bt.terrainVersion, nAreas = bt.areas.length
   try {
     return fn()
   } finally {
+    // caches (effective map, LoS, cover) built inside the preview describe its terrain (wrecks, smoke, cover deployables):
+    // drop them if anything terrain-like may have changed, since the rollback below doesn't bump terrainVersion
+    let terrainDirty = bt.terrainVersion !== terrainV || bt.units.length !== nUnits || bt.areas.length !== nAreas
     for (const x of snap) {
+      if (!terrainDirty && (x.u.destroyed !== x.v.destroyed || !!x.u.flags.wreck !== !!x.flags.wreck || !!x.u.flags.isCover !== !!x.flags.isCover)) terrainDirty = true
       Object.assign(x.u, x.v)
       x.u.pos = x.pos
       x.u.flags = x.flags
@@ -96,6 +101,7 @@ export function sandbox<T>(bt: Battle, fn: () => T): T {
     bt.sandboxTiles = outerTiles
     bt.areas = putBack(areas)
     bt.mines = putBack(mines)
+    if (terrainDirty) bt.invalidateTerrain()
     bt.lastMove = lastMove
     setUidState(uid)
     bt.rng.state = rng

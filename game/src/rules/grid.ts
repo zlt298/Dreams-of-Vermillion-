@@ -124,6 +124,9 @@ export function hasLineOfSight(map: GridMap, from: Unit, to: Unit, fromPos: Pos 
   const eb = unitElevation(map, to)
   // a target is visible if any of a few points on its body can be seen
   const targets = [eb + unitHeight(to) * 0.95, eb + unitHeight(to) * 0.5]
+  // terrain no taller than both characters' tops is cover, not a full block: their tops show over it
+  // (a size-1 mech behind size-1 hard cover can still be targeted). Symmetric in the two units.
+  const lowTop = Math.min(ea + unitHeight(from), eb + unitHeight(to)) + 0.01
   for (const tz of targets) {
     const pts = samplesBetween(eyes, { x: cb.x, y: cb.y, z: tz })
     let blocked = false
@@ -133,7 +136,7 @@ export function hasLineOfSight(map: GridMap, from: Unit, to: Unit, fromPos: Pos 
       if (fa.has(k) || fb.has(k)) continue
       const t = tileAt(map, tp)
       if (!t) continue
-      if (t.h > s.z + 0.01) { blocked = true; break }
+      if (t.h > s.z + 0.01 && t.h > lowTop) { blocked = true; break }
     }
     if (!blocked) return true
   }

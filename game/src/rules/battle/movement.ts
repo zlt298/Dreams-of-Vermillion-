@@ -56,7 +56,16 @@ export function stepCost(bt: Battle, u: Unit, from: Pos, to: Pos): number {
 }
 
 /** Dijkstra over anchor positions. Returns reachable stop positions with cost and path. */
-export function reachable(bt: Battle, u: Unit, budget: number, opts: { ignoreEngagement?: boolean } = {}): Map<string, { pos: Pos; cost: number; prev?: string }> {
+export function reachable(bt: Battle, u: Unit, budget: number, opts: { ignoreEngagement?: boolean; noTakeOff?: boolean } = {}): Map<string, { pos: Pos; cost: number; prev?: string }> {
+  // a landed flyer takes off to move (see move()): preview its moves as flying, restoring its state afterwards
+  if (u.flags.landed && !u.flying && !opts.noTakeOff) {
+    u.flying = true; u.flags.landed = false
+    try { return reachableNow(bt, u, budget, opts) } finally { u.flying = false; u.flags.landed = true }
+  }
+  return reachableNow(bt, u, budget, opts)
+}
+
+function reachableNow(bt: Battle, u: Unit, budget: number, opts: { ignoreEngagement?: boolean }): Map<string, { pos: Pos; cost: number; prev?: string }> {
   const startKey = key(u.pos)
   const dist = new Map<string, { pos: Pos; cost: number; prev?: string; terminal: boolean; stop: boolean }>()
   const startAdj = new Set(bt.alive().filter(o => bt.hostile(u, o) && bt.adjacent(u, o)).map(o => o.id))
@@ -109,7 +118,7 @@ export function reachable(bt: Battle, u: Unit, budget: number, opts: { ignoreEng
   return out
 }
 
-export function pathTo(bt: Battle, u: Unit, dest: Pos, budget: number, opts: { ignoreEngagement?: boolean } = {}): { path: Pos[]; cost: number } | null {
+export function pathTo(bt: Battle, u: Unit, dest: Pos, budget: number, opts: { ignoreEngagement?: boolean; noTakeOff?: boolean } = {}): { path: Pos[]; cost: number } | null {
   const r = bt.reachable(u, budget, opts)
   const all: Map<string, any> = (r as any).all
   const d = r.get(key(dest))
@@ -147,7 +156,7 @@ export function move(bt: Battle, u: Unit, dest: Pos, opts: MoveOpts = { mode: 's
   let p: { path: Pos[]; cost: number } | null
   try {
     // teleporting movers (u.flags.teleportMoves) aren't held by engagement
-    p = bt.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves })
+    p = bt.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves, noTakeOff: opts.mode === 'involuntary' })
     // Ramjet / OASIS Wall: voluntary moves must follow a straight line
     if (opts.mode !== 'involuntary' && !u.flags.teleportMoves && scriptsFor(u).some(sc => sc.straightMovesOnly?.(bt, u))) p = bt.straightPath(u, dest, budget)
     if (!p) throw new Error('Unreachable')
