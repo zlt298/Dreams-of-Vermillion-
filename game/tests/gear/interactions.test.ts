@@ -1,61 +1,47 @@
-// Bugs that only show when several effect scripts (or a script and a core rule) meet.
+// Cross-item combos: bugs that only show when several effect scripts (or a script and a core rule) meet.
 import { describe, expect, it } from 'vitest'
-import type { PilotBuild } from '../src/import/compcon'
-import { buildMechUnit } from '../src/rules/stats'
-import { Battle } from '../src/rules/battle'
-import type { Unit } from '../src/rules/types'
-import { flatMap, pregenUnit } from './helpers'
+import type { Unit } from '../../src/rules/types'
+import { battle, flatMap, mech, pregenUnit, type PilotOpts } from '../support'
+import { custom, vs } from './helpers'
 
-interface Opts { frame?: string; aux?: string; systems?: string[]; talents?: [string, number][]; cbs?: string[]; side?: 'player' | 'enemy'; weapon?: string }
-function mech(o: Opts = {}): Unit {
-  const p = {
-    id: `t-${Math.random()}`, callsign: 'T', name: 'T', level: 9, mechSkills: [2, 2, 2, 2],
-    talents: (o.talents ?? []).map(([id, rank]) => ({ id, rank })), coreBonuses: o.cbs ?? [],
-    mech: {
-      name: 'T', frameId: o.frame ?? 'mf_standard_pattern_i_everest',
-      mounts: [
-        { type: 'Main', slots: [{ size: 'Main', weaponId: o.weapon ?? 'mw_assault_rifle' }], bonusEffects: [] },
-        ...(o.aux ? [{ type: 'Flex', slots: [{ size: 'Auxiliary', weaponId: o.aux }], bonusEffects: [] }] : []),
-      ],
-      systems: o.systems ?? [],
-    },
-    unknown: [],
-  } as unknown as PilotBuild
-  return buildMechUnit(p, o.side ?? 'player')
-}
+/** Level-9 Everest, callsign T. */
+const t9 = (o: PilotOpts = {}, side: 'player' | 'enemy' = 'player') => mech({ callsign: 'T', ...o }, side)
+/** `a` at (4,4), `e` at (4,9) unless already placed, on a 16×16 map, seed 9 (no turn begun). */
 function world(a: Unit, e: Unit, extra: Unit[] = []) {
   a.pos = { x: 4, y: 4 }
   if (e.pos.x === 0 && e.pos.y === 0) e.pos = { x: 4, y: 9 }
-  const b = new Battle({ map: flatMap(16, 16), units: [a, e, ...extra], seed: 9 })
-  b.start()
-  return b
+  return battle([a, e, ...extra], flatMap(16, 16), 9)
 }
 const tanky = (u: Unit) => { u.stats.armor = 0; u.stats.hp = u.hp = 60 }
 
 describe('Resistance from scripts behaves like Resistance', () => {
+  // regression: Briareos Resistance stacked with other Resistance (quartering damage)
   it('Briareos Frame (≤1 Structure) does not stack with other Resistance', () => {
-    const a = mech({ cbs: ['cb_briareos_frame'] }), e = pregenUnit('Sniper', 'enemy')
+    const a = t9({ coreBonuses: ['cb_briareos_frame'] }), e = pregenUnit('Sniper', 'enemy')
     const b = world(a, e)
     tanky(a); a.structure = 1
     expect(b.applyDamage(a, [{ type: 'Kinetic', amount: 20 }], { source: e, resistAll: true })).toBe(10)
     expect(b.applyDamage(a, [{ type: 'Kinetic', amount: 20 }], { source: e })).toBe(10)
   })
+  // regression: Briareos Resistance ignored Shredded and Irreducible
   it('Briareos Resistance is cancelled by Shredded and by Irreducible damage', () => {
-    const a = mech({ cbs: ['cb_briareos_frame'] }), e = pregenUnit('Sniper', 'enemy')
+    const a = t9({ coreBonuses: ['cb_briareos_frame'] }), e = pregenUnit('Sniper', 'enemy')
     const b = world(a, e)
     tanky(a); a.structure = 1
     expect(b.applyDamage(a, [{ type: 'Kinetic', amount: 20 }], { source: e, irreducible: true })).toBe(20)
     b.addStatus(a, 'shredded')
     expect(b.applyDamage(a, [{ type: 'Kinetic', amount: 20 }], { source: e })).toBe(20)
   })
+  // regression: Briareos Resistance applied above 1 Structure
   it('Briareos does nothing above 1 Structure', () => {
-    const a = mech({ cbs: ['cb_briareos_frame'] }), e = pregenUnit('Sniper', 'enemy')
+    const a = t9({ coreBonuses: ['cb_briareos_frame'] }), e = pregenUnit('Sniper', 'enemy')
     const b = world(a, e)
     tanky(a)
     expect(b.applyDamage(a, [{ type: 'Kinetic', amount: 20 }], { source: e })).toBe(20)
   })
+  // regression: HyperDense Armor stacked with other Resistance and applied at any range
   it('HyperDense Armor: Resistance beyond range 3 only, once', () => {
-    const a = mech({ frame: 'mf_black_witch', systems: ['ms_hyperdense_armor'] }), e = pregenUnit('Sniper', 'enemy')
+    const a = t9({ frame: 'mf_black_witch', systems: ['ms_hyperdense_armor'] }), e = pregenUnit('Sniper', 'enemy')
     const b = world(a, e)
     tanky(a); a.flags.hyperdense = true
     // Energy: the Black Witch already resists Kinetic
@@ -64,8 +50,9 @@ describe('Resistance from scripts behaves like Resistance', () => {
     e.pos = { x: 5, y: 5 }
     expect(b.applyDamage(a, [{ type: 'Energy', amount: 20 }], { source: e })).toBe(20)
   })
+  // regression: Tormentor Spines stacked with other Resistance and applied at any range
   it('Vlad Tormentor Spines: Resistance within range 3 only, once', () => {
-    const a = mech({ frame: 'mf_vlad' }), e = pregenUnit('Sniper', 'enemy')
+    const a = t9({ frame: 'mf_vlad' }), e = pregenUnit('Sniper', 'enemy')
     const b = world(a, e)
     tanky(a); a.flags.tormentor = true
     e.pos = { x: 5, y: 5 }
@@ -76,16 +63,18 @@ describe('Resistance from scripts behaves like Resistance', () => {
 })
 
 describe('Deep Well Heat Sink', () => {
+  // regression: Deep Well gave heat Resistance outside the Danger Zone
   it('gives no heat Resistance outside the Danger Zone', () => {
-    const a = mech({ systems: ['ms_deep_well_heat_sink'] }), e = pregenUnit('Sniper', 'enemy')
+    const a = t9({ systems: ['ms_deep_well_heat_sink'] }), e = pregenUnit('Sniper', 'enemy')
     const b = world(a, e)
     b.beginTurn(a)
     expect(a.resist).not.toContain('Heat')
     b.addHeat(a, 2)
     expect(a.heat).toBe(2)
   })
+  // regression: Deep Well's heat Resistance did not last the turn / never ended
   it('halves heat for the rest of a turn started in the Danger Zone, then stops', () => {
-    const a = mech({ systems: ['ms_deep_well_heat_sink'] }), e = pregenUnit('Sniper', 'enemy')
+    const a = t9({ systems: ['ms_deep_well_heat_sink'] }), e = pregenUnit('Sniper', 'enemy')
     const b = world(a, e)
     a.heat = Math.ceil(a.stats.heatcap / 2)
     b.beginTurn(a)
@@ -96,8 +85,9 @@ describe('Deep Well Heat Sink', () => {
     b.applyDamage(a, [{ type: 'Heat', amount: 2 }], { source: e })
     expect(a.heat).toBe(h + 3)
   })
+  // regression: Deep Well ending its turn-long Resistance also removed the Manticore CORE's
   it('does not strip the Manticore core\'s scene-long heat Resistance', () => {
-    const a = mech({ frame: 'mf_manticore', systems: ['ms_deep_well_heat_sink'] }), e = pregenUnit('Sniper', 'enemy')
+    const a = t9({ frame: 'mf_manticore', systems: ['ms_deep_well_heat_sink'] }), e = pregenUnit('Sniper', 'enemy')
     const b = world(a, e)
     a.heat = Math.ceil(a.stats.heatcap / 2)
     b.beginTurn(a)
@@ -108,8 +98,9 @@ describe('Deep Well Heat Sink', () => {
 })
 
 describe('Bonded 2 (Intercede)', () => {
+  // regression: two interceding Bondmates bounced the damage back and forth
   it('two Bondmates with Intercede do not bounce damage back and forth', () => {
-    const a = mech({ talents: [['t_bonded', 2]] }), m = mech({ talents: [['t_bonded', 2]] }), e = pregenUnit('Sniper', 'enemy')
+    const a = t9({ talents: [['t_bonded', 2]] }), m = t9({ talents: [['t_bonded', 2]] }), e = pregenUnit('Sniper', 'enemy')
     m.pos = { x: 5, y: 4 }
     const b = world(a, e, [m])
     a.flags.bondmate = m.id; m.flags.bondmate = a.id
@@ -121,10 +112,21 @@ describe('Bonded 2 (Intercede)', () => {
   })
 })
 
+describe('Lesson of Thinking-Tomorrow\'s Thought + Markerlight', () => {
+  // regression: only a basic tech attack primed the Lesson, not a scripted one
+  it('a scripted tech attack hit (Markerlight) primes the next melee attack', () => {
+    const { a, e, b } = vs(t9({ coreBonuses: ['cb_the_lesson_of_thinking_tomorrows_thought'], systems: ['ms_markerlight'] }))
+    e.stats.edef = -10
+    b.useCustom(a, custom(b, a, /Markerlight/), e)
+    expect(a.flags.tomorrow).toBe(e.id)
+  })
+})
+
 describe('script reactions go through Battle.spend()', () => {
+  // regression: Return Fire decremented reactionsLeft directly, skipping Centimane's Restricting burn
   it('Return Fire (Gunslinger 2) triggers Centimane\'s Restricting burn', () => {
-    const a = mech({ talents: [['t_gunslinger', 2]], aux: 'mw_pistol' })
-    const e = mech({ talents: [['t_centimane', 3]], side: 'enemy' })
+    const a = t9({ talents: [['t_gunslinger', 2]], aux: 'mw_pistol' })
+    const e = t9({ talents: [['t_centimane', 3]] }, 'enemy')
     e.pos = { x: 4, y: 8 }
     const b = world(a, e)
     b.beginTurn(a); b.endTurn(a)
@@ -138,15 +140,16 @@ describe('script reactions go through Battle.spend()', () => {
   })
   it('no script decrements reactionsLeft directly (spend() handles reveal, Ghostweave and onAnyAction)', () => {
     const fs = require('node:fs') as typeof import('node:fs')
-    const dir = `${__dirname}/../src/rules/effects/scripts`
+    const dir = `${__dirname}/../../src/rules/effects/scripts`
     const offenders = fs.readdirSync(dir).filter(f => /reactionsLeft\s*(--|-=)/.test(fs.readFileSync(`${dir}/${f}`, 'utf8')))
     expect(offenders).toEqual([])
   })
 })
 
 describe('previews never reshape weapons', () => {
+  // regression: previewing with THUMPER loaded left the rifle Explosive and spent ammo
   it('Ammo Case (Walking Armory): previewing with THUMPER loaded leaves the rifle Kinetic', () => {
-    const a = mech({ talents: [['t_walking_armory', 1]] }), e = pregenUnit('Sniper', 'enemy')
+    const a = t9({ talents: [['t_walking_armory', 1]] }), e = pregenUnit('Sniper', 'enemy')
     const b = world(a, e)
     b.beginTurn(a)
     const rifle = a.weapons.find(w => w.dataId === 'mw_assault_rifle')!
@@ -158,8 +161,9 @@ describe('previews never reshape weapons', () => {
     expect(b.profile(rifle).damage.every(d => d.type === 'Kinetic')).toBe(true)
     expect(a.systems.map(s => s.usesLeft)).toEqual(uses)
   })
+  // regression: MAG and SABOT tags stuck to the weapon after a preview
   it('Ammo Case: MAG and SABOT tags do not stick after a preview', () => {
-    const a = mech({ talents: [['t_walking_armory', 1]] }), e = pregenUnit('Sniper', 'enemy')
+    const a = t9({ talents: [['t_walking_armory', 1]] }), e = pregenUnit('Sniper', 'enemy')
     const b = world(a, e)
     b.beginTurn(a)
     const rifle = a.weapons.find(w => w.dataId === 'mw_assault_rifle')!
@@ -167,8 +171,9 @@ describe('previews never reshape weapons', () => {
     for (const k of ['mag', 'sabot']) { a.flags.ammo = k; b.previewAttack(a, rifle, e) }
     expect(JSON.stringify(b.profile(rifle).tags)).toBe(tags)
   })
+  // regression: previewing a 4-chamber shot left the M35 permanently AP
   it('Thunder God: previewing a 4-chamber shot does not leave the M35 permanently AP', () => {
-    const a = mech({ frame: 'mf_raleigh' }), e = pregenUnit('Sniper', 'enemy')
+    const a = t9({ frame: 'mf_raleigh' }), e = pregenUnit('Sniper', 'enemy')
     const b = world(a, e)
     b.beginTurn(a)
     const m35 = a.weapons.find(w => w.dataId === 'mw_raleigh_integrated')!
