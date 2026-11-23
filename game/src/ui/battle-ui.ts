@@ -5,6 +5,7 @@ import { pickNextUnit, runAiTurn } from '../ai/ai'
 import { annotateTags, rangeChip, tagChip, tagInfo } from './tags'
 import { type Battle, type ChoiceQuestion, stripHtml } from '../rules/battle'
 import { exportBattle, type BattleExport } from '../replay/replay'
+import { portraitImg } from '../render/portrait'
 import { blastTiles, burstTiles, coneTiles, key, lineTiles, footprint } from '../rules/grid'
 import type { CustomAction } from '../rules/effects/registry'
 import { hasTag, tagVal } from '../rules/stats'
@@ -587,7 +588,7 @@ export class BattleScreen {
     const f = u.frameId ? Lancer.frames.get(u.frameId) : undefined
     const st = u.stats
     const statusTxt = (u.statuses.map(s => s.id) as string[]).concat(b.has(u, 'engaged') ? ['engaged'] : [], b.has(u, 'dangerzone') ? ['danger zone'] : [])
-    let head = `<div class="uhead"><div><b>${esc(u.name)}</b> ${f ? `<span class="muted">${esc(u.pilotName ?? '')} · ${esc(f.source)} ${esc(f.name)}</span>` : `<span class="muted">${u.kind === 'npc' ? `Tier ${u.tier} ${esc(u.role ?? '')} ${esc((u.templates ?? []).join(' '))}` : esc(u.kind)}</span>`}
+    let head = `<div class="uhead">${u.kind === 'mech' || u.kind === 'npc' ? portraitImg(u, 'portrait unit') : ''}<div class="uinfo"><b>${esc(u.name)}</b> ${f ? `<span class="muted">${esc(u.pilotName ?? '')} · ${esc(f.source)} ${esc(f.name)}</span>` : `<span class="muted">${u.kind === 'npc' ? `Tier ${u.tier} ${esc(u.role ?? '')} ${esc((u.templates ?? []).join(' '))}` : esc(u.kind)}</span>`}
       <div class="stats">HP ${u.hp}/${st.hp} · ARM ${st.armor} · EVA ${st.evasion} · E-DEF ${st.edef} · HEAT ${u.heat}/${st.heatcap} · SPD ${st.speed} · SENS ${st.sensors} · SAVE ${st.save}${u.kind === 'mech' ? ` · TECH +${st.techAttack} · GRIT +${st.grit} · REP ${u.repairs}` : ` · ATK +${st.attackBonus}`} · H${st.hull} A${st.agi} S${st.sys} E${st.eng}</div>
       ${statusTxt.length ? `<div class="statuses">${statusTxt.map(s => `<span class="status">${esc(s)}</span>`).join('')}</div>` : ''}</div>`
     if (mine) head += `<div class="policies" title="Reaction policy (click to cycle): auto = decided for you, ask = the HUD asks you, off = never">${(['brace', 'overwatch', 'reactions'] as const).map(k => `<label class="${u.policies[k] ?? 'ask'}" data-act="policy" data-arg="${k}">${({ brace: 'Brace', overwatch: 'Overwatch', reactions: 'Other reactions' })[k]}: ${u.policies[k] ?? 'ask'}</label>`).join('')}</div>`

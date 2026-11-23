@@ -25,6 +25,7 @@ import { playInterlude, RA_EYE_SVG } from './interlude'
 import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad } from './roster'
 import { esc } from './dom'
 import { builderScreen } from './builder-screen'
+import { portraitImg } from '../render/portrait'
 import { validateBuild } from '../rules/legality'
 import { classify } from '../rules/effects/coverage'
 
@@ -45,7 +46,11 @@ export class App {
 
   private disposeInterlude: (() => void) | null = null
 
+  /** Teardown hooks for the current screen (observers, listeners). */
+  private cleanups: (() => void)[] = []
+
   private clear() {
+    for (const f of this.cleanups.splice(0)) f()
     this.disposeInterlude?.()
     this.disposeInterlude = null
     this.battle?.dispose()
@@ -297,12 +302,13 @@ export class App {
       const unspent = validateBuild(p).warnings.some(w => /unspent|unchosen/.test(w))
       const damaged = !c.destroyed && (c.hp < u.stats.hp || c.structure < u.stats.structure || c.stress < u.stats.stress)
       const stamp = c.destroyed ? '<span class="stamp bad">DESTROYED — REPRINT PENDING</span>' : damaged ? '<span class="stamp warnc">DAMAGED</span>' : '<span class="stamp good">OPERATIONAL</span>'
-      return `<div class="sq dossier ${c.destroyed ? 'dead' : ''}"><div class="dh"><span class="desig">OCHRE-${i + 1}</span>${stamp}</div><b>${esc(p.callsign)}</b> <span class="muted">LL${p.level} ${esc(Lancer.frames.get(p.mech.frameId)?.name ?? '')}</span> <button class="small ${unspent ? 'primary' : ''}" data-refit="${esc(p.id)}" title="Spend points and change the loadout. Damage and spent Repairs carry over.">${unspent ? 'Level up' : 'Edit build'}</button><br>${c.destroyed ? '<span class="muted">Reprinted at the next rest.</span>' : `HP ${c.hp + permHpBonus(run, p.id)}/${u.stats.hp + permHpBonus(run, p.id)} · S ${c.structure}/${u.stats.structure} · R ${c.stress}/${u.stats.stress} · Repairs ${c.repairs}${c.coreAvailable ? ' · CORE ready' : ''}`}</div>`
+      return `<div class="sq dossier ${c.destroyed ? 'dead' : ''}">${portraitImg(u, 'portrait sm')}<div class="dh"><span class="desig">OCHRE-${i + 1}</span>${stamp}</div><b>${esc(p.callsign)}</b> <span class="muted">LL${p.level} ${esc(Lancer.frames.get(p.mech.frameId)?.name ?? '')}</span> <button class="small ${unspent ? 'primary' : ''}" data-refit="${esc(p.id)}" title="Spend points and change the loadout. Damage and spent Repairs carry over.">${unspent ? 'Level up' : 'Edit build'}</button><br>${c.destroyed ? '<span class="muted">Reprinted at the next rest.</span>' : `HP ${c.hp + permHpBonus(run, p.id)}/${u.stats.hp + permHpBonus(run, p.id)} · S ${c.structure}/${u.stats.structure} · R ${c.stress}/${u.stats.stress} · Repairs ${c.repairs}${c.coreAvailable ? ' · CORE ready' : ''}`}</div>`
     }).join('')
     this.root.innerHTML = `<div class="screen runmap"><div class="hhead"><div><p class="band">OPERATION <span class="redact">████████</span> // PHASE ${run.act} OF 3${run.iteration ? ` // ITERATION ${iterLabel(run.iteration)}` : ''}</p><h2>Campaign — Act ${run.act} <span class="loc">${esc(ACT_LOCATIONS[run.act] ?? '')}</span></h2></div><div><button data-go="repairs">Field repairs</button><button data-go="reimport">Re-import pilots</button><button data-go="abandon" class="warn">Abandon run</button><button data-go="title">Title</button></div></div>
       <div class="opsboard"><div class="opsmain"><div class="squad">${squad}</div>${acts}
       <p class="muted small">⚔ combat · ☠ elite · ⬢ supply · ⛺ rest (full repair) · ♛ act boss · hover a node for its brief</p></div>${telemetryPanel(run)}</div></div>`
     this.on('[data-node]', el => this.enterNode(run.nodes.find(n => n.id === el.dataset.node)!))
+    this.drawEdges(run, avail)
     this.on('[data-refit]', el => {
       const p = run.squad.find(x => x.id === el.dataset.refit)
       if (p) this.openBuilder(p, `Refit ${p.callsign} (LL${p.level})`, () => this.runMap(), b => { refitPilot(run, b); saveRun(run) }, true)
@@ -314,6 +320,48 @@ export class App {
       if (g === 'reimport') this.hangar('reimport')
       if (g === 'abandon' && confirm('Abandon this run?')) { this.run = null; saveRun(null); this.title() }
     })
+  }
+
+  /** SVG route lines between connected campaign nodes, redrawn when the layout changes. */
+  private drawEdges(run: RunState, avail: Set<string>) {
+    const ns = 'http://www.w3.org/2000/svg'
+    const draw = () => {
+      for (const layers of this.root.querySelectorAll<HTMLElement>('.runmap .layers')) {
+        layers.querySelector('svg.edges')?.remove()
+        const box = layers.getBoundingClientRect()
+        const svg = document.createElementNS(ns, 'svg')
+        svg.setAttribute('class', 'edges')
+        svg.setAttribute('width', String(layers.scrollWidth))
+        svg.setAttribute('height', String(layers.scrollHeight))
+        const centre = (el: Element) => { const r = el.getBoundingClientRect(); return { x: r.left - box.left + r.width / 2, y: r.top - box.top + r.height / 2, r: r.width / 2 } }
+        for (const el of layers.querySelectorAll<HTMLElement>('[data-node]')) {
+          const n = run.nodes.find(x => x.id === el.dataset.node)
+          if (!n) continue
+          const a = centre(el)
+          for (const id of n.next) {
+            const tEl = layers.querySelector(`[data-node="${id}"]`)
+            if (!tEl) continue
+            const b = centre(tEl)
+            const t = run.nodes.find(x => x.id === id)
+            const state = n.cleared && t?.cleared ? 'done' : (run.current === n.id || (n.cleared && !run.current)) && avail.has(id) ? 'open' : n.act > run.act ? 'ahead' : ''
+            const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1
+            const line = document.createElementNS(ns, 'path')
+            const x1 = a.x + (dx / len) * (a.r + 3), y1 = a.y + (dy / len) * (a.r + 3)
+            const x2 = b.x - (dx / len) * (b.r + 3), y2 = b.y - (dy / len) * (b.r + 3)
+            const mx = (x1 + x2) / 2
+            line.setAttribute('d', `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`)
+            line.setAttribute('class', `edge ${state}`)
+            svg.appendChild(line)
+          }
+        }
+        layers.prepend(svg)
+      }
+    }
+    const raf = requestAnimationFrame(draw)
+    const target = this.root.querySelector('.runmap')
+    const ro = typeof ResizeObserver === 'function' && target ? new ResizeObserver(() => draw()) : null
+    if (ro && target) ro.observe(target)
+    this.cleanups.push(() => { cancelAnimationFrame(raf); ro?.disconnect() })
   }
 
   enterNode(n: RunNode) {
@@ -530,7 +578,7 @@ function pilotCard(p: PilotBuild, picked: boolean): string {
   const cov = u ? classify(u) : { manual: [] as string[] }
   return `<div class="pilot ${picked ? 'picked' : ''}">
     <div class="ph"><b>${esc(p.callsign)}</b> <span class="muted">${esc(p.name)} · LL${p.level}</span>
-      <span><button data-pick="${esc(p.id)}" class="${picked ? 'primary' : ''}">${picked ? '✓ In squad' : 'Add to squad'}</button><button data-edit="${esc(p.id)}" class="small">Edit</button><button data-remove="${esc(p.id)}" class="warn small">✕</button></span></div>
+      <span><button data-pick="${esc(p.id)}" class="${picked ? 'primary' : ''}">${picked ? '✓ In squad' : 'Add to squad'}</button><button data-edit="${esc(p.id)}" class="small">Edit</button><button data-remove="${esc(p.id)}" class="warn small">✕</button></span></div>${u ? portraitImg(u) : ''}
     <div><b>${esc(p.mech.name)}</b> — ${esc(f ? `${f.source} ${f.name}` : p.mech.frameId)} · HASE ${p.mechSkills.join('/')} · SP ${sp.used}/${sp.max}</div>
     ${u ? `<div class="muted small">HP ${u.stats.hp} · ARM ${u.stats.armor} · EVA ${u.stats.evasion} · E-DEF ${u.stats.edef} · HEAT ${u.stats.heatcap} · SPD ${u.stats.speed} · Structure ${u.stats.structure} · Stress ${u.stats.stress}</div>
     <div class="small">⚔ ${u.weapons.map(w => weaponLine(w)).join(' · ')}</div><div class="small">⚙ ${u.systems.map(s => esc(s.name)).join(', ') || '—'}</div>
