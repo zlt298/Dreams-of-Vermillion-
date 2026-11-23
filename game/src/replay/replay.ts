@@ -84,3 +84,18 @@ export function stateHash(b: Battle): string {
   for (let i = 0; i < snap.length; i++) { h ^= snap.charCodeAt(i); h = Math.imul(h, 16777619) }
   return (h >>> 0).toString(16).padStart(8, '0')
 }
+
+const BOOKKEEPING = new Set(['beginTurn', 'setPolicy', 'setProfile', 'setWeaponFlag'])
+/** A recorded command that is a player's action (not an enemy turn or bookkeeping). */
+export function isAction(c: { op: string; args: unknown[] }, b?: Battle): boolean {
+  if (BOOKKEEPING.has(c.op)) return false
+  if (c.op !== 'aiTurn') return true
+  const id = (c.args[0] as { $u?: string } | undefined)?.$u
+  return !!b && b.unit(id)?.side === 'player'
+}
+/** The battle as it was just before its last player action (and everything after it). */
+export function withoutLastAction(x: BattleExport, b: Battle): BattleExport | null {
+  let i = x.commands.length - 1
+  while (i >= 0 && !isAction(x.commands[i], b)) i--
+  return i < 0 ? null : { ...x, commands: x.commands.slice(0, i) }
+}

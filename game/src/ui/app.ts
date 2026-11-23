@@ -12,7 +12,9 @@ import {
   type RunState, type RunNode, newRun, availableNodes, nodeTier, sitrepFor, squadUnits, recordBattle, fullRepair,
   repairOptions, applyRepair, permHpBonus, rollRewards, applyReward, levelUp, replacePilots, refitPilot, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
 } from '../run/run'
-import { BattleScreen } from './battle-ui'
+import { BattleScreen, type UndoEntry } from './battle-ui'
+import { exportBattle, replayBattle, withoutLastAction } from '../replay/replay'
+import { saveBattle, loadBattle, clearBattle } from '../run/battle-save'
 import { rangeChip, tagChip } from './tags'
 import type { Weapon } from '../rules/types'
 import { featureAutomated, loadPacks, readLcp, removePack, storePack, officialClasses } from '../import/lcp'
@@ -81,7 +83,13 @@ export class App {
     </div>`
     this.on('[data-go]', el => {
       const g = el.dataset.go
-      if (g === 'continue') this.runMap()
+      if (g === 'continue') {
+          // a battle was in progress: go straight back into it
+          const saved = loadBattle()
+          const node = saved && this.run && saved.runSeed === this.run.seed ? this.run.nodes.find(n => n.id === saved.nodeId && !n.cleared) : undefined
+          if (node) this.startBattle(node)
+          else this.runMap()
+        }
       if (g === 'hangar') this.hangar('run')
       if (g === 'skirmish') this.hangar('skirmish')
       if (g === 'help') this.help()
@@ -219,7 +227,7 @@ export class App {
       if (g === 'start') {
         const squad = this.roster.filter(p => this.squadPick.has(p.id))
         if (!squad.length) return alert('Pick at least one pilot')
-        if (purpose === 'run') { this.run = newRun(squad.map(p => structuredClone(p))); this.run.iteration = nextIteration(); saveRun(this.run); this.story('opening', () => this.runMap()) }
+        if (purpose === 'run') { clearBattle(); this.run = newRun(squad.map(p => structuredClone(p))); this.run.iteration = nextIteration(); saveRun(this.run); this.story('opening', () => this.runMap()) }
         else this.skirmishSetup(squad)
       }
     })
@@ -255,7 +263,7 @@ export class App {
       b.start()
       this.clear()
       this.setAct(team.tier)
-      this.battle = new BattleScreen(this.root, b, { title: team.name, onEnd: w => this.simpleEnd(w) })
+      this.mountBattle(b, { title: team.name, onEnd: w => this.simpleEnd(w) })
     })
   }
 
@@ -312,7 +320,7 @@ export class App {
       if (g === 'title') this.title()
       if (g === 'repairs') this.repairs()
       if (g === 'reimport') this.hangar('reimport')
-      if (g === 'abandon' && confirm('Abandon this run?')) { this.run = null; saveRun(null); this.title() }
+      if (g === 'abandon' && confirm('Abandon this run?')) { this.run = null; saveRun(null); clearBattle(); this.title() }
     })
   }
 
@@ -348,17 +356,50 @@ export class App {
     enemies.forEach((u, i) => (u.pos = map.deployEnemy[i % map.deployEnemy.length]))
     const hvt = [...enemies].sort((a, b) => (b.flags.budget ?? 1) - (a.flags.budget ?? 1))[0]
     const sitrep = sitrepFor(n.kind === 'boss' ? { ...n, sitrep: 'standard' } : n, map, hvt?.id)
-    const b = new Battle({ map, units: [...units, ...enemies], seed: n.seed, sitrep })
-    b.start()
+    const title = finale ? `CINNABAR ANNEX // CASKET VAULT — ${team.name}` : `${team.name} (Act ${n.act} ${n.kind})`
+    // a battle already under way at this node (the page was closed or reloaded): resume it
+    const saved = loadBattle()
+    let b: Battle
+    if (saved && saved.runSeed === run.seed && saved.nodeId === n.id) {
+      b = replayBattle(saved.data)
+    } else {
+      b = new Battle({ map, units: [...units, ...enemies], seed: n.seed, sitrep })
+      b.start()
+    }
     this.clear()
     this.setAct(n.act)
-    this.battle = new BattleScreen(this.root, b, {
-      title: finale ? `CINNABAR ANNEX // CASKET VAULT — ${team.name}` : `${team.name} (Act ${n.act} ${n.kind})`,
+    this.mountBattle(b, {
+      title,
+      save: bt => saveBattle({ runSeed: run.seed, nodeId: n.id, title, data: exportBattle(bt) }),
       onEnd: w => {
-        recordBattle(run, n, b.units, w === 'player')
+        clearBattle()
+        recordBattle(run, n, this.battle!.b.units, w === 'player')
         saveRun(run)
         if (w === 'player' && !run.over) this.debrief(n)
         else this.runOver()
+      },
+    })
+  }
+
+  /**
+   * Show a battle with saving and undo wired in. Undo restores an in-session snapshot (fast); with none left
+   * (after a reload) the battle is rebuilt by replaying every recorded command except the last player action.
+   */
+  mountBattle(b: Battle, o: { title: string; onEnd: (w: 'player' | 'enemy') => void; save?: (b: Battle) => void }, undoStack: UndoEntry[] = []) {
+    this.battle?.dispose()
+    this.battle = new BattleScreen(this.root, b, {
+      title: o.title,
+      onEnd: o.onEnd,
+      onSaved: o.save,
+      undoStack,
+      onRemount: (bt, stack) => this.mountBattle(bt, o, stack),
+      onUndoReplay: bt => {
+        const x = withoutLastAction(exportBattle(bt), bt)
+        if (!x) return
+        const rebuilt = replayBattle(x)
+        rebuilt.say('↶ Undone.')
+        o.save?.(rebuilt)
+        this.mountBattle(rebuilt, o)
       },
     })
   }

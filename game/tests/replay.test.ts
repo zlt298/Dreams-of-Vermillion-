@@ -77,3 +77,24 @@ describe('battle replays', () => {
     expect(early.unit(a.id)!.pos).toEqual({ x: 5, y: 4 })
   })
 })
+
+describe('undo by replay', () => {
+  it('rebuilds the battle as it was before the last player action, skipping enemy turns and bookkeeping', async () => {
+    const { withoutLastAction, isAction } = await import('../src/replay/replay')
+    const { runAiTurn } = await import('../src/ai/ai')
+    const a = pregenUnit('Assault'), e = pregenUnit('Sniper', 'enemy')
+    a.pos = { x: 5, y: 4 }; e.pos = { x: 5, y: 12 }
+    const b = new Battle({ map: flatMap(14, 16), units: [a, e], seed: 9 })
+    b.start()
+    b.beginTurn(a)
+    b.move(a, { x: 5, y: 6 })
+    const before = stateHash(b)
+    const beforeCount = b.commands.length
+    b.endTurn(a)
+    runAiTurn(b, e) // the enemy's turn follows the player's last action
+    expect(isAction(b.commands[b.commands.length - 1], b)).toBe(false)
+    const x = withoutLastAction(exportBattle(b), b)!
+    expect(x.commands.length).toBe(beforeCount)
+    expect(stateHash(replayBattle(x))).toBe(before)
+  })
+})
