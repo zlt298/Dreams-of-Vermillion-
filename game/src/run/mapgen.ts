@@ -109,6 +109,48 @@ export function generateMap(seed: number, opts: MapOptions = {}): GridMap {
   return { w, h, tiles, deployPlayer, deployEnemy, theme, zones: [{ name: 'control', tiles: zone }, { name: 'extraction', tiles: extract }] }
 }
 
+/** A tile a deploying unit may stand on: on the map and not a building, water or hazard. */
+function deployable(map: GridMap, x: number, y: number): boolean {
+  if (x < 0 || y < 0 || x >= map.w || y >= map.h) return false
+  const k = map.tiles[y * map.w + x].kind
+  return k !== 'block' && k !== 'water' && k !== 'hazard'
+}
+
+/**
+ * Footprint-aware deployment: gives each unit a position whose whole footprint (size × size,
+ * extending +x/+y from `pos`) is on the map, passable and clear of units already placed.
+ * Unit i prefers `deploy[i % deploy.length]`; when that doesn't fit it takes the nearest spot
+ * that does, preferring spots whose footprint lies entirely inside the deployment rows.
+ * `occupied` (optional) holds tiles already taken, e.g. by the other side.
+ */
+export function placeUnits(map: GridMap, units: { pos: Pos; stats: { size: number } }[], deploy: Pos[], occupied: Set<string> = new Set()): void {
+  if (!deploy.length) return
+  const rows = new Set(deploy.map(p => p.y))
+  const taken = occupied
+  units.forEach((u, i) => {
+    const s = Math.max(1, Math.floor(u.stats.size))
+    const pref = deploy[i % deploy.length]
+    const fits = (x: number, y: number) => {
+      for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++)
+        if (!deployable(map, x + dx, y + dy) || taken.has(`${x + dx},${y + dy}`)) return false
+      return true
+    }
+    const inRows = (y: number) => { for (let dy = 0; dy < s; dy++) if (!rows.has(y + dy)) return false; return true }
+    let best: Pos | undefined
+    let bestScore = Infinity
+    if (fits(pref.x, pref.y) && inRows(pref.y)) best = pref
+    else {
+      for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) {
+        if (!fits(x, y)) continue
+        const score = (inRows(y) ? 0 : 10000) + Math.max(Math.abs(x - pref.x), Math.abs(y - pref.y)) * 10 + Math.abs(x - pref.x)
+        if (score < bestScore) { bestScore = score; best = { x, y } }
+      }
+    }
+    u.pos = best ?? pref
+    for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) taken.add(`${u.pos.x + dx},${u.pos.y + dy}`)
+  })
+}
+
 /** Make sure size-1 units can walk from the player zone to the enemy zone (climb ≤ 2 per step). */
 function ensureConnected(tiles: Tile[], w: number, h: number) {
   const at = (x: number, y: number) => tiles[y * w + x]

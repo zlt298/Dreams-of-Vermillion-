@@ -43,6 +43,9 @@ export interface OfficialPack {
 }
 
 // ------------------------------------------------------------------ reading
+/** A list field from pack JSON: anything that isn't an array (missing, {}, a number…) reads as empty. */
+const arr = (x: any): any[] => (Array.isArray(x) ? x : [])
+
 export function readLcp(bytes: Uint8Array): OfficialPack {
   let files: Record<string, Uint8Array>
   try { files = unzipSync(bytes) } catch { throw new Error('Not a valid .lcp file (expected a zip archive)') }
@@ -55,9 +58,10 @@ export function readLcp(bytes: Uint8Array): OfficialPack {
   const classes: OfficialClass[] = []
   if (Array.isArray(json['npc_classes.json'])) {
     // v1 layout
-    const feats = new Map<string, any>((json['npc_features.json'] ?? []).map((f: any) => [f.id, f]))
+    const feats = new Map<string, any>(arr(json['npc_features.json']).filter((f: any) => f && typeof f === 'object').map((f: any) => [f.id, f]))
     for (const c of json['npc_classes.json']) {
-      const ids: [string, boolean][] = [...(c.base_features ?? []).map((id: string) => [id, true]), ...(c.optional_features ?? []).map((id: string) => [id, false])]
+      if (!c || typeof c !== 'object') continue
+      const ids: [string, boolean][] = [...arr(c.base_features).map((id: string): [string, boolean] => [id, true]), ...arr(c.optional_features).map((id: string): [string, boolean] => [id, false])]
       const raw = ids.map(([id, base]) => feats.get(id) && { ...feats.get(id), base }).filter(Boolean)
       const cls = convertClass(c, raw)
       if (cls) classes.push(cls)
@@ -67,7 +71,7 @@ export function readLcp(bytes: Uint8Array): OfficialPack {
     for (const [name, arr] of Object.entries(json)) {
       if (!/^npcc_.*\.json$/.test(name) || !Array.isArray(arr) || !arr.length) continue
       const [c, ...raw] = arr
-      const cls = convertClass(c, raw.filter((f: any) => !f.deprecated).map((f: any) => ({ ...f, base: !!f.base })))
+      const cls = convertClass(c, raw.filter((f: any) => f && typeof f === 'object' && !f.deprecated).map((f: any) => ({ ...f, base: !!f.base })))
       if (cls) classes.push(cls)
     }
   }
@@ -98,7 +102,7 @@ export function tierText(text: any, tier: Tier): string {
 const titleCase = (s: string) => s.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase())
 
 function convertClass(c: any, raw: any[]): OfficialClass | null {
-  if (!c?.id || !c?.name || !c?.stats) return null
+  if (!c?.id || !c?.name || !c?.stats || typeof c.stats !== 'object') return null
   const role = ROLE[String(c.role ?? '').toLowerCase()] ?? 'Striker'
   const st = c.stats
   const stats = ([1, 2, 3] as Tier[]).map(t => {
@@ -110,8 +114,9 @@ function convertClass(c: any, raw: any[]): OfficialClass | null {
     }
     return s
   })
-  const features = raw.map(f => convertFeature(f)).filter((x): x is OfficialFeature => !!x)
-  return { id: c.id, name: titleCase(c.name), role, stats, features }
+  // a malformed feature is skipped rather than failing the whole pack
+  const features = raw.map(f => { try { return convertFeature(f) } catch { return null } }).filter((x): x is OfficialFeature => !!x)
+  return { id: String(c.id), name: titleCase(String(c.name)), role, stats, features }
 }
 
 // ------------------------------------------------------------------ rules-text parsing
@@ -174,7 +179,8 @@ function riderOf(v: any, tier: Tier): { text: string; effects: Effect[]; complet
   if (typeof v === 'object') {
     const text = tierText(v.detail ?? '', tier)
     const effects: Effect[] = []
-    for (const st of v.add_status ?? []) {
+    for (const st of arr(v.add_status)) {
+      if (!st || typeof st !== 'object') continue
       const id = STATUS_IDS[String(st.id ?? '').toLowerCase()]
       if (!id) continue
       const save = st.save ? SAVE_WORDS[String(st.save).toLowerCase()] : undefined
@@ -194,10 +200,10 @@ const WEAPON_TYPES = ['Melee', 'CQB', 'Rifle', 'Cannon', 'Launcher', 'Nexus', 'S
 const SIZES = ['Auxiliary', 'Main', 'Heavy', 'Superheavy'] as const
 
 function tags(f: any, tier: Tier) {
-  return (f.tags ?? []).filter((t: any) => t?.id && t.id !== 'tg_recharge' && t.id !== 'tg_limited' && t.id !== 'tg_reaction' && t.id !== 'tg_npc_trait')
+  return arr(f.tags).filter((t: any) => t?.id && t.id !== 'tg_recharge' && t.id !== 'tg_limited' && t.id !== 'tg_reaction' && t.id !== 'tg_npc_trait')
     .map((t: any) => (t.val != null ? { id: t.id, val: tierVal(t.val, tier) } : { id: t.id }))
 }
-const tagNum = (f: any, id: string, tier: Tier) => { const t = (f.tags ?? []).find((x: any) => x?.id === id); return t ? Number(tierVal(t.val, tier)) || undefined : undefined }
+const tagNum = (f: any, id: string, tier: Tier) => { const t = arr(f.tags).find((x: any) => x?.id === id); return t ? Number(tierVal(t.val, tier)) || undefined : undefined }
 
 function convertFeature(f: any): OfficialFeature | null {
   if (!f?.id || !f?.name) return null
@@ -205,7 +211,7 @@ function convertFeature(f: any): OfficialFeature | null {
   const action = Array.isArray(f.actions) ? f.actions[0] : undefined
   let partial = false
   const byTier = ([1, 2, 3] as Tier[]).map((tier): Feature => {
-    const name = titleCase(f.name)
+    const name = titleCase(String(f.name))
     const trig = action?.trigger ?? f.trigger
     const text = tierText([f.effect, trig && `Trigger: ${trig}`, action?.detail, f.on_hit && `On hit: ${riderOf(f.on_hit, tier).text}`].filter(Boolean).join(' '), tier)
     const recharge = tagNum(f, 'tg_recharge', tier)
@@ -221,12 +227,12 @@ function convertFeature(f: any): OfficialFeature | null {
         type: 'weapon', name,
         weaponType: (WEAPON_TYPES.find(t => words.includes(t)) ?? 'Rifle') as WeaponFeature['weaponType'],
         size: SIZES.find(s => words.includes(s)) ?? 'Main',
-        range: (f.range ?? []).map((r: any) => ({ type: titleCase(String(r.type)), val: Number(tierVal(r.val, tier)) || 1 })),
-        damage: (f.damage ?? []).map((d: any) => ({ type: titleCase(String(d.type)), val: tierVal(d.val ?? d.damage, tier) })),
+        range: arr(f.range).filter((r: any) => r && typeof r === 'object').map((r: any) => ({ type: titleCase(String(r.type)), val: Number(tierVal(r.val, tier)) || 1 })),
+        damage: arr(f.damage).filter((d: any) => d && typeof d === 'object').map((d: any) => ({ type: titleCase(String(d.type)), val: tierVal(d.val ?? d.damage, tier) })),
         tags: tags(f, tier),
         accuracy: Number(tierVal(f.accuracy, tier)) || undefined,
         attackBonus: Number(tierVal(f.attack_bonus, tier)) || 0,
-        smart: (f.tags ?? []).some((t: any) => t?.id === 'tg_smart'),
+        smart: arr(f.tags).some((t: any) => t?.id === 'tg_smart'),
         onHit: [...hit.effects, ...(onHitText ? [{ do: 'text' as const, text: onHitText }] : [])],
         onCrit: [...crit.effects, ...(crit.text ? [{ do: 'text' as const, text: crit.text }] : [])],
         recharge, uses, text: tierText(f.effect, tier) || undefined,
@@ -259,19 +265,20 @@ function convertFeature(f: any): OfficialFeature | null {
     // traits and systems: stat bonuses, resistances, immunities and flight are automated, the rest is text
     const stats: Partial<NpcStats> = {}
     const STAT_IDS: Record<string, keyof NpcStats> = { hp: 'hp', armor: 'armor', evasion: 'evasion', evade: 'evasion', edef: 'edef', speed: 'speed', sensor: 'sensors', sensors: 'sensors', heatcap: 'heatcap', structure: 'structure', stress: 'stress', save: 'save' }
-    for (const b of [...(f.bonuses ?? []), ...(f.bonus ? Object.entries(f.bonus).map(([id, val]) => ({ id, val })) : [])] as any[]) {
+    for (const b of [...arr(f.bonuses), ...(f.bonus && typeof f.bonus === 'object' ? Object.entries(f.bonus).map(([id, val]) => ({ id, val })) : [])] as any[]) {
+      if (!b || typeof b !== 'object') continue
       const k = STAT_IDS[String(b.id).toLowerCase()]
       const v = Number(tierVal(b.val, tier))
       if (k && v) stats[k] = ((stats[k] as number) ?? 0) + v
     }
-    const resist = [...(f.add_resist ?? []), ...(f.resistance ? [].concat(f.resistance) : [])].map((r: any) => (typeof r === 'string' ? r : r?.type ?? r?.val)).filter(Boolean).map(titleCase)
+    const resist = [...arr(f.add_resist), ...(f.resistance ? [].concat(f.resistance) : [])].map((r: any) => (typeof r === 'string' ? r : r?.type ?? r?.val)).filter(Boolean).map(titleCase)
     const immune = [...(f.immunity ? [].concat(f.immunity) : [])].map((x: any) => String(x).toLowerCase())
     const flying = /\bcan fly\b|\bflies\b|\bfly when/i.test(text)
     const automated = Object.keys(stats).length > 0 || resist.length > 0 || immune.length > 0 || flying
     if (!automated || (text.split(/(?<=\.)\s+/).length > 1)) partial = true
     return { type: 'trait', name, ...(Object.keys(stats).length ? { stats } : {}), ...(resist.length ? { resist } : {}), ...(immune.length ? { immune } : {}), ...(flying ? { flying } : {}), text }
   })
-  return { id: f.id, name: titleCase(f.name), base: !!f.base, byTier, partial }
+  return { id: String(f.id), name: titleCase(String(f.name)), base: !!f.base, byTier, partial }
 }
 
 // ------------------------------------------------------------------ browser storage

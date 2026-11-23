@@ -34,50 +34,78 @@ export class ImportError extends Error {}
 
 const asId = (x: any): string | null => (x == null ? null : typeof x === 'string' ? x : x.id ?? null)
 
+/** A list field: missing → [], an array → itself, anything else is a malformed file. */
+function list(x: any, what: string): any[] {
+  if (x == null) return []
+  if (!Array.isArray(x)) throw new ImportError(`Malformed pilot file: '${what}' is not a list`)
+  return x
+}
+
+/** An object entry: null / non-objects are a malformed file. */
+function obj(x: any, what: string): any {
+  if (!x || typeof x !== 'object') throw new ImportError(`Malformed pilot file: bad ${what} entry`)
+  return x
+}
+
+function toLevel(x: any): number {
+  if (x == null || x === '') return 0
+  const n = Number(x)
+  if (!Number.isFinite(n)) throw new ImportError(`Malformed pilot file: level '${x}' is not a number`)
+  return n
+}
+
+function toSkills(x: any): [number, number, number, number] {
+  const ms = list(x, 'mechSkills')
+  const at = (i: number) => Number(ms[i]) || 0
+  return [at(0), at(1), at(2), at(3)]
+}
+
 function mountFromV3(m: any): MountBuild {
   const slots: MountBuild['slots'] = []
-  for (const s of [...(m.slots ?? []), ...(m.extra ?? [])]) {
-    const w = s.weapon
+  obj(m, 'mount')
+  for (const s of [...list(m.slots, 'slots'), ...list(m.extra, 'extra')]) {
+    const w = obj(s, 'slot').weapon
     slots.push({ size: s.size, weaponId: asId(w), modId: asId(w?.mod), profile: w?.selectedProfile ?? 0 })
   }
-  return { type: m.mount_type, slots, bonusEffects: (m.bonus_effects ?? []).map(asId).filter(Boolean) }
+  return { type: m.mount_type, slots, bonusEffects: list(m.bonus_effects, 'bonus_effects').map(asId).filter((x): x is string => !!x) }
 }
 
 function convertPilotData(d: any, mechIndex?: number): PilotBuild {
-  const mechs: any[] = d.mechs ?? []
+  const mechs: any[] = list(d.mechs, 'mechs')
   if (!mechs.length) throw new ImportError(`Pilot '${d.callsign ?? d.name}' has no mechs`)
+  mechs.forEach(m => obj(m, 'mech'))
   let mech = mechs[0]
   if (mechIndex != null && mechs[mechIndex]) mech = mechs[mechIndex]
   else if (d.favorite_mech) mech = mechs.find(m => m.id === d.favorite_mech) ?? mech
   else if (mechs.find(m => m.active)) mech = mechs.find(m => m.active)
-  const lo = mech.loadouts?.[mech.active_loadout_index ?? 0] ?? mech.loadouts?.[0] ?? {}
+  const los = list(mech.loadouts, 'loadouts')
+  const lo = obj(los[mech.active_loadout_index ?? 0] ?? los[0] ?? {}, 'loadout')
   const mounts: MountBuild[] = []
-  for (const m of lo.mounts ?? []) mounts.push(mountFromV3(m))
+  for (const m of list(lo.mounts, 'mounts')) mounts.push(mountFromV3(m))
   for (const extra of ['improved_armament', 'integratedWeapon', 'superheavy_mounting']) {
     const m = lo[extra]
-    if (m && (m.slots ?? []).some((s: any) => s.weapon)) {
+    if (m && list(m.slots, extra).some((s: any) => s?.weapon)) {
       const mb = mountFromV3(m)
       if (extra === 'integratedWeapon') mb.type = 'CB-Integrated'
       mounts.push(mb)
     }
   }
-  for (const m of lo.integratedMounts ?? []) {
-    const w = m.weapon ?? m.slots?.[0]?.weapon
+  for (const m of list(lo.integratedMounts, 'integratedMounts')) {
+    const w = obj(m, 'integrated mount').weapon ?? m.slots?.[0]?.weapon
     if (w) mounts.push({ type: 'Integrated', slots: [{ size: 'Integrated', weaponId: asId(w) }], bonusEffects: [] })
   }
-  const systems = [...(lo.systems ?? []), ...(lo.integratedSystems ?? [])].map(asId).filter((x): x is string => !!x)
-  const ms = d.mechSkills ?? [0, 0, 0, 0]
-  const talents = (d.talents ?? []).map((t: any) => (typeof t === 'string' ? { id: t, rank: 1 } : { id: t.id, rank: t.rank ?? 1 }))
-  const coreBonuses = (d.core_bonuses ?? []).map(asId).filter(Boolean)
-  const licenses = (d.licenses ?? [])
+  const systems = [...list(lo.systems, 'systems'), ...list(lo.integratedSystems, 'integratedSystems')].map(asId).filter((x): x is string => !!x)
+  const talents = list(d.talents, 'talents').map((t: any) => (typeof t === 'string' ? { id: t, rank: 1 } : { id: obj(t, 'talent').id, rank: t.rank ?? 1 }))
+  const coreBonuses = list(d.core_bonuses, 'core_bonuses').map(asId).filter((x): x is string => !!x)
+  const licenses = list(d.licenses, 'licenses')
     .map((l: any) => ({ id: l?.id ?? l?.stub?.id ?? l?.license?.id, rank: Number(l?.rank) || 0 }))
     .filter((l: any) => typeof l.id === 'string' && l.rank > 0)
   return finish({
     id: d.id ?? crypto.randomUUID(),
     callsign: d.callsign ?? d.name ?? 'Lancer',
     name: d.name ?? d.callsign ?? 'Lancer',
-    level: d.level ?? 0,
-    mechSkills: [ms[0] ?? 0, ms[1] ?? 0, ms[2] ?? 0, ms[3] ?? 0],
+    level: toLevel(d.level),
+    mechSkills: toSkills(d.mechSkills),
     talents,
     coreBonuses,
     licenses,
@@ -88,10 +116,11 @@ function convertPilotData(d: any, mechIndex?: number): PilotBuild {
 
 /** COMP/CON pregen template ({name, build:{mechSkills,talents,mech:{systems,mounts}}}). Pregens fly the Everest. */
 function convertPregen(p: any): PilotBuild {
-  const b = p.build
-  const mounts: MountBuild[] = (b.mech.mounts ?? []).map((m: any) => ({
-    type: m.mount_type,
-    slots: (m.slots ?? []).map((w: string, i: number) => ({
+  const b = obj(p.build, 'build')
+  obj(b.mech, 'mech')
+  const mounts: MountBuild[] = list(b.mech.mounts, 'mounts').map((m: any) => ({
+    type: obj(m, 'mount').mount_type,
+    slots: list(m.slots, 'slots').map((w: string) => ({
       size: m.mount_type === 'Flex' && m.slots.length > 1 ? 'Auxiliary' : m.mount_type,
       weaponId: w,
     })),
@@ -102,10 +131,10 @@ function convertPregen(p: any): PilotBuild {
     callsign: p.name,
     name: p.name,
     level: 0,
-    mechSkills: b.mechSkills,
-    talents: (b.talents ?? []).map((id: string) => ({ id, rank: 1 })),
+    mechSkills: toSkills(b.mechSkills),
+    talents: list(b.talents, 'talents').map((id: string) => ({ id, rank: 1 })),
     coreBonuses: [],
-    mech: { name: `${p.name} Everest`, frameId: 'mf_standard_pattern_i_everest', mounts, systems: b.mech.systems ?? [] },
+    mech: { name: `${p.name} Everest`, frameId: 'mf_standard_pattern_i_everest', mounts, systems: list(b.mech.systems, 'systems') },
     unknown: [],
   })
 }
@@ -129,14 +158,22 @@ export function resolveUnknown(p: PilotBuild): string[] {
   return unknown
 }
 
+/** Any other shape error in a malformed file surfaces as an ImportError, never a raw TypeError. */
+function guarded(f: () => PilotBuild): PilotBuild {
+  try { return f() } catch (e) {
+    if (e instanceof ImportError) throw e
+    throw new ImportError(`Malformed pilot file: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
 /** Accepts any supported JSON shape; returns one or more pilots. */
 export function importPilots(json: unknown): PilotBuild[] {
   const j: any = json
   if (Array.isArray(j)) return j.flatMap(x => importPilots(x))
   if (!j || typeof j !== 'object') throw new ImportError('Not a COMP/CON pilot file')
   if (j.EXPORT_TYPE && j.data) return importPilots(j.data)
-  if (j.build && j.build.mech) return [convertPregen(j)]
-  if (j.mechs) return [convertPilotData(j)]
+  if (j.build && j.build.mech) return [guarded(() => convertPregen(j))]
+  if (j.mechs) return [guarded(() => convertPilotData(j))]
   if (j.pilots) return importPilots(j.pilots)
   throw new ImportError('Unrecognised file: expected a COMP/CON pilot export (.json)')
 }

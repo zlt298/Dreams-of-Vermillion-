@@ -7,7 +7,7 @@ import { buildMechUnit, mechSP } from '../rules/stats'
 import { scriptIdsFor, getScript } from '../rules/effects/registry'
 import { buildTeam } from '../enemies/build'
 import { catalog, teamsFor, validTeams } from '../enemies/catalog'
-import { generateMap, themeForAct } from '../run/mapgen'
+import { generateMap, placeUnits, themeForAct } from '../run/mapgen'
 import {
   type RunState, type RunNode, newRun, availableNodes, nodeTier, sitrepFor, squadUnits, recordBattle, fullRepair,
   repairOptions, applyRepair, permHpBonus, rollRewards, applyReward, levelUp, replacePilots, refitPilot, chooseTeam, saveRun, loadRun, ACTS, actLevel, lastLoadProblem,
@@ -314,8 +314,8 @@ export class App {
       const map = generateMap(seed, { theme: themeForAct(team.tier) })
       const units = squad.map(p => buildMechUnit(p))
       const enemies = buildTeam(team, units.length)
-      units.forEach((u, i) => (u.pos = map.deployPlayer[i]))
-      enemies.forEach((u, i) => (u.pos = map.deployEnemy[i % map.deployEnemy.length]))
+      placeUnits(map, units, map.deployPlayer)
+      placeUnits(map, enemies, map.deployEnemy)
       const b = new Battle({ map, units: [...units, ...enemies], seed, sitrep: { id: team.sitrep === 'control' ? 'control' : 'standard', name: team.sitrep === 'control' ? 'Control' : 'Basic Combat', rounds: 3, zone: map.zones?.find(z => z.name === 'control')?.tiles, description: team.sitrep === 'control' ? 'Hold the zone for 3 rounds or destroy all hostiles.' : 'Destroy all hostile forces.' } })
       b.start()
       this.clear()
@@ -491,8 +491,8 @@ export class App {
     const map = generateMap(n.seed, { theme: themeForAct(n.act) })
     const units = squadUnits(run)
     const enemies = buildTeam(team, units.length)
-    units.forEach((u, i) => (u.pos = map.deployPlayer[i]))
-    enemies.forEach((u, i) => (u.pos = map.deployEnemy[i % map.deployEnemy.length]))
+    placeUnits(map, units, map.deployPlayer)
+    placeUnits(map, enemies, map.deployEnemy)
     const hvt = [...enemies].sort((a, b) => (b.flags.budget ?? 1) - (a.flags.budget ?? 1))[0]
     const sitrep = sitrepFor(n.kind === 'boss' ? { ...n, sitrep: 'standard' } : n, map, hvt?.id)
     const title = finale ? `CINNABAR ANNEX // CASKET VAULT — ${team.name}` : `${team.name} (Act ${n.act} ${n.kind})`
