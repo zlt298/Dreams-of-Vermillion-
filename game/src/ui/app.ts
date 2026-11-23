@@ -12,7 +12,8 @@ import {
   type RunState, type RunNode, newRun, availableNodes, nodeTier, sitrepFor, squadUnits, recordBattle, fullRepair,
   repairOptions, applyRepair, permHpBonus, rollRewards, applyReward, levelUp, replacePilots, refitPilot, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
 } from '../run/run'
-import { BattleScreen, type UndoEntry } from './battle-ui'
+// the battle screen (and Three.js) load on demand: the title, hangar and campaign map don't need them
+import type { BattleScreen, UndoEntry } from './battle-ui'
 import { exportBattle, replayBattle, withoutLastAction } from '../replay/replay'
 import { saveBattle, loadBattle, clearBattle } from '../run/battle-save'
 import { rangeChip, tagChip } from './tags'
@@ -385,8 +386,10 @@ export class App {
    * Show a battle with saving and undo wired in. Undo restores an in-session snapshot (fast); with none left
    * (after a reload) the battle is rebuilt by replaying every recorded command except the last player action.
    */
-  mountBattle(b: Battle, o: { title: string; onEnd: (w: 'player' | 'enemy') => void; save?: (b: Battle) => void }, undoStack: UndoEntry[] = []) {
+  async mountBattle(b: Battle, o: { title: string; onEnd: (w: 'player' | 'enemy') => void; save?: (b: Battle) => void }, undoStack: UndoEntry[] = []) {
     this.battle?.dispose()
+    this.battle = null
+    const { BattleScreen } = await import('./battle-ui')
     this.battle = new BattleScreen(this.root, b, {
       title: o.title,
       onEnd: o.onEnd,
