@@ -1,8 +1,8 @@
 // Map themes per act: outskirts (unchanged), industrial park, cleanroom with Martian incursions.
 import { describe, expect, it } from 'vitest'
-import { generateMap, themeForAct } from '../src/run/mapgen'
-import { Battle } from '../src/rules/battle'
-import { pregenUnit } from './helpers'
+import { generateMap, themeForAct } from '../../src/run/mapgen'
+import { Battle } from '../../src/rules/battle'
+import { pregenUnit } from '../support'
 
 describe('map themes', () => {
   it('acts map to themes', () => {

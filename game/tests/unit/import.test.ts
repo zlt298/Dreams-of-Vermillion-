@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { importPilots } from '../src/import/compcon'
-import { buildMechUnit, deriveMechStats, collectBonuses, mechSP } from '../src/rules/stats'
-import v3 from './fixtures/V3_FIXTURE.json'
-import v2 from './fixtures/v2_PILOT_FIXTURE.json'
-import pregens from '../src/data/pregens/pregens.json'
+import { importPilots } from '../../src/import/compcon'
+import { buildMechUnit, deriveMechStats, collectBonuses, mechSP } from '../../src/rules/stats'
+import v3 from '../fixtures/V3_FIXTURE.json'
+import v2 from '../fixtures/v2_PILOT_FIXTURE.json'
+import pregens from '../../src/data/pregens/pregens.json'
 
 describe('COMP/CON import', () => {
   it('reads a v3 "Save Pilot" export', () => {

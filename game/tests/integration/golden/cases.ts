@@ -2,17 +2,17 @@
 // alters a fight (rules, scripts, AI, enemy data, maps) shows up. Regenerate on purpose with: npm run golden
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { buildTeam } from '../../src/enemies/build'
-import { autoBattle } from '../../src/ai/ai'
-import { Battle } from '../../src/rules/battle'
-import { importPilots } from '../../src/import/compcon'
-import { buildMechUnit, setUidState } from '../../src/rules/stats'
-import { generateMap } from '../../src/run/mapgen'
-import { stateHash } from '../../src/replay/replay'
-import pregens from '../../src/data/pregens/pregens.json'
-import ll5 from '../../src/data/squads/ll5.json'
-import ll10 from '../../src/data/squads/ll10.json'
-import '../../src/rules/effects/scripts'
+import { buildTeam } from '../../../src/enemies/build'
+import { autoBattle } from '../../../src/ai/ai'
+import { Battle } from '../../../src/rules/battle'
+import { importPilots } from '../../../src/import/compcon'
+import { buildMechUnit, setUidState } from '../../../src/rules/stats'
+import { generateMap } from '../../../src/run/mapgen'
+import { stateHash } from '../../../src/replay/replay'
+import pregens from '../../../src/data/pregens/pregens.json'
+import ll5 from '../../../src/data/squads/ll5.json'
+import ll10 from '../../../src/data/squads/ll10.json'
+import '../../../src/rules/effects/scripts'
 
 export const CASES = [
   { id: 't1-standard', team: 't1-checkpoint-garrison', seed: 11 },
@@ -34,7 +34,7 @@ export interface GoldenResult { id: string; round: number; winner: string | null
 
 export function runCase(c: (typeof CASES)[number]): GoldenResult {
   setUidState(0) // ids must not depend on what ran before
-  const team = JSON.parse(readFileSync(join(import.meta.dirname, '../../../data/enemies', `${c.team}.json`), 'utf8'))
+  const team = JSON.parse(readFileSync(join(import.meta.dirname, '../../../../data/enemies', `${c.team}.json`), 'utf8'))
   const squad = squads[team.tier].map(raw => buildMechUnit(importPilots(raw)[0]))
   const enemies = buildTeam(team, 4)
   const map = generateMap(c.seed * 977)

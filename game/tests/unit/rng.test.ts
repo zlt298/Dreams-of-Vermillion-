@@ -1,7 +1,7 @@
 // The seeded RNG and dice helpers underpin every roll in the game, so they get exact checks:
 // determinism, inclusive bounds, distribution, and the LANCER dice rules (crits, accuracy, overkill).
 import { describe, expect, it } from 'vitest'
-import { Rng, parseDice, rollDice, averageDice, rollAccuracy } from '../src/rules/rng'
+import { Rng, parseDice, rollDice, averageDice, rollAccuracy } from '../../src/rules/rng'
 
 describe('Rng', () => {
   it('is deterministic for a seed and serializable through its state', () => {

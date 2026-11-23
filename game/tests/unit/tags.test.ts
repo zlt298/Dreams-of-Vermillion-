@@ -1,6 +1,6 @@
 // Tag tooltips: names and rules text from lancer-data, chips and free-text annotation.
 import { describe, expect, it } from 'vitest'
-import { annotateTags, rangeChip, tagChip, tagInfo } from '../src/ui/tags'
+import { annotateTags, rangeChip, tagChip, tagInfo } from '../../src/ui/tags'
 
 describe('tag tooltips', () => {
   it('fills in tag values', () => {
