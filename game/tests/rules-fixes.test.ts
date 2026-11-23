@@ -206,10 +206,14 @@ describe('combinations around the fixes', () => {
     const b = battle([a, e])
     b.beginTurn(a)
     b.addStatus(e, 'lockon')
+    a.stats.techAttack = 40 // a sure hit, so SNOW_CRASH's heat lands
+    const heat = e.heat
     const ctx = b.techAttackRoll(a, e, 'test')
     expect(ctx.accuracy).toBe(1)
     expect(b.has(e, 'lockon')).toBe(false)
-    expect(a.flags.snow).toBe(true)
+    // the after-attack hooks run inside every tech attack: the 2 heat is dealt and nothing stays pending
+    expect(e.heat).toBe(heat + 2)
+    expect(a.flags.snow).toBeUndefined()
   })
 
   it('a Prone mech stands up, then can Boost', () => {
