@@ -195,6 +195,8 @@ export class Battle {
     if (!this.sandboxDepth && this.events.length > Battle.MAX_EVENTS * 2) this.events.splice(0, this.events.length - Battle.MAX_EVENTS)
     for (const l of this.listeners) l(e)
   }
+  /** Last round anyone made an attack roll or lost HP (the AI's stalemate pressure reads it). */
+  lastAttackRound = 0
   say(text: string, kind: LogEntry['kind'] = 'info') {
     this.log.push({ round: this.round, text, kind })
     if (!this.sandboxDepth && this.log.length > Battle.MAX_LOG * 2) this.log.splice(0, this.log.length - Battle.MAX_LOG)

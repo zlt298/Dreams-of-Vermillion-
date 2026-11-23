@@ -161,7 +161,11 @@ function customValue(b: Battle, u: Unit, a: CustomAction, from: Pos): { value: n
         let v = f ? effectValue(b, u, t, effects) * (f.save ? 0.6 : 1) : (a.aiScore?.(b, u, t) ?? 0) * 0.6
         // scripted tech attacks (system invades, full techs): weigh by the hit chance, and count an invade's
         // own 2 heat, so they compare fairly with Fragment Signal (which is valued the same way)
-        if (!f && a.aiScore && /tech/.test(a.activation)) v = techHitChance(u, t) * ((a.aiScore(b, u, t) ?? 0) + (a.techOption === 'invade' ? invadeHeatValue(t) : 0))
+        if (!f && a.aiScore && /tech/.test(a.activation)) {
+          // the engine refuses tech actions on Biological, shut-down, hidden or out-of-range targets: don't plan them
+          if (b.techTargetValid(u, t, a.techOption) !== true) continue
+          v = techHitChance(u, t) * ((a.aiScore(b, u, t) ?? 0) + (a.techOption === 'invade' ? invadeHeatValue(t) : 0))
+        }
         if (!best || v > best.value) best = { value: v, target: t }
       }
       return best ? { ...best, value: best.value - heatPenalty } : null
@@ -220,12 +224,7 @@ function hazardCost(b: Battle, u: Unit, p: Pos): number {
  * other's reach until the round cap; the advance pull grows with this so somebody commits.
  */
 export function stallRounds(b: Battle, grace = 3): number {
-  let last = b.log[0]?.round ?? 0
-  for (let i = b.log.length - 1; i >= 0; i--) {
-    const e = b.log[i]
-    if (e.kind === 'attack' || e.kind === 'damage') { last = e.round; break }
-  }
-  return Math.max(0, b.round - last - grace)
+  return Math.max(0, b.round - b.lastAttackRound - grace)
 }
 let stall = 0
 
@@ -314,6 +313,7 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
       continue
     }
     if (a.text && a.name.startsWith('Deploy') && !u.flags[`ai_deployed_${a.key}`]) {
+      if (a.usable(b, u) !== true) continue
       // deploy cover/drones once, early
       const tgt = a.target === 'tile' ? { x: Math.max(0, Math.min(b.map.w - 1, p.x + 1)), y: p.y } : undefined
       opts.push({ kind: 'custom', action: a, target: tgt, value: b.round <= 2 ? 1.5 : 0.3, cost: c })
@@ -405,7 +405,10 @@ function execute(b: Battle, u: Unit, o: Option) {
       const auxes = b.auxFollowUps(u, [o.a.weapon, ...(o.b ? [o.b.weapon] : [])]).map(w => ({ weapon: w, aim: o.a.aim }))
       return b.barrage(u, o.a, o.b, auxes)
     }
-    case 'custom': return b.useCustom(u, o.action, o.target)
+    case 'custom':
+      // generic "deploy once, early" options are tried once (a failed placement must not repeat every turn)
+      if (o.action.name.startsWith('Deploy') && !o.action.aiTarget) u.flags[`ai_deployed_${o.action.key}`] = true
+      return b.useCustom(u, o.action, o.target)
     case 'invade': return b.invade(u, o.target)
     case 'lockon': return b.lockOn(u, o.target)
     case 'reload': return b.reload(u, o.weapon)

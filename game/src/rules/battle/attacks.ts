@@ -477,6 +477,7 @@ export function rerollToHit(bt: Battle, ctx: AttackCtx) {
 }
 
 export function rollToHit(bt: Battle, ctx: AttackCtx) {
+  bt.lastAttackRound = bt.round
   const t = ctx.target
   const net = ctx.accuracy - (ctx.ignoreDifficulty ? 0 : ctx.difficulty)
   if (ctx.cancelled) {

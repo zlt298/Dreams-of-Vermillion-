@@ -1,0 +1,37 @@
+// AI fixes found by the balance sim (themed squads vs the enemy teams)
+import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { buildMechUnit } from '../src/rules/stats'
+import { buildTeam } from '../src/enemies/build'
+import { planFor, stallRounds } from '../src/ai/ai'
+import themed from '../src/data/squads/themed.json'
+import { battle, flatMap, pregenUnit } from './helpers'
+
+const ghost = (callsign: string, level = 10) => buildMechUnit(structuredClone((themed as any[]).find(s => s.theme === 'ghosts' && s.level === level).pilots.find((p: any) => p.callsign === callsign)))
+const team = (id: string) => JSON.parse(readFileSync(join(import.meta.dirname, '../../data/enemies', `${id}.json`), 'utf8'))
+
+describe('AI found by the balance sim', () => {
+  it('never plans tech actions against Biological targets (they are immune)', () => {
+    const g = ghost('Glitch')
+    const bugs = buildTeam(team('t3-regolith-stalkers'), 4).filter(u => u.role === 'Biological')
+    g.pos = { x: 5, y: 5 }
+    bugs.forEach((u, i) => (u.pos = { x: 3 + i, y: 8 }))
+    const b = battle([g, ...bugs], flatMap(14, 14))
+    b.beginTurn(g)
+    const plan = planFor(b, g)
+    const tech = plan.actions.filter(a => a.kind === 'invade' || (a.kind === 'custom' && /tech/.test(a.action.activation)))
+    expect(tech).toEqual([])
+  })
+
+  it('stalemate pressure counts rounds without attacks, not log lines', () => {
+    const a = pregenUnit('Assault'), e = pregenUnit('Sniper', 'enemy')
+    a.pos = { x: 1, y: 1 }; e.pos = { x: 10, y: 10 }
+    const b = battle([a, e], flatMap(12, 12))
+    b.round = 20
+    for (let i = 0; i < 2000; i++) b.say(`${a.name} uses Something.`, 'attack') // non-attack chatter, trimmed log
+    expect(stallRounds(b)).toBe(17)
+    b.lastAttackRound = 19
+    expect(stallRounds(b)).toBe(0)
+  })
+})
