@@ -288,7 +288,7 @@ registerScripts([
       if (b.canSpend(self, 'reaction') !== true || !once(self, 'punish')) return
       const w = b.bestThreatWeapon(self, ctx.attacker)
       if (!w) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       b.say(`${self.name} punishes ${ctx.attacker.name}!`)
       b.weaponAttack(self, w, { targetId: ctx.attacker.id }, 'overwatch')
     },
@@ -306,7 +306,7 @@ registerScripts([
       if (role !== 'target' || ctx.attacker.destroyed || !ctx.ranged || b.canSpend(self, 'reaction') !== true || !once(self, 'returnfire')) return
       const w = self.weapons.find(w => w.size === 'Auxiliary' && isRangedWeapon(b, w) && b.weaponReady(self, w) && b.validTarget(self, w, ctx.attacker) === true)
       if (!w) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       b.say(`${self.name} returns fire!`)
       b.weaponAttack(self, w, { targetId: ctx.attacker.id }, 'free')
     },
@@ -593,7 +593,7 @@ registerScripts([
       if (ctx.attacker === self || b.hostile(self, ctx.attacker) || !ctx.hit || ctx.target.destroyed || b.canSpend(self, 'reaction') !== true) return
       const w = b.bestThreatWeapon(self, ctx.target)
       if (!w || !once(self, 'flank')) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       b.say(`${self.name} flanks!`)
       b.weaponAttack(self, w, { targetId: ctx.target.id }, 'overwatch')
     },
@@ -619,7 +619,7 @@ registerScripts([
       if (!b.hostile(self, mover) || mover.destroyed || b.canSpend(self, 'reaction') !== true || self.policies.overwatch === 'off') return
       const w = self.weapons.find(w => isWeaponType(w, 'CQB') && b.weaponReady(self, w) && b.weaponThreat(self, w) >= b.distance(self, mover) && b.validTarget(self, w, mover) === true)
       if (!w || path.length < 2) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       b.say(`${self.name}: Semper Vigilo!`)
       b.weaponAttack(self, w, { targetId: mover.id }, 'overwatch')
     },

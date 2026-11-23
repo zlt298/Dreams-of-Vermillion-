@@ -62,7 +62,7 @@ registerScripts([
       if (!w || b.distance(self, ctx.target) > 15 || b.canSpend(self, 'reaction') !== true || self.flags['round:autopod']) return
       if (!b.offerReaction(self, 'autopod', 'Autonomous Assault?', `${ctx.attacker.name} consumed Lock On on ${ctx.target.name}. Spend ${self.name}'s reaction to hit it automatically with the Autopod?`)) return
       self.flags['round:autopod'] = true
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       b.say(`${self.name}'s Autopod fires on ${ctx.target.name} (Autonomous Assault).`, 'attack')
       b.weaponAttack(self, w, { targetId: ctx.target.id }, 'free', { autoHit: true })
     },
@@ -78,7 +78,7 @@ registerScripts([
       if (!w) return
       if (!b.offerReaction(self, 'vorpal', 'Snicker-Snack?', `${src.name} damaged ${target.name}. Spend ${self.name}'s reaction to attack it with the Vorpal Gun?`)) return
       self.flags['round:vorpal'] = true
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       b.weaponAttack(self, w, { targetId: src.id }, 'free')
     },
   },

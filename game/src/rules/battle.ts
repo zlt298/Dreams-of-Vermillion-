@@ -807,7 +807,11 @@ export class Battle {
     if (t.flags.intangible) { this.say(`${t.name} is intangible: unaffected.`); return 0 }
     for (const o of this.alive()) for (const sc of scriptsFor(o)) sc.beforeAnyDamage?.(this, o, t, parts, opts)
     const shredded = this.has(t, 'shredded')
-    const resists = (type: string) => !opts.irreducible && !shredded && (opts.resistAll || opts.resistTypes?.includes(type) || t.resist.includes(type) || t.resist.includes('all') || (t.flags.resistAll ?? 0) > 0)
+    const rctx: DamageCtx = { source: opts.source, attack: opts.attack, amount: 0, kind: 'hp' }
+    // Resistance from any number of sources halves once
+    const scriptResist = (type: string) => scriptsFor(t).some(s => s.grantsResistance?.(this, t, type, rctx)) ||
+      this.alive().some(o => o !== t && scriptsFor(o).some(s => s.grantsAnyResistance?.(this, o, t, type, rctx)))
+    const resists = (type: string) => !opts.irreducible && !shredded && (opts.resistAll || opts.resistTypes?.includes(type) || t.resist.includes(type) || t.resist.includes('all') || (t.flags.resistAll ?? 0) > 0 || scriptResist(type))
     let hpDmg = 0, heat = 0, burn = 0
     const exposed = this.has(t, 'exposed')
     // Grunts are destroyed by heat from any source other than their own systems
@@ -1361,7 +1365,8 @@ export class Battle {
       flags: { ...u.flags },
       statuses: u.statuses.map(s => ({ ...s })),
       bonuses: u.bonuses.slice(), resist: u.resist.slice(), immune: u.immune.slice(),
-      weapons: u.weapons.map(w => ({ w, loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex })),
+      // scripts reshape the attack profile (Ammo Case damage types, Thunder God AP): previews must not keep the change
+      weapons: u.weapons.map(w => ({ w, loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex, profiles: w.profiles.map(p => ({ p, damage: p.damage.map(d => ({ ...d })), tags: p.tags.map(t => ({ ...t })) })) })),
       systems: u.systems.map(s => ({ s, destroyed: s.destroyed, usesLeft: s.usesLeft, charged: s.charged })),
       stats: { ...u.stats },
     }))
@@ -1375,7 +1380,10 @@ export class Battle {
         x.u.statuses = x.statuses
         x.u.bonuses = x.bonuses; x.u.resist = x.resist; x.u.immune = x.immune
         Object.assign(x.u.stats, x.stats)
-        for (const w of x.weapons) Object.assign(w.w, { loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex })
+        for (const w of x.weapons) {
+          Object.assign(w.w, { loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex })
+          for (const sp of w.profiles) { sp.p.damage = sp.damage; sp.p.tags = sp.tags }
+        }
         for (const s of x.systems) Object.assign(s.s, { destroyed: s.destroyed, usesLeft: s.usesLeft, charged: s.charged })
       }
       this.units.length = nUnits

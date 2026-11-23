@@ -218,6 +218,8 @@ export function buildMechUnit(p: PilotBuild, side: 'player' | 'enemy' = 'player'
   }
   const resist: string[] = []
   for (const s of p.mech.systems) {
+    // Deep Well's heat Resistance is conditional (turns started in the Danger Zone): its script grants it
+    if (s === 'ms_deep_well_heat_sink') continue
     const ar = Lancer.systems.get(s)?.add_resist
     for (const r of Array.isArray(ar) ? ar : ar ? [ar] : []) if (r.resist) resist.push(r.resist)
   }
