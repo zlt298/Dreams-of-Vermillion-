@@ -100,6 +100,9 @@ export function weaponReach(bt: Battle, u: Unit, w: Weapon): number {
   if (!rs.length) m = 1
   const thrown = [...u.bonuses, ...w.bonuses].find(b => b.id === 'thrown' && bt.bonusApplies(b, w))
   if (thrown) m = Math.max(m, Number(thrown.val))
+  // the official Thrown X tag: the weapon can be thrown at targets within range X
+  const tagged = tagVal(bt.profile(w).tags, 'tg_thrown')
+  if (tagged) m = Math.max(m, tagged)
   return m
 }
 

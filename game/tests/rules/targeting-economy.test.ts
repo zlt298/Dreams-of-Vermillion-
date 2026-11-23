@@ -118,10 +118,9 @@ describe('buildWeaponCtx', () => {
     expect([near.melee, near.ranged, near.difficulty]).toEqual([true, false, 0])
   })
 
-  // BUG: the official THROWN X tag (Tactical Knife Thrown 3, Shock Knife Thrown 5, War Pike Thrown 5) never becomes a
-  // reach: weaponReach only reads 'Thrown' range entries and 'thrown' bonuses, so validTarget says 'Out of range (3/1)'.
-  // Core book: "Thrown X: this melee weapon can be thrown at targets within range X". coverage.ts lists tg_thrown as supported.
-  it.fails('an official Thrown X weapon (Tactical Knife, Thrown 3) can be thrown 3 spaces', () => {
+  // regression: the official Thrown X tag (Tactical Knife 3, Shock Knife 5, War Pike 5) never extended reach;
+  // weaponReach read only 'Thrown' range entries and 'thrown' bonuses. Core book: "can be thrown at targets within range X".
+  it('an official Thrown X weapon (Tactical Knife, Thrown 3) can be thrown 3 spaces', () => {
     const a = mech({ weapons: [['Auxiliary', 'mw_tactical_knife']] }), e = mech({}, 'enemy')
     const b = arena([[a, { x: 3, y: 5 }], [e, { x: 6, y: 5 }]])
     expect(b.validTarget(a, weapon(a), e)).toBe(true)
