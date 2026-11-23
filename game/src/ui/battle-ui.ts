@@ -94,6 +94,7 @@ export class BattleScreen {
     if (window.innerWidth < 900) this.rosterOpen = false
     this.hud.addEventListener('mouseover', e => this.onHudHover(e))
     window.addEventListener('keydown', this.onKey)
+    window.addEventListener('resize', this.onResize)
     const first = b.combatants('player')[0]
     if (first) this.view.focus(first.pos)
     // mounted mid-turn (after an undo, or resuming a saved battle): pick up the lancer that is acting, ready to move
@@ -105,12 +106,23 @@ export class BattleScreen {
 
   dispose() {
     window.removeEventListener('keydown', this.onKey)
+    window.removeEventListener('resize', this.onResize)
     window.removeEventListener('keyup', this.onKeyUp)
     this.shortcutsEl?.remove()
     this.b.chooser = undefined
     this.picker?.remove()
     this.previewCache.clear()
     this.view.dispose()
+  }
+  private onResize = () => this.layoutHud()
+  /**
+   * On narrow screens the header controls wrap and the initiative bar can take several rows: the roster/log
+   * tabs and panels go just below whichever ends lower (CSS reads --hud-top inside its narrow-screen rule).
+   */
+  private layoutHud() {
+    const top = this.hud.getBoundingClientRect().top
+    const bottom = Math.max(0, ...['.topbar', '.initiative'].map(sel => this.hud.querySelector(sel)?.getBoundingClientRect().bottom ?? 0))
+    this.hud.style.setProperty('--hud-top', `${Math.round(bottom - top + 6)}px`)
   }
   private hoverKey = ''
   private hoveredUnit: string | null = null
@@ -757,9 +769,10 @@ export class BattleScreen {
     const a = b.active
     const sel = this.selected && !this.selected.destroyed ? this.selected : a ?? null
     const s = b.sitrep
+    const mission = `${this.title} · ${s.name} — ${s.description}`
     const top = `<div class="topbar">
-      <div><b>${esc(this.title)}</b> · ${esc(s.name)}${s.rounds && s.id === 'holdout' ? ` (${b.round}/${s.rounds})` : ''}${s.id === 'control' ? ` (held ${b.sitrepScore ?? 0}/${s.rounds})` : ''} — <span class="muted">${esc(s.description)}</span></div>
-      <div>Round ${b.round} · <span class="${b.currentSide}">${b.winner ? (b.winner === 'player' ? 'VICTORY' : 'DEFEAT') : b.currentSide === 'player' ? 'Your move' : 'Enemy activity'}</span>
+      <div class="mission" title="${esc(mission)}"><b>${esc(this.title)}</b> · ${esc(s.name)}${s.rounds && s.id === 'holdout' ? ` (${b.round}/${s.rounds})` : ''}${s.id === 'control' ? ` (held ${b.sitrepScore ?? 0}/${s.rounds})` : ''} — <span class="muted">${esc(s.description)}</span></div>
+      <div class="controls"><span class="roundlbl">Round ${b.round} · <span class="${b.currentSide}">${b.winner ? (b.winner === 'player' ? 'VICTORY' : 'DEFEAT') : b.currentSide === 'player' ? 'Your move' : 'Enemy activity'}</span></span>
       <button data-act="rotl" title="Rotate (Q)">⟲</button><button data-act="rotr" title="Rotate (E)">⟳</button><button data-act="speed" title="Animation speed (click to cycle; ⏭ skips animations)">${this.view.speed === 0 ? '⏭ skip' : '×' + this.view.speed}</button><button data-act="gfx" title="Graphics quality: high adds bloom, film grain, ambient particles and practical lights">${this.view.quality === 'high' ? '◈ high' : '◇ low'}</button><button data-act="threat" class="${this.threatOn ? 'on' : ''}" title="Enemy threat: tiles hostiles can move to and attack next turn [T]">◬ threat</button><button data-act="export" title="Download this battle as a replay file (for bug reports: replay it with npm run replay)">⤓</button><button data-act="shortcuts" title="Keyboard shortcuts [?]">?</button><button data-act="settings" title="Settings: speed, graphics, motion, colour">⚙</button>${b.winner && !this.ended ? '<button data-act="finish" class="primary">Continue ▶</button>' : ''}</div></div>`
     const roster = (side: 'player' | 'enemy') => b.units.filter(u => u.side === side && (u.kind === 'mech' || u.kind === 'npc')).map(u => {
       const hp = Math.max(0, u.hp)
@@ -778,6 +791,7 @@ export class BattleScreen {
       : `<button class="tab log" data-act="toggle-log" title="Show the battle log [L]">◂ Log${unread > 0 ? ` <span class="badge">${unread}</span>` : ''}</button>`
     const bottom = `<div class="panel bottom">${sel ? this.unitPanel(sel) : '<span class="muted">Select a unit.</span>'}</div>`
     this.hud.innerHTML = top + this.initiativeBar() + left + log + bottom
+    this.layoutHud()
     const lg = this.hud.querySelector('.log')
     if (lg) lg.scrollTop = lg.scrollHeight
   }

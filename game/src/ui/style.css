@@ -82,7 +82,18 @@ code { background: #1d222c; padding: 1px 4px; }
 @keyframes floatup { to { transform: translate(-50%, -160%); opacity: 0; } }
 .hud { position: absolute; inset: 0; pointer-events: none; }
 .hud > * { pointer-events: auto; }
-.topbar { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: linear-gradient(#000c, #0000); }
+.topbar { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 12px; background: linear-gradient(#000c, #0000); }
+/* the mission line gives way (one line, ellipsis; full text on hover) so the controls never wrap onto the initiative bar */
+.topbar > .mission { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar > .controls { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; white-space: nowrap; }
+.topbar > .controls .roundlbl { margin-right: 6px; }
+@media (max-width: 760px) {
+  .topbar > .mission { display: none; }
+  .topbar > .controls { flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; row-gap: 4px; }
+  /* the controls take two rows here: the initiative bar sits below them, full width */
+  .battle .initiative { top: 82px; max-width: calc(100vw - 24px); }
+  body .battle .tab, body .battle .panel.left, body .battle .panel.log { top: var(--hud-top, 124px); }
+}
 .panel { position: absolute; background: var(--panel); border: 1px solid var(--line); }
 .initiative { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 600px); }
 .initiative .side { display: flex; flex-wrap: wrap; gap: 3px; }
