@@ -150,7 +150,7 @@ export class BattleScreen {
   }
 
   private cmd(f: () => void, thenAdvance = false, answers: number[] = []) {
-    const r = this.b.transaction(f, answers)
+    const r = this.b.transaction(f, answers, { rollbackOnError: true })
     if ('pending' in r) {
       this.render()
       void this.ask(r.pending).then(i => this.cmd(f, thenAdvance, [...answers, i]))
@@ -391,7 +391,7 @@ export class BattleScreen {
     this.view.setPath(null)
     if (a && a.side === 'player') {
       const m = this.mode
-      if (m.k === 'move' && a.moveLeft > 0 && this.b.canMove(a, 'standard') === true && !this.b.has(a, 'prone')) {
+      if (m.k === 'move' && a.moveLeft > 0 && this.b.canMove(a, 'standard') === true) {
         const r = this.b.reachable(a, a.moveLeft)
         hs.push({ tiles: [...r.values()].map(v => v.pos).filter(p => p.x !== a.pos.x || p.y !== a.pos.y), color: 0x3d9be9, opacity: 0.28 })
         if (this.hoverTile) {
@@ -565,8 +565,8 @@ export class BattleScreen {
       const ecoTxt = `<span class="eco">Move ${u.moveLeft} · Actions ${u.actionsLeft}${u.flags.bonusQuick ? `+${u.flags.bonusQuick}` : ''}${u.flags.fullTechLeft ? ` · tech ${u.flags.fullTechLeft}` : ''} · Reactions ${u.reactionsLeft} · OC ${['1', '1d3', '1d6', '1d6+4'][u.overchargeLevel]}</span>`
       actions = `<div class="actions">${ecoTxt}
         ${this.mode.k !== 'move' && this.mode.k !== 'idle' ? this.btn('cancel', '✕ Cancel (Esc)', true, '', 'warn') : ''}
-        ${b.has(u, 'prone') ? this.btn('standup', 'Stand Up', b.has(u, 'immobilized') ? 'Immobilized' : true) : ''}
-        ${this.btn('boost', 'Boost [Q]', and(qa('boost'), b.has(u, 'slowed') || b.has(u, 'immobilized') ? 'Slowed/immobilized' : true))}
+        ${b.has(u, 'prone') ? this.btn('standup', 'Stand Up', b.canStandUp(u)) : ''}
+        ${this.btn('boost', 'Boost [Q]', and(qa('boost'), b.has(u, 'slowed') || b.has(u, 'immobilized') ? 'Slowed/immobilized' : b.has(u, 'prone') ? 'Prone: stand up first' : true))}
         ${this.btn('overcharge', 'Overcharge', u.overchargedThisTurn ? 'Once per turn' : u.kind === 'mech' ? true : 'Mechs only')}
         ${this.btn('tech', 'Invade [QT]', and(b.canQuickTech(u, 'invade'), jam), 'invade')}${this.btn('tech', 'Lock On [QT]', and(b.canQuickTech(u, 'lock_on'), jam), 'lockon')}${this.btn('tech', 'Bolster [QT]', and(b.canQuickTech(u, 'bolster'), jam), 'bolster')}${this.btn('tech', 'Scan [QT]', and(b.canQuickTech(u, 'scan'), jam), 'scan')}${this.btn('fulltech', 'Full Tech [F]', and(fu, jam))}
         ${this.btn('stab-cool', 'Stabilize: Cool [F]', fu)}${this.btn('stab-repair', 'Stabilize: Repair [F]', and(fu, u.repairs > 0 ? true : 'No repairs'))}

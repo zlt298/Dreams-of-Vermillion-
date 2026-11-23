@@ -637,7 +637,7 @@ const scripts: ItemScript[] = [
       if (b.canSpend(self, 'reaction') !== true) return
       const w = self.weapons.find(x => !x.tech && b.weaponReady(self, x) && b.validTarget(self, x, ctx.attacker) === true)
       if (!w) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       m.charges--
       self.flags.halfDamage = true
       try { b.weaponAttack(self, w, { targetId: ctx.attacker.id }, 'free') } finally { self.flags.halfDamage = false }
@@ -967,7 +967,7 @@ const scripts: ItemScript[] = [
       if (!(self.flags.ark >= b.round) || ctx.melee || ctx.tech || b.has(ctx.target, 'invisible') || b.hostile(self, ctx.target)) return
       if (ctx.target !== self && !b.adjacent(self, ctx.target)) return
       if (b.canSpend(self, 'reaction') !== true || self.heat + 2 > self.stats.heatcap) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       b.addHeat(self, 1)
       const r = b.rng.d(6)
       if (r >= 4) { b.addHeat(self, 1); ctx.cancelled = true; b.say(`  The Diluvian Ark deflects the shot (${r}).`) }

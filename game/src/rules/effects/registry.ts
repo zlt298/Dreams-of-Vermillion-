@@ -140,6 +140,10 @@ export interface ItemScript {
   onAnyDamaged?(b: Battle, self: Unit, target: Unit, d: DamageCtx): void
   /** before damage is applied to this unit; may mutate amount */
   modifyIncoming?(b: Battle, self: Unit, d: DamageCtx): void
+  /** "You gain Resistance to …": return true to resist this damage type. Resistance never stacks, and Shredded or Irreducible cancel it */
+  grantsResistance?(b: Battle, self: Unit, type: string, d: DamageCtx): boolean
+  /** the same, granted to another character (e.g. allies sheltered by Drake Fortress) */
+  grantsAnyResistance?(b: Battle, self: Unit, target: Unit, type: string, d: DamageCtx): boolean
   onMove?(b: Battle, self: Unit, mover: Unit, path: Pos[]): void
   onDestroyed?(b: Battle, self: Unit, victim: Unit): void
   actions?(b: Battle, self: Unit): CustomAction[]

@@ -2,7 +2,7 @@
 // best plan through the normal Battle API, so the AI obeys exactly the same rules as players.
 import { PendingChoice, type Battle } from '../rules/battle'
 import { Lancer } from '../data/lancer'
-import { blastTiles, lineTiles, coneTiles, burstTiles, key, unitsOnTiles } from '../rules/grid'
+import { blastTiles, lineTiles, coneTiles, burstTiles, key, unitsOnTiles, footprint, tileAt } from '../rules/grid'
 import type { Effect, Pos, Unit, Weapon } from '../rules/types'
 import type { CustomAction } from '../rules/effects/registry'
 import { averageDice } from '../rules/rng'
@@ -177,8 +177,19 @@ function threatsAgainst(b: Battle, u: Unit): Threat[] {
   }))
 }
 
+/** Expected damage from ending a turn at `p`: dangerous terrain (5 energy on a failed Engineering check) and damage areas. */
+function hazardCost(b: Battle, u: Unit, p: Pos): number {
+  if (u.flying || u.flags.ignoreHazard) return 0
+  const fp = footprint(u, p)
+  let cost = 0
+  if (!u.flags['round:hazard'] && fp.some(q => tileAt(b.map, q)?.kind === 'hazard')) cost += 3
+  for (const a of b.areas) if (a.kind === 'damage' && a.damage && fp.some(q => a.tiles.some(t => t.x === q.x && t.y === q.y))) cost += averageDice(a.damage)
+  return cost
+}
+
 function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAgainst(b, u)): number {
-  if (!threats.length) return 0
+  const hazard = hazardCost(b, u, p)
+  if (!threats.length) return -hazard
   const saved = u.pos
   u.pos = p
   try {
@@ -218,7 +229,7 @@ function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAg
       v += inZone ? 4 : -dz * 0.35
     }
     if (b.isEngaged(u, p) && u.weapons.every(w => !b.isMelee(w))) v -= 1.5
-    return v
+    return v - hazard
   } finally { u.pos = saved }
 }
 
@@ -368,9 +379,9 @@ export function runAiTurn(b: Battle, u: Unit) {
 function runAiTurnInner(b: Battle, u: Unit) {
   if (b.activeId !== u.id) b.beginTurn(u)
   try {
+    if (!u.destroyed && b.has(u, 'shutdown') && !u.statuses.some(x => x.id === 'stunned') && u.actionsLeft >= 2) { b.bootUp(u); return }
     if (!u.destroyed && !b.has(u, 'stunned')) {
-      if (b.has(u, 'shutdown')) { b.bootUp(u); return }
-      if (b.has(u, 'prone') && !b.has(u, 'immobilized')) b.standUp(u)
+      if (b.has(u, 'prone') && b.canStandUp(u) === true) b.standUp(u)
       if (b.has(u, 'grappled') && u.statuses.find(s => s.id === 'grappled')?.data?.by !== u.id) { try { b.breakGrapple(u) } catch (e) { if (e instanceof PendingChoice) throw e } }
       if (u.flags.sekhmet) { sekhmetTurn(b, u); return }
       const plan = planFor(b, u)
@@ -378,7 +389,12 @@ function runAiTurnInner(b: Battle, u: Unit) {
       for (const o of plan.actions.filter(o => o.cost === 'protocol')) safe(() => execute(b, u, o))
       if (plan.boost) safe(() => b.boost(u))
       if (plan.dest.x !== u.pos.x || plan.dest.y !== u.pos.y) safe(() => b.move(u, plan.dest, { mode: 'standard' }))
-      for (const o of plan.actions.filter(o => o.cost !== 'protocol')) {
+      // the plan was aimed from plan.dest: if the move failed or was cut short (a protocol Immobilized us, overwatch,
+      // knockback), re-plan the actions from where the unit actually stands instead of firing blind
+      const arrived = u.pos.x === plan.dest.x && u.pos.y === plan.dest.y
+      const actions = arrived ? plan.actions.filter(o => o.cost !== 'protocol')
+        : bestCombo(optionsAt(b, u, u.pos).filter(o => o.cost !== 'protocol'), u.actionsLeft + (u.flags.bonusQuick ?? 0), u.actionsLeft >= 2).actions.filter(o => o.cost !== 'protocol')
+      for (const o of actions) {
         if (u.destroyed || b.winner) break
         safe(() => execute(b, u, o))
       }

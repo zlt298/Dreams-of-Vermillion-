@@ -2,7 +2,7 @@
 // 10% a heavy sacrifice (on the scale of losing a Structure) for a huge benefit.
 import { Rng } from '../rules/rng'
 import { buildMechUnit } from '../rules/stats'
-import { freshCondition, type RunNode, type RunState } from './run'
+import { minHp, resetCondition, type RunNode, type RunState } from './run'
 
 export type EventTier = 'find' | 'gamble' | 'pact'
 
@@ -99,7 +99,7 @@ export const EVENTS: RunEvent[] = [
     text: 'A crate of mech-grade plating sits in a warehouse going up in flames. Someone could go in after it.',
     effect: 'One mech takes 6 damage (not below 1 HP) and gains a permanent +2 HP.',
     eligible: notDestroyed,
-    apply: (run, id) => { const c = cond(run, id!); c.hp = Math.max(1, c.hp - 6); boon(run, 'perm_hp2', id); return `${name(run, id)} comes out scorched, carrying reinforced plating.` },
+    apply: (run, id) => { const c = cond(run, id!); c.hp = Math.max(minHp(run, id!), c.hp - 6); boon(run, 'perm_hp2', id); return `${name(run, id)} comes out scorched, carrying reinforced plating.` },
   },
   {
     id: 'reactor_tap', tier: 'gamble', title: 'Reactor Tap', needsMech: true,
@@ -140,7 +140,7 @@ export const EVENTS: RunEvent[] = [
     id: 'shortcut', tier: 'gamble', title: 'The Collapsing Shortcut', needsMech: false,
     text: 'The floor of the old processing hall is failing. Dropping through it saves hours, if you don’t mind the landing.',
     effect: 'Every mech takes 2 damage (not below 1 HP) and gains +1 Repair.',
-    apply: run => { for (const p of alive(run)) { const c = cond(run, p.id); c.hp = Math.max(1, c.hp - 2); c.repairs++ } return 'The lance drops through. Bruised, but ahead of schedule.' },
+    apply: run => { for (const p of alive(run)) { const c = cond(run, p.id); c.hp = Math.max(minHp(run, p.id), c.hp - 2); c.repairs++ } return 'The lance drops through. Bruised, but ahead of schedule.' },
   },
   // ---------------- heavy sacrifice for a huge benefit
   {
@@ -157,7 +157,7 @@ export const EVENTS: RunEvent[] = [
     eligible: (run, id) => both(notDestroyed(run, id), cond(run, id).structure < 2 ? 'Needs 2+ Structure' : true),
     apply: (run, id) => {
       cond(run, id!).structure--
-      for (const p of run.squad) if (p.id !== id && !run.condition[p.id].destroyed) run.condition[p.id] = { ...freshCondition(p), limited: {}, overchargeLevel: 0, coreAvailable: run.condition[p.id].coreAvailable }
+      for (const p of run.squad) if (p.id !== id && !run.condition[p.id].destroyed) run.condition[p.id] = { ...resetCondition(run, p), limited: {}, overchargeLevel: 0, coreAvailable: run.condition[p.id].coreAvailable }
       return `${name(run, id)} holds the door. The others are made whole.`
     },
   },
@@ -182,7 +182,7 @@ export const EVENTS: RunEvent[] = [
     eligible: (run, id) => both(notDestroyed(run, id), cond(run, id).structure < 2 ? 'Needs 2+ Structure' : true),
     apply: (run, id) => {
       cond(run, id!).structure--
-      for (const p of run.squad) { if (run.condition[p.id].destroyed) run.condition[p.id] = freshCondition(p); run.condition[p.id].repairs += 2 }
+      for (const p of run.squad) { if (run.condition[p.id].destroyed) run.condition[p.id] = resetCondition(run, p); run.condition[p.id].repairs += 2 }
       return `${name(run, id)} smashes the gate. The print bay hums.`
     },
   },

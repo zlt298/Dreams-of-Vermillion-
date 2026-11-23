@@ -2,7 +2,7 @@
 import type { DamageData, RangeData, TagData, BonusData } from '../data/lancer'
 import { Lancer } from '../data/lancer'
 import {
-  type AreaEffect, type GridMap, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
+  type AreaEffect, type GridMap, type Tile, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
   distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from './grid'
@@ -248,7 +248,8 @@ export class Battle {
   }
   /** Let `u` take a forced action it has no action economy for (Law of Blades): costs are paid from a temporary pool. */
   withForcedAction<T>(u: Unit, fn: () => T): T {
-    const keep = { actionsLeft: u.actionsLeft, acted: u.actedThisTurn, quick: u.flags['turn:quickUsed'], spent: u.flags['turn:spent'], bonus: u.flags.bonusQuick }
+    // copy the arrays: spend() pushes into turn:spent in place, which would leak the forced action into the turn's record
+    const keep = { actionsLeft: u.actionsLeft, acted: u.actedThisTurn, quick: u.flags['turn:quickUsed'], spent: u.flags['turn:spent'] ? [...u.flags['turn:spent']] : undefined, bonus: u.flags.bonusQuick }
     const recovering = u.statuses.filter(s => s.id === 'bracing_recovery')
     u.statuses = u.statuses.filter(s => s.id !== 'bracing_recovery')
     u.actionsLeft = 2
@@ -318,9 +319,18 @@ export class Battle {
     if (existing) {
       // keep the longer of the two
       if (!existing.clockUnit) return true
-      if (!inst.clockUnit) Object.assign(existing, inst)
-      else if (existing.clockUnit === inst.clockUnit) existing.turnsLeft = Math.max(existing.turnsLeft ?? 0, inst.turnsLeft ?? 0)
-      else Object.assign(existing, inst)
+      if (!inst.clockUnit) { Object.assign(existing, inst); delete existing.clockUnit; delete existing.turnsLeft; delete existing.atStart; return true }
+      const same = u.statuses.find(s => s.id === id && s.clockUnit === inst.clockUnit)
+      if (same) {
+        // on one clock, more turns is longer; with equal turns, ending at the end of the turn outlasts the start
+        const n = same.turnsLeft ?? 0, m = inst.turnsLeft ?? 0
+        if (m > n) { same.turnsLeft = m; same.atStart = inst.atStart }
+        else if (m === n) same.atStart = !!same.atStart && !!inst.atStart
+        if (!same.atStart) delete same.atStart
+      } else {
+        // timed on different units' turns: the two can't be compared, so keep both; the status lasts until the later one expires
+        u.statuses.push(inst)
+      }
       return true
     }
     u.statuses.push(inst)
@@ -346,7 +356,10 @@ export class Battle {
       for (const s of [...u.statuses]) {
         if (s.clockUnit !== clock.id || !!s.atStart !== atStart) continue
         s.turnsLeft = (s.turnsLeft ?? 1) - 1
-        if (s.turnsLeft <= 0) this.removeStatus(u, s.id)
+        if (s.turnsLeft > 0) continue
+        // drop just this instance; the status only ends when no other instance is left
+        if (u.statuses.some(x => x !== s && x.id === s.id)) u.statuses = u.statuses.filter(x => x !== s)
+        else this.removeStatus(u, s.id)
       }
     }
   }
@@ -462,7 +475,9 @@ export class Battle {
     this.syncZeroG(u)
     u.moveLeft = u.stats.speed
     if (this.has(u, 'bracing_recovery')) { u.actionsLeft = 1; u.moveLeft = 0 }
-    if (this.has(u, 'stunned')) { u.actionsLeft = 0; u.moveLeft = 0 }
+    // Shut Down counts as Stunned, but keeps its actions so it can Boot Up (a full action); canSpend refuses everything else
+    if (u.statuses.some(x => x.id === 'stunned')) { u.actionsLeft = 0; u.moveLeft = 0 }
+    else if (this.has(u, 'shutdown')) u.moveLeft = 0
     if (this.has(u, 'immobilized')) u.moveLeft = 0
     this.emit({ type: 'turn', unitId: u.id })
     this.say(`${u.name} activates.`, 'turn')
@@ -477,8 +492,14 @@ export class Battle {
     for (const d of this.alive().filter(d => d.ownerId === u.id)) for (const k of Object.keys(d.flags)) if (k.startsWith('turn:')) delete d.flags[k]
   }
 
+  /** Set while endTurn runs, so a unit destroyed by its own end-of-turn effects doesn't hand the turn over twice. */
+  private endingTurnOf: string | null = null
   endTurn(u: Unit = this.active!) {
     if (!u || u.id !== this.activeId) throw new Error('Not the active unit')
+    this.endingTurnOf = u.id
+    try { this.endTurnInner(u) } finally { this.endingTurnOf = null }
+  }
+  private endTurnInner(u: Unit) {
     if (this.has(u, 'hidden') && this.inRevealField(u)) this.removeStatus(u, 'hidden')
     // Prowl ends with the turn: lose Hidden if exposed now
     if (u.flags.prowl && this.has(u, 'hidden')) { u.activeTurn = false; const ok = this.canHide(u); u.activeTurn = true; if (!ok) this.removeStatus(u, 'hidden') }
@@ -492,7 +513,7 @@ export class Battle {
       if (this.check(u, 'eng')) { this.say(`${u.name} clears burn.`); u.burn = 0 }
       else { this.say(`${u.name} burns for ${u.burn}.`, 'damage'); this.applyDamage(u, [{ type: 'Burn-tick', amount: u.burn }], {}) }
     }
-    for (const s of scriptsFor(u)) s.onTurnEnd?.(this, u)
+    if (!u.destroyed) for (const s of scriptsFor(u)) s.onTurnEnd?.(this, u)
     for (const o of this.alive()) if (o !== u) for (const s of scriptsFor(o)) s.onAnyTurnEnd?.(this, o, u)
     // reactor meltdown / self destruct
     if (!u.destroyed && u.meltdownTurns != null) {
@@ -782,7 +803,17 @@ export class Battle {
     for (const o of this.alive()) for (const s of scriptsFor(o)) s.onDestroyed?.(this, o, u)
     for (const s of scriptsFor(u)) s.onDestroyed?.(this, u, u)
     // drones/deployables persist; owned drones of destroyed mechs remain until the scene ends
-    if (u.id === this.activeId) {
+    const ownTurn = u.id === this.activeId && this.endingTurnOf !== u.id
+    // its turn is over: statuses timed to the end of this unit's turn expire now
+    if (ownTurn) this.tickStatuses(u, false)
+    // statuses timed to its future turns would never tick again: they end with the current turn instead
+    // (or at the end of the affected unit's next turn, between turns). Dying during its own endTurn: that tick is about to run.
+    for (const o of this.units) for (const st of o.statuses) if (st.clockUnit === u.id && o !== u) {
+      if (this.endingTurnOf !== u.id) st.clockUnit = this.activeId && this.activeId !== u.id ? this.activeId : o.id
+      st.turnsLeft = 1
+      delete st.atStart
+    }
+    if (ownTurn) {
       u.activeTurn = false
       this.activeId = null
       this.checkVictory()
@@ -803,7 +834,11 @@ export class Battle {
     if (t.flags.intangible) { this.say(`${t.name} is intangible: unaffected.`); return 0 }
     for (const o of this.alive()) for (const sc of scriptsFor(o)) sc.beforeAnyDamage?.(this, o, t, parts, opts)
     const shredded = this.has(t, 'shredded')
-    const resists = (type: string) => !opts.irreducible && !shredded && (opts.resistAll || opts.resistTypes?.includes(type) || t.resist.includes(type) || t.resist.includes('all') || (t.flags.resistAll ?? 0) > 0)
+    const rctx: DamageCtx = { source: opts.source, attack: opts.attack, amount: 0, kind: 'hp' }
+    // Resistance from any number of sources halves once
+    const scriptResist = (type: string) => scriptsFor(t).some(s => s.grantsResistance?.(this, t, type, rctx)) ||
+      this.alive().some(o => o !== t && scriptsFor(o).some(s => s.grantsAnyResistance?.(this, o, t, type, rctx)))
+    const resists = (type: string) => !opts.irreducible && !shredded && (opts.resistAll || opts.resistTypes?.includes(type) || t.resist.includes(type) || t.resist.includes('all') || (t.flags.resistAll ?? 0) > 0 || scriptResist(type))
     let hpDmg = 0, heat = 0, burn = 0
     const exposed = this.has(t, 'exposed')
     // Grunts are destroyed by heat from any source other than their own systems
@@ -972,7 +1007,7 @@ export class Battle {
         const prev = dist.get(nk)
         if (prev && prev.cost <= c) continue
         let terminal = false
-        if (!opts.ignoreEngagement && u.kind !== 'deployable') {
+        if (!opts.ignoreEngagement && !u.flags['turn:disengaged'] && u.kind !== 'deployable') {
           for (const o of this.alive()) {
             if (!this.hostile(u, o) || startAdj.has(o.id) || (o.kind !== 'mech' && o.kind !== 'npc') || this.has(o, 'hidden') || u.flags.feint === o.id) continue
             if ((o.stats.size >= u.stats.size || o.flags.localizedMaze) && this.adjacent(u, o, np)) { terminal = true; break }
@@ -1009,7 +1044,7 @@ export class Battle {
     if (this.has(u, 'immobilized')) return 'Immobilized'
     if (this.has(u, 'stunned')) return 'Stunned'
     if (this.grapples.some(g => g.a === u.id || g.d === u.id) && !this.grappleInfo(u).dominant) return 'Grappled (held by a larger side)'
-    if (mode !== 'standard' && this.has(u, 'slowed') && mode !== 'disengage') return 'Slowed'
+    if (mode !== 'standard' && (this.has(u, 'slowed') || this.has(u, 'prone')) && mode !== 'disengage') return this.has(u, 'slowed') ? 'Slowed' : 'Prone (Slowed)'
     return true
   }
 
@@ -1017,20 +1052,28 @@ export class Battle {
   move(u: Unit, dest: Pos, opts: MoveOpts = { mode: 'standard' }): boolean {
     const ok = this.canMove(u, opts.mode)
     if (ok !== true) throw new Error(ok)
-    if (u.flags.landed && opts.mode !== 'involuntary') { u.flying = true; u.flags.landed = false; this.say(`${u.name} takes off again.`) }
-    if (this.has(u, 'prone') && opts.mode === 'standard') throw new Error('Stand up first')
     // Mesmer Beacon: voluntary movement only toward the source
     const mes = u.flags.mesmerBy ? this.unit(u.flags.mesmerBy) : undefined
     if (mes && !mes.destroyed && this.round <= u.flags.mesmerUntil && opts.mode !== 'involuntary' && chebyshev(dest, mes.pos) >= chebyshev(u.pos, mes.pos)) throw new Error(`Mesmerized: can only move toward ${mes.name}`)
     const budget = opts.mode === 'standard' ? u.moveLeft : u.flags.pendingMove ?? u.stats.speed
-    // teleporting movers (u.flags.teleportMoves) aren't held by engagement
-    let p = this.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves })
-    // Ramjet / OASIS Wall: voluntary moves must follow a straight line
-    if (opts.mode !== 'involuntary' && !u.flags.teleportMoves && scriptsFor(u).some(sc => sc.straightMovesOnly?.(this, u))) p = this.straightPath(u, dest, budget)
-    if (!p) throw new Error('Unreachable')
-    if (p.path.length <= 1) return true
-    if (opts.mode !== 'involuntary') for (const sc of scriptsFor(u)) { const v = sc.validateMove?.(this, u, dest, p.path, opts.mode); if (v && v !== true) throw new Error(v) }
-    for (const o of this.alive()) if (o !== u) for (const sc of scriptsFor(o)) { const v = sc.validateAnyMove?.(this, o, u, dest, opts.mode); if (v && v !== true) throw new Error(v) }
+    // a landed flyer takes off to move; pathing depends on it, so take off first and land again if the move is refused
+    const takeOff = !!u.flags.landed && opts.mode !== 'involuntary'
+    if (takeOff) { u.flying = true; u.flags.landed = false }
+    let p: { path: Pos[]; cost: number } | null
+    try {
+      // teleporting movers (u.flags.teleportMoves) aren't held by engagement
+      p = this.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves })
+      // Ramjet / OASIS Wall: voluntary moves must follow a straight line
+      if (opts.mode !== 'involuntary' && !u.flags.teleportMoves && scriptsFor(u).some(sc => sc.straightMovesOnly?.(this, u))) p = this.straightPath(u, dest, budget)
+      if (!p) throw new Error('Unreachable')
+      if (opts.mode !== 'involuntary' && p.path.length > 1) for (const sc of scriptsFor(u)) { const v = sc.validateMove?.(this, u, dest, p.path, opts.mode); if (v && v !== true) throw new Error(v) }
+      if (p.path.length > 1) for (const o of this.alive()) if (o !== u) for (const sc of scriptsFor(o)) { const v = sc.validateAnyMove?.(this, o, u, dest, opts.mode); if (v && v !== true) throw new Error(v) }
+    } catch (e) {
+      if (takeOff) { u.flying = false; u.flags.landed = true }
+      throw e
+    }
+    if (p.path.length <= 1) { if (takeOff) { u.flying = false; u.flags.landed = true } return true }
+    if (takeOff) this.say(`${u.name} takes off again.`)
     const snapshot = opts.mode === 'standard'
       ? { unitId: u.id, pos: { ...u.pos }, moveLeft: u.moveLeft, acted: u.actedThisTurn, moved: !!u.flags['turn:moved'], round: this.round, startEvents: this.eventCount, endEvents: -1 }
       : null
@@ -1190,7 +1233,8 @@ export class Battle {
       if (this.isAoE(pr)) continue
       const threat = this.weaponThreat(o, w)
       if (threat <= 0 || this.distance(o, target) > threat) continue
-      if (!this.los(o, target)) continue
+      // a target the attack would refuse (Hidden, intangible, no line of sight) doesn't provoke the reaction
+      if (this.validTarget(o, w, target) !== true) continue
       const avg = pr.damage.reduce((a, d) => a + averageDice(d.val), 0)
       if (avg > bestDmg) { best = w; bestDmg = avg }
     }
@@ -1258,7 +1302,8 @@ export class Battle {
     if (!w.loaded) return 'Needs reloading'
     if (w.usesLeft === 0) return 'No uses left'
     if (!w.charged) return 'Recharging'
-    if (this.has(u, 'jammed') && !(u.flags.shieldedMagazines && !this.isMelee(w))) return 'Jammed'
+    // Jammed stops weapon attacks, but Improvised Attacks, Grapple and Ram are still allowed
+    if (this.has(u, 'jammed') && w.type !== 'Improvised' && !(u.flags.shieldedMagazines && !this.isMelee(w))) return 'Jammed'
     const pr = this.profile(w)
     if (!pr.damage.length && !pr.onHit.length && !w.tech) {
       const d = w.dataId ? Lancer.weapons.get(w.dataId) : undefined
@@ -1335,6 +1380,11 @@ export class Battle {
     const listeners = this.listeners
     this.listeners = []
     const rng = this.rng.state, logLen = this.log.length, evLen = this.events.length, evCount = this.eventCount, nUnits = this.units.length
+    // battle-level state too: a hook can make a real attack inside a preview, and a kill must not end the battle or the turn
+    // tiles are saved only when a preview is about to change one (touchTile): copying the whole map per preview is too slow
+    const restoreBattle = this.snapshotBattleFields(false)
+    const outerTiles = this.sandboxTiles
+    this.sandboxTiles = new Map()
     this.sandboxDepth++
     const areas = this.areas.slice(), mines = this.mines.slice(), lastMove = this.lastMove
     const snap = this.units.map(u => ({
@@ -1349,7 +1399,8 @@ export class Battle {
       flags: { ...u.flags },
       statuses: u.statuses.map(s => ({ ...s })),
       bonuses: u.bonuses.slice(), resist: u.resist.slice(), immune: u.immune.slice(),
-      weapons: u.weapons.map(w => ({ w, loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex })),
+      // scripts reshape the attack profile (Ammo Case damage types, Thunder God AP): previews must not keep the change
+      weapons: u.weapons.map(w => ({ w, loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex, profiles: w.profiles.map(p => ({ p, damage: p.damage.map(d => ({ ...d })), tags: p.tags.map(t => ({ ...t })) })) })),
       systems: u.systems.map(s => ({ s, destroyed: s.destroyed, usesLeft: s.usesLeft, charged: s.charged })),
       stats: { ...u.stats },
     }))
@@ -1363,10 +1414,21 @@ export class Battle {
         x.u.statuses = x.statuses
         x.u.bonuses = x.bonuses; x.u.resist = x.resist; x.u.immune = x.immune
         Object.assign(x.u.stats, x.stats)
-        for (const w of x.weapons) Object.assign(w.w, { loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex })
+        for (const w of x.weapons) {
+          Object.assign(w.w, { loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex })
+          for (const sp of w.profiles) { sp.p.damage = sp.damage; sp.p.tags = sp.tags }
+        }
         for (const s of x.systems) Object.assign(s.s, { destroyed: s.destroyed, usesLeft: s.usesLeft, charged: s.charged })
       }
       this.units.length = nUnits
+      restoreBattle()
+      if (this.sandboxTiles?.size) {
+        for (const [i, t] of this.sandboxTiles) { const cur = this.map.tiles[i] as any; for (const k of Object.keys(cur)) if (!(k in t)) delete cur[k]; Object.assign(cur, t) }
+        this.invalidateTerrain()
+      }
+      // nested preview: a tile the outer preview hadn't touched was, before the inner one, still as the outer preview found it
+      if (outerTiles && this.sandboxTiles) for (const [i, t] of this.sandboxTiles) if (!outerTiles.has(i)) outerTiles.set(i, t)
+      this.sandboxTiles = outerTiles
       this.areas = areas
       this.mines = mines
       this.lastMove = lastMove
@@ -1384,6 +1446,53 @@ export class Battle {
    * weapon and system objects keep their identity so the UI's references stay valid). Render
    * listeners are not involved: use `transaction` to hold events back until a command succeeds.
    */
+  /** True while a preview runs in sandbox(): scripts must not take real actions (reactions, attacks) then. */
+  get previewing(): boolean { return this.sandboxDepth > 0 }
+  /** Tiles changed during the current preview, as they were before it (see touchTile). */
+  private sandboxTiles: Map<number, Tile> | null = null
+  /** Call before changing a map tile: inside a preview, remember how it was so sandbox() can put it back. */
+  private touchTile(p: Pos) {
+    if (!this.sandboxTiles) return
+    const i = p.y * this.map.w + p.x
+    if (!this.sandboxTiles.has(i)) this.sandboxTiles.set(i, { ...this.map.tiles[i] })
+  }
+
+  /**
+   * Snapshot of the battle's own fields (turn, side, round, winner, grapples, areas, terrain…) and the map tiles,
+   * not the units: deep-copied, but references to units, weapons, systems and the map are kept as they are.
+   */
+  private snapshotBattleFields(withTiles = true): () => void {
+    const anchors = new Set<object>(this.units)
+    for (const u of this.units) { for (const w of u.weapons) anchors.add(w); for (const x of u.systems) anchors.add(x) }
+    anchors.add(this.map)
+    const dc = (v: any): any => {
+      if (v === null || typeof v !== 'object' || anchors.has(v)) return v
+      if (Array.isArray(v)) return v.map(dc)
+      if (v instanceof Map) return new Map([...v].map(([k, x]) => [k, dc(x)]))
+      if (v instanceof Set) return new Set([...v].map(dc))
+      if (Object.getPrototypeOf(v) !== Object.prototype) return v
+      const o: any = {}
+      for (const k of Object.keys(v)) o[k] = dc(v[k])
+      return o
+    }
+    const tiles = withTiles ? this.map.tiles.map(t => ({ ...t })) : []
+    const SKIP = new Set(['units', 'map', 'rng', 'log', 'events', 'listeners', 'chooser', 'answers', 'txDepth', 'sandboxDepth', 'sandboxTiles', 'mapCache', 'losCache', 'coverCache', 'cacheVersion', 'terrainVersion'])
+    const self = this as any
+    const rest: Record<string, any> = {}
+    for (const k of Object.keys(self)) if (!SKIP.has(k) && typeof self[k] !== 'function') rest[k] = dc(self[k])
+    return () => {
+      let terrain = false
+      tiles.forEach((t, i) => {
+        const cur = this.map.tiles[i] as any
+        if (cur.h !== t.h || cur.kind !== t.kind) terrain = true
+        for (const k of Object.keys(cur)) if (!(k in t)) delete cur[k]
+        Object.assign(cur, t)
+      })
+      for (const k of Object.keys(rest)) self[k] = dc(rest[k])
+      if (terrain) this.invalidateTerrain()
+    }
+  }
+
   checkpoint(): () => void {
     const anchors = new Set<object>(this.units)
     for (const u of this.units) { for (const w of u.weapons) anchors.add(w); for (const x of u.systems) anchors.add(x) }
@@ -1428,7 +1537,7 @@ export class Battle {
    * Run a player or AI command so it can be suspended for a decision: render events are held back
    * until it finishes; on PendingChoice the battle is rolled back and the question returned.
    */
-  transaction(fn: () => void, answers: number[] = []): { pending: ChoiceQuestion } | { error?: Error } {
+  transaction(fn: () => void, answers: number[] = [], opts: { rollbackOnError?: boolean } = {}): { pending: ChoiceQuestion } | { error?: Error } {
     const restore = this.checkpoint()
     const listeners = this.listeners
     const held: BattleEvent[] = []
@@ -1446,7 +1555,9 @@ export class Battle {
       this.listeners = listeners
       this.answers = []
     }
-    if ('pending' in out) { restore(); return out }
+    // a pending decision is replayed later; a player command refused part-way (rollbackOnError) leaves the battle as it was.
+    // AI turns don't roll back on error: the turn has already been ended, and undoing it would hand the same unit back forever.
+    if ('pending' in out || (out.error && opts.rollbackOnError)) { restore(); return out }
     for (const e of held) for (const l of this.listeners) l(e)
     return out
   }
@@ -1482,7 +1593,7 @@ export class Battle {
         // armor once from the attack's total (largest parts first), then resistance per type
         let total = 0
         const ps = parts.filter(p => p.type !== 'Heat' && p.type !== 'Burn').map(p => ({ type: p.type, amount: exposed ? p.amount * 2 : p.amount })).sort((x, y) => y.amount - x.amount)
-        let armor = ap || irreducible ? 0 : target.stats.armor
+        let armor = ap || irreducible || this.has(target, 'shredded') ? 0 : target.stats.armor
         for (const p of ps) { const cut = Math.min(armor, p.amount); armor -= cut; p.amount -= cut; total += resists(p.type) ? Math.ceil(p.amount / 2) : p.amount }
         for (const p of parts) if (p.type === 'Burn') total += resists('Burn') ? Math.ceil(p.amount / 2) : p.amount
         return total
@@ -1527,10 +1638,22 @@ export class Battle {
       const def = this.defenseOf(target, ctx)
       const chance = hitChance(ctx.attackBonus, ctx.accuracy - ctx.difficulty, def)
       const pr = this.profile(w)
+      // same order as applyDamage: Exposed doubles, Armor comes off the total once, then Resistance halves
+      const shredded = this.has(target, 'shredded')
+      const exposed = this.has(target, 'exposed')
+      const resists = (type: string) => !shredded && (target.resist.includes(type) || target.resist.includes('all'))
+      const parts = pr.damage.filter(d => d.type !== 'Heat').map(d => {
+        const amount = averageDice(d.val) + this.flatDamageBonus(attacker, w, d.type)
+        return { type: d.type, amount: exposed && d.type !== 'Burn' ? amount * 2 : amount }
+      }).sort((x, y) => y.amount - x.amount)
+      let armor = hasTag(pr.tags, 'tg_ap') || shredded ? 0 : target.stats.armor
       let dmg = 0
-      for (const d of pr.damage) if (d.type !== 'Heat') dmg += averageDice(d.val) + this.flatDamageBonus(attacker, w, d.type)
-      dmg = Math.max(0, dmg - (hasTag(pr.tags, 'tg_ap') ? 0 : target.stats.armor))
-      if (this.has(target, 'exposed')) dmg *= 2
+      for (const p of parts) {
+        if (p.type === 'Burn') { dmg += resists('Burn') ? p.amount / 2 : p.amount; continue }
+        const cut = Math.min(armor, Math.max(0, p.amount)); armor -= cut
+        const left = Math.max(0, p.amount - cut)
+        dmg += resists(p.type) ? left / 2 : left
+      }
       let exp = dmg * chance
       const rel = tagVal(pr.tags, 'tg_reliable')
       if (rel) exp += (1 - chance) * rel
@@ -1911,9 +2034,12 @@ export class Battle {
     const pre = this.weaponUsable(u, w)
     if (pre !== true) return { ctxs: [], ok: false, reason: pre }
     if (this.firedThisTurn(u, w)) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
+    const refund = this.checkpoint()
     this.spend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish')
     this.markFired(u, w)
     const r = this.weaponAttack(u, w, aim, 'skirmish')
+    // an attack refused before anything was rolled (bad target, out of range...) costs nothing
+    if (!r.ok && !r.ctxs.length) { refund(); return r }
     if (aux && aux.weapon.size === 'Auxiliary' && aux.weapon !== w && aux.weapon.mountIndex === w.mountIndex && w.mountIndex >= 0 && !u.destroyed && !this.firedThisTurn(u, aux.weapon)) {
       this.markFired(u, aux.weapon)
       const r2 = this.weaponAttack(u, aux.weapon, aux.aim, 'skirmish', { noBonusDamage: true })
@@ -1929,6 +2055,7 @@ export class Battle {
     if (this.firedThisTurn(u, a.weapon) || (b && this.firedThisTurn(u, b.weapon))) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
     const ua = this.weaponUsable(u, a.weapon)
     if (ua !== true) return { ctxs: [], ok: false, reason: ua }
+    const refund = this.checkpoint()
     this.markFired(u, a.weapon)
     if (b) this.markFired(u, b.weapon)
     if (a.weapon.size !== 'Superheavy' && !b) {
@@ -1939,7 +2066,11 @@ export class Battle {
     if (b && a.weapon.size !== 'Superheavy' && !u.destroyed) {
       const r2 = this.weaponAttack(u, b.weapon, b.aim, 'barrage')
       r.ctxs.push(...r2.ctxs)
+      if (r2.ok) r.ok = true
+      else if (!r.ok && !r2.ok) r.reason = r.reason ?? r2.reason
     }
+    // neither weapon could attack: the Barrage costs nothing
+    if (!r.ok && !r.ctxs.length) { refund(); return r }
     // additional AUXILIARY weapon on each mount that was fired (no bonus damage)
     const mounts = new Set([a.weapon.mountIndex, b?.weapon.mountIndex].filter((m): m is number => m != null && m >= 0))
     const usedMounts = new Set<number>()
@@ -1974,6 +2105,7 @@ export class Battle {
     const t = tileAt(this.map, p)
     if (!t || t.kind !== 'block' || amount <= 0 || t.indestructible) return false
     const k = `${p.x},${p.y}`
+    this.touchTile(p)
     let dmg = (this.terrainDamage.get(k) ?? 0) + amount
     let levels = 0
     while (dmg >= Battle.TERRAIN_SECTION_HP && t.h > 0) { dmg -= Battle.TERRAIN_SECTION_HP; t.h--; levels++ }
@@ -1994,6 +2126,7 @@ export class Battle {
   raiseCover(p: Pos, opts: { indestructible?: boolean; owner?: string } = {}): boolean {
     const t = tileAt(this.map, p)
     if (!t || t.kind === 'block' || this.alive().some(o => !o.flags.flat && footprint(o).some(q => q.x === p.x && q.y === p.y))) return false
+    this.touchTile(p)
     t.h += 1
     t.kind = 'block'
     if (opts.indestructible) t.indestructible = true
@@ -2035,6 +2168,7 @@ export class Battle {
     const c = this.canSpend(u, 'quick', 'boost')
     if (c !== true) throw new Error(c)
     if (this.has(u, 'slowed') || this.has(u, 'immobilized')) throw new Error('Cannot boost while slowed/immobilized')
+    if (this.has(u, 'prone')) throw new Error('Cannot boost while prone (stand up first)') // Prone characters are Slowed
     if (this.has(u, 'grappled')) throw new Error('Cannot boost while grappling or grappled')
     this.spend(u, 'quick', 'boost')
     const extra = u.bonuses.filter(b => b.id === 'boost').reduce((a, b) => a + Number(b.val), 0)
@@ -2046,9 +2180,19 @@ export class Battle {
     for (const o of this.alive()) for (const s of scriptsFor(o)) s.onAnyMovementAction?.(this, o, u, 'boost')
   }
 
+  /** Standing up takes the standard move: only on your own turn, before moving, and not while Stunned or Immobilized. */
+  canStandUp(u: Unit): true | string {
+    if (!this.has(u, 'prone')) return 'Not prone'
+    if (!u.activeTurn) return 'Not this unit’s turn'
+    if (this.has(u, 'stunned')) return 'Stunned'
+    if (this.has(u, 'immobilized')) return 'Immobilized'
+    if (u.flags['turn:moved'] || u.moveLeft < u.stats.speed) return 'Standard move already used'
+    return true
+  }
   standUp(u: Unit) {
     if (!this.has(u, 'prone')) return
-    if (this.has(u, 'immobilized')) throw new Error('Immobilized')
+    const ok = this.canStandUp(u)
+    if (ok !== true) throw new Error(ok)
     u.moveLeft = 0
     this.removeStatus(u, 'prone')
   }
@@ -2069,6 +2213,8 @@ export class Battle {
   stabilize(u: Unit, mode: 'cool' | 'repair', clear?: { unit: Unit; status?: StatusId | 'burn' | 'reload' }) {
     const c = this.canSpend(u, 'full')
     if (c !== true) throw new Error(c)
+    // Stabilize ends burn, reloads, or clears one condition: nothing else
+    if (clear?.status && !['burn', 'reload', 'impaired', 'slowed', 'immobilized', 'jammed', 'shredded', 'lockon'].includes(clear.status)) throw new Error(`Stabilize can't clear ${clear.status}`)
     if (mode === 'repair' && u.repairs <= 0) throw new Error('No repairs left')
     if (mode === 'repair' && u.flags.briareosZero) throw new Error("Can't regain HP until a Full Repair (Briareos Frame)")
     this.spend(u, 'full')
@@ -2142,15 +2288,32 @@ export class Battle {
     }
   }
 
+  /** Ram and Grapple are attacks: hidden, intangible or destroyed targets can't be chosen. */
+  private meleeTargetValid(u: Unit, t: Unit): true | string {
+    if (t.destroyed) return 'Destroyed'
+    if (t === u) return 'Cannot target self'
+    if (t.flags.intangible || u.flags.intangible) return 'Intangible'
+    if (this.has(t, 'hidden') && this.hostile(u, t)) return 'Hidden'
+    return true
+  }
+  /** The status modifiers every attack gets (as buildWeaponCtx applies them), for Ram and Grapple. Attacking reveals a Hidden attacker. */
+  private meleeAttackMods(u: Unit, t: Unit, ctx: AttackCtx) {
+    if (this.has(u, 'impaired')) { ctx.difficulty++; ctx.reasons.push('Impaired -1') }
+    if (this.has(t, 'prone')) { ctx.accuracy++; ctx.reasons.push('Prone target +1') }
+    if (this.has(t, 'braced')) { ctx.difficulty++; ctx.reasons.push('Braced target -1') }
+    if (this.has(t, 'lockon') && this.hostile(u, t)) { ctx.accuracy++; ctx.reasons.push('Lock On +1'); this.removeStatus(t, 'lockon'); ctx.lockOnConsumed = true }
+    if (this.has(u, 'hidden')) this.removeStatus(u, 'hidden')
+  }
   ram(u: Unit, t: Unit) {
     const c = this.canSpend(u, 'quick', 'ram')
     if (c !== true) throw new Error(c)
     if (!this.adjacent(u, t)) throw new Error('Must be adjacent')
     if (t.stats.size > u.stats.size && !u.flags.muscleNet) throw new Error('Target is too large')
+    const v = this.meleeTargetValid(u, t)
+    if (v !== true) throw new Error(v)
     this.spend(u, 'quick', 'ram')
     const ctx = this.newAttackCtx(u, t, { melee: true, ranged: false, mode: 'ram' })
-    if (this.has(u, 'impaired')) ctx.difficulty++
-    if (this.has(t, 'prone')) ctx.accuracy++
+    this.meleeAttackMods(u, t, ctx)
     for (const s of scriptsFor(u)) s.beforeAttack?.(this, u, ctx, 'attacker')
     this.say(`${u.name} RAMS ${t.name}.`, 'attack')
     this.rollToHit(ctx)
@@ -2170,9 +2333,11 @@ export class Battle {
     const c = this.canSpend(u, 'quick', 'grapple')
     if (c !== true) throw new Error(c)
     if (!this.adjacent(u, t)) throw new Error('Must be adjacent')
+    const v = this.meleeTargetValid(u, t)
+    if (v !== true) throw new Error(v)
     this.spend(u, 'quick', 'grapple')
     const ctx = this.newAttackCtx(u, t, { melee: true, ranged: false, mode: 'grapple' })
-    if (this.has(u, 'impaired')) ctx.difficulty++
+    this.meleeAttackMods(u, t, ctx)
     this.say(`${u.name} attempts to GRAPPLE ${t.name}.`, 'attack')
     this.rollToHit(ctx)
     if (ctx.hit) this.startGrapple(u, t)
@@ -2302,6 +2467,7 @@ export class Battle {
     const c = this.canSpend(u, 'full')
     if (c !== true) throw new Error(c)
     if (!this.adjacent(u, t)) throw new Error('Must be adjacent')
+    const refund = this.checkpoint()
     this.spend(u, 'full')
     const w: Weapon = {
       uid: 'improvised', name: 'Improvised Attack', mountIndex: -1, size: 'Main', type: 'Improvised', profileIndex: 0,
@@ -2310,7 +2476,8 @@ export class Battle {
     }
     const brawler = u.bonuses.find(b => b.id === 'damage' && b.weapon_types?.includes('Improvised') && typeof b.val === 'string')
     if (brawler) w.profiles[0].damage = [{ type: 'Kinetic', val: brawler.val }]
-    this.weaponAttack(u, w, { targetId: t.id }, 'improvised')
+    const r = this.weaponAttack(u, w, { targetId: t.id }, 'improvised')
+    if (!r.ok && !r.ctxs.length) { refund(); throw new Error(r.reason ?? 'Cannot attack') }
   }
 
   reload(u: Unit, w: Weapon) {
@@ -2335,6 +2502,7 @@ export class Battle {
   }
   bootUp(u: Unit) {
     if (!u.activeTurn || !this.has(u, 'shutdown')) throw new Error('Not shut down')
+    if (u.statuses.some(x => x.id === 'stunned')) throw new Error('Stunned')
     if (u.actionsLeft < 2) throw new Error('Needs a full action')
     u.actionsLeft = 0
     u.actedThisTurn = true
@@ -2440,6 +2608,15 @@ export class Battle {
     for (const s of scriptsFor(u)) s.beforeAttack?.(this, u, ctx, 'attacker')
     for (const s of scriptsFor(t)) s.beforeAttack?.(this, t, ctx, 'target')
     for (const o of this.alive()) for (const s of scriptsFor(o)) s.beforeAnyAttack?.(this, o, ctx)
+    // Prone, Braced and Lock On apply to every attack, tech included (after scripts, so Hacker's SNOW-CRASH can consume Lock On itself)
+    if (this.has(t, 'prone')) { ctx.accuracy++; ctx.reasons.push('Prone target +1') }
+    if (this.has(t, 'braced')) { ctx.difficulty++; ctx.reasons.push('Braced target -1') }
+    if (this.has(t, 'lockon') && this.hostile(u, t)) {
+      ctx.accuracy++
+      ctx.reasons.push('Lock On +1')
+      this.removeStatus(t, 'lockon')
+      ctx.lockOnConsumed = true
+    }
     this.say(`${u.name} — ${label} → ${t.name}.`, 'attack')
     if (this.has(u, 'hidden')) this.removeStatus(u, 'hidden')
     this.rollToHit(ctx)
@@ -2476,8 +2653,9 @@ export class Battle {
     const c = this.canQuickTech(u, 'bolster')
     if (c !== true) throw new Error(c)
     if (this.hostile(u, t)) throw new Error('Bolster targets allies')
-    if (this.distance(u, t) > u.stats.sensors) throw new Error('Out of sensor range')
-    if (t.role === 'Biological') throw new Error('Biological characters are immune to tech actions')
+    if (t === u) throw new Error('Bolster targets another character')
+    const v = this.techTargetValid(u, t, 'bolster')
+    if (v !== true) throw new Error(v)
     this.spendTech(u, 'bolster')
     this.say(`${u.name} BOLSTERS ${t.name}.`)
     this.addStatus(t, 'bolstered', 'next_turn_end_target', u)
