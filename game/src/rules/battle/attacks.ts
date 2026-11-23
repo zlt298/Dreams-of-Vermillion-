@@ -478,6 +478,8 @@ export function rerollToHit(bt: Battle, ctx: AttackCtx) {
 
 export function rollToHit(bt: Battle, ctx: AttackCtx) {
   bt.lastAttackRound = bt.round
+  // per-unit too: the AI pulls a unit that hasn't attacked for a while toward the fight
+  if (ctx.attacker) ctx.attacker.flags.lastAttackRound = bt.round
   const t = ctx.target
   const net = ctx.accuracy - (ctx.ignoreDifficulty ? 0 : ctx.difficulty)
   if (ctx.cancelled) {

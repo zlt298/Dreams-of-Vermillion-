@@ -2795,20 +2795,20 @@
     ],
     "licenses": [
      {
-      "id": "mf_goblin",
+      "id": "mf_minotaur",
       "rank": 3
      },
      {
-      "id": "mf_minotaur",
+      "id": "mf_goblin",
       "rank": 2
      }
     ],
     "mech": {
-     "name": "Glitch's Goblin",
-     "frameId": "mf_goblin",
+     "name": "Glitch's Minotaur",
+     "frameId": "mf_minotaur",
      "mounts": [
       {
-       "type": "Flex",
+       "type": "Main/Aux",
        "slots": [
         {
          "size": "Main",
@@ -2818,20 +2818,21 @@
         },
         {
          "size": "Auxiliary",
-         "weaponId": null,
-         "modId": null
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
         }
        ],
        "bonusEffects": []
       }
      ],
      "systems": [
-      "ms_h0r_os_system_upgrade_iii",
-      "ms_h0r_os_system_upgrade_ii",
-      "ms_metahook",
-      "ms_h0r_os_system_upgrade_i",
+      "ms_law_of_blades",
       "ms_aggressive_system_sync",
       "ms_metafold_carver",
+      "ms_viral_logic_suite",
+      "ms_h0r_os_system_upgrade_ii",
+      "ms_metahook",
       "ms_manipulators"
      ]
     },
@@ -2875,7 +2876,7 @@
       "rank": 3
      },
      {
-      "id": "mf_minotaur",
+      "id": "mf_goblin",
       "rank": 2
      }
     ],
@@ -2927,9 +2928,9 @@
      ],
      "systems": [
       "ms___scorpion_v70.1",
-      "ms_aggressive_system_sync",
-      "ms_metafold_carver",
-      "ms_viral_logic_suite",
+      "ms_h0r_os_system_upgrade_ii",
+      "ms_metahook",
+      "ms_h0r_os_system_upgrade_i",
       "ms_monitor_module"
      ]
     },
@@ -3181,11 +3182,11 @@
     ],
     "licenses": [
      {
-      "id": "mf_goblin",
+      "id": "mf_minotaur",
       "rank": 3
      },
      {
-      "id": "mf_minotaur",
+      "id": "mf_goblin",
       "rank": 3
      },
      {
@@ -3198,11 +3199,11 @@
      }
     ],
     "mech": {
-     "name": "Glitch's Goblin",
-     "frameId": "mf_goblin",
+     "name": "Glitch's Minotaur",
+     "frameId": "mf_minotaur",
      "mounts": [
       {
-       "type": "Flex",
+       "type": "Main/Aux",
        "slots": [
         {
          "size": "Main",
@@ -3212,8 +3213,9 @@
         },
         {
          "size": "Auxiliary",
-         "weaponId": null,
-         "modId": null
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
         }
        ],
        "bonusEffects": []
@@ -3223,7 +3225,7 @@
        "slots": [
         {
          "size": "Auxiliary",
-         "weaponId": "mw_nexus_light",
+         "weaponId": "mw_pistol",
          "modId": null,
          "profile": 0
         }
@@ -3232,13 +3234,13 @@
       }
      ],
      "systems": [
-      "ms_h0r_os_system_upgrade_iii",
-      "ms_h0r_os_system_upgrade_ii",
-      "ms_metahook",
-      "ms_h0r_os_system_upgrade_i",
       "ms_law_of_blades",
       "ms_aggressive_system_sync",
       "ms_metafold_carver",
+      "ms_viral_logic_suite",
+      "ms_h0r_os_system_upgrade_iii",
+      "ms_h0r_os_system_upgrade_ii",
+      "ms_metahook",
       "ms_beckoner"
      ]
     },
@@ -3288,11 +3290,11 @@
       "rank": 3
      },
      {
-      "id": "mf_minotaur",
+      "id": "mf_goblin",
       "rank": 3
      },
      {
-      "id": "mf_goblin",
+      "id": "mf_minotaur",
       "rank": 3
      },
      {
