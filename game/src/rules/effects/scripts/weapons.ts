@@ -175,6 +175,7 @@ registerScripts([
         const p = t as Pos
         if (Math.max(Math.abs(p.x - self.pos.x), Math.abs(p.y - self.pos.y)) > 2) throw new Error('Out of range')
         if (bt.alive().some(o => o !== self && footprint(o).some(q => q.x === p.x && q.y === p.y))) throw new Error('Occupied')
+        if (bt.teleportBlocked(self, p)) throw new Error('An interdiction field blocks teleportation')
         delete self.flags['turn:foldknife']
         self.pos = p
         bt.emit({ type: 'move', unitId: self.id, path: [p] })

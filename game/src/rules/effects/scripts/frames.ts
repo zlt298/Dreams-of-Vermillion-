@@ -376,6 +376,7 @@ registerScripts([
         if (d > r) { bt.say('  Out of range: the jump fails.'); return }
         const occupied = bt.alive().some(o => o !== self && o.pos.x === p.x && o.pos.y === p.y)
         if (occupied) { bt.say('  Occupied: the jump fails.'); return }
+        if (bt.teleportBlocked(self, p)) { bt.say('  An interdiction field blocks the jump.'); return }
         self.pos = p
         bt.emit({ type: 'move', unitId: self.id, path: [p] })
       },

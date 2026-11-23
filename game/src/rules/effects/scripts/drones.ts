@@ -183,6 +183,51 @@ function droneKit(b: Battle, self: Unit, spec: DeploySpec, opts: { recall?: bool
 const oncePerRound = (u: Unit, key: string) => { const k = `round:${key}`; if (u.flags[k]) return false; u.flags[k] = true; return true }
 
 /** Run `fx` for characters that start their turn in, or first enter in a round, a field (`inField`). */
+function inDenial(b: Battle, self: Unit, u: Unit): boolean {
+  const d = mine(b, self, 'Assassin Drone').find(x => x.flags.denial)
+  return !!d && b.hostile(self, u) && (u.kind === 'mech' || u.kind === 'npc') && !u.destroyed && footprint(u).some(p => chebyshev(p, d.flags.denial) <= 2)
+}
+function areaDenial(b: Battle, self: Unit, u: Unit) {
+  const d = mine(b, self, 'Assassin Drone').find(x => x.flags.denial)
+  if (!d || u.destroyed || b.canSpend(self, 'reaction') !== true) return
+  if (!b.offerReaction(self, 'area_denial', 'Area Denial?', `${u.name} is moving in the assassin drone's area. Spend a reaction to attack it (3 kinetic)?`)) return
+  b.spend(self, 'reaction')
+  b.say(`${self.name}: Area Denial!`, 'attack')
+  const ctx = b.newAttackCtx(d, u, { mode: 'free', attackBonus: self.stats.grit, ranged: true })
+  b.rollToHit(ctx)
+  if (ctx.hit) b.applyDamage(u, [{ type: 'Kinetic', amount: 3 }], { source: self })
+}
+const DIR8: [number, number][] = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]
+const DIR8_NAMES = ['North', 'North-east', 'East', 'South-east', 'South', 'South-west', 'West', 'North-west']
+/** Repulse: push 3 in a direction the plate owner picks; Prone on hitting an obstruction */
+function pcpRepulse(b: Battle, self: Unit, plate: Unit, u: Unit) {
+  const away = [Math.sign(u.pos.x - plate.pos.x), Math.sign(u.pos.y - plate.pos.y)]
+  const def = Math.max(0, DIR8.findIndex(d => d[0] === away[0] && d[1] === away[1]))
+  const i = b.choose({ kind: 'pcp_repulse', unit: self, title: `Repulse ${u.name}: push direction`, options: DIR8_NAMES.map(n => ({ label: n })), defaultIndex: def })
+  const d = DIR8[i]
+  const from = { ...u.pos }
+  b.forceMove(u, { x: u.pos.x - d[0] * 20, y: u.pos.y - d[1] * 20 }, 3, 1)
+  if (!u.destroyed && Math.max(Math.abs(u.pos.x - from.x), Math.abs(u.pos.y - from.y)) < 3 && !u.flying) b.addStatus(u, 'prone', 'until_cleared', self)
+}
+/** Repulse, allies: may fly 3 spaces in any direction (free) */
+function pcpFly(b: Battle, u: Unit) {
+  if (u.destroyed || b.canMove(u, 'free') !== true) return
+  const opts = [...DIR8_NAMES.map(n => ({ label: `Fly 3 ${n}` })), { label: 'Stay' }]
+  const i = b.choose({ kind: 'pcp_fly', unit: u, title: 'Command plate: fly 3?', options: opts, defaultIndex: 8 })
+  if (i >= 8) return
+  const d = DIR8[i]
+  const path: Pos[] = [{ ...u.pos }]
+  for (let k = 1; k <= 3; k++) {
+    const p = { x: u.pos.x + d[0] * k, y: u.pos.y + d[1] * k }
+    if (!freeFor(b, u.stats.size, p, u)) break
+    path.push(p)
+  }
+  if (path.length < 2) return
+  const was = u.flying
+  u.flying = true
+  try { b.moveAlong(u, path) } finally { u.flying = was }
+}
+
 function fieldTriggers(key: string, inField: (b: Battle, self: Unit, u: Unit) => boolean, fx: (b: Battle, self: Unit, u: Unit) => void): Pick<ItemScript, 'onAnyTurnStart' | 'onMove'> {
   return {
     onAnyTurnStart(b, self, u) { if ((u.kind === 'mech' || u.kind === 'npc') && !u.destroyed && inField(b, self, u) && oncePerRound(u, `${key}:${self.id}`)) fx(b, self, u) },
@@ -303,7 +348,7 @@ const scripts: ItemScript[] = [
   },
   {
     id: 'ms_assassin_drone',
-    fields: (b, u) => mine(b, u, 'Assassin Drone').filter(d => d.flags.denial).map(d => ({ tiles: blastTiles(b.map, d.flags.denial, 2), effect: 'harm' as const, label: `${u.name}'s Area Denial zone` })), note: 'Assassin Drone: deploy adjacent and mark a Blast 2 area; Area Denial attacks hostiles in it (grit to hit, 3 kinetic)', partial: true,
+    fields: (b, u) => mine(b, u, 'Assassin Drone').filter(d => d.flags.denial).map(d => ({ tiles: blastTiles(b.map, d.flags.denial, 2), effect: 'harm' as const, label: `${u.name}'s Area Denial zone` })), note: 'Assassin Drone: deploy adjacent and target a Blast 2 area within line of sight and Sensors; Area Denial (reaction, any number of times a round): when a hostile starts moving in the area or enters it, the drone attacks it (your Grit to hit, 3 kinetic)',
     actions: (b, u) => {
       const out: CustomAction[] = []
       const live = mine(b, u, 'Assassin Drone')
@@ -327,15 +372,14 @@ const scripts: ItemScript[] = [
       for (const d of live) out.push(deploy('Redeploy', d), recallAction(u, d))
       return out
     },
-    ...fieldTriggers('denial', (b, self, u) => b.hostile(self, u) && mine(b, self, 'Assassin Drone').some(d => d.flags.denial && footprint(u).some(p => chebyshev(p, d.flags.denial) <= 2)), (b, self, u) => {
-      const d = mine(b, self, 'Assassin Drone').find(x => x.flags.denial)!
-      if (self.reactionsLeft <= 0 || b.canSpend(self, 'reaction') !== true) return
-      self.reactionsLeft--
-      b.say(`${self.name}: Area Denial!`, 'attack')
-      const ctx = b.newAttackCtx(d, u, { mode: 'free', attackBonus: self.stats.grit, ranged: true })
-      b.rollToHit(ctx)
-      if (ctx.hit) b.applyDamage(u, [{ type: 'Kinetic', amount: 3 }], { source: self })
-    }),
+    onAnyMovementAction(b, self, mover) { if (inDenial(b, self, mover)) areaDenial(b, self, mover) },
+    onMove(b, self, mover, path) {
+      const d = mine(b, self, 'Assassin Drone').find(x => x.flags.denial)
+      if (!d || !b.hostile(self, mover) || (mover.kind !== 'mech' && mover.kind !== 'npc') || mover.destroyed) return
+      const area = blastTiles(b.map, d.flags.denial, 2)
+      const inA = (p: Pos) => footprint({ pos: p, stats: mover.stats }).some(q => area.some(t => t.x === q.x && t.y === q.y))
+      if (path.some((p, i) => i > 0 && inA(p) && !inA(path[i - 1]))) areaDenial(b, self, mover)
+    },
   },
   {
     id: 'ms_autoloader_drone', note: 'Autoloader Drone: 1/round, a character adjacent to it may reload a Loading weapon (quick)',
@@ -348,20 +392,21 @@ const scripts: ItemScript[] = [
   },
   {
     id: 'ms_perimeter_command_plate',
-    fields: (b, u) => mine(b, u, 'Perimeter Command Plate').map(d => ({ tiles: footprint(d), effect: 'control' as const, label: `${u.name}'s command plate (${d.flags.pcp === 'repulse' ? 'Repulse: hostiles pushed 3' : 'Attract: Immobilized'}, Hull save)` })), note: 'Perimeter Command Plate: flat 2x2 plate; Repulse (Hull save or pushed 3) or Attract (Hull save or Immobilized)', partial: true,
+    fields: (b, u) => mine(b, u, 'Perimeter Command Plate').map(d => ({ tiles: footprint(d), effect: 'control' as const, label: `${u.name}'s command plate (${d.flags.pcp === 'repulse' ? 'Repulse: hostiles pushed 3' : 'Attract: Immobilized'}, Hull save)` })), note: 'Perimeter Command Plate: flat 2x2 plate within 5 (a new one replaces it); it triggers the first time a character enters it in a round or ends its turn on it — Repulse: hostiles save (Hull) or are pushed 3 in the direction you choose (Prone if they hit an obstruction), allies may fly 3 spaces; Attract: characters save (Hull) or are Immobilized (repeat the save as a quick action; cleared if the plate is destroyed)',
     actions: (b, u) => [deployAction(b, u, PCP('repulse')), deployAction(b, u, PCP('attract'))].filter((x): x is CustomAction => !!x),
     ...fieldTriggers('pcp', (b, self, u) => mine(b, self, 'Perimeter Command Plate').some(d => footprint(d).some(p => footprint(u).some(q => q.x === p.x && q.y === p.y))), (b, self, u) => {
       const d = mine(b, self, 'Perimeter Command Plate')[0]
       if (d.flags.pcp === 'repulse') {
-        if (!b.hostile(self, u) || b.save(u, 'hull', self.stats.save, 0, self)) return
-        b.forceMove(u, d, 3, 1)
+        if (!b.hostile(self, u)) { pcpFly(b, u); return }
+        if (b.save(u, 'hull', self.stats.save, 0, self)) return
+        pcpRepulse(b, self, d, u)
       } else if (!b.save(u, 'hull', self.stats.save, 0, self)) b.addStatus(u, 'immobilized', 'until_cleared', self, { pcp: d.id })
     }),
     onAnyTurnEnd(b, self, u) {
       if (u.kind !== 'mech' && u.kind !== 'npc') return
       const d = mine(b, self, 'Perimeter Command Plate').find(x => footprint(x).some(p => footprint(u).some(q => q.x === p.x && q.y === p.y)))
       if (!d) return
-      if (d.flags.pcp === 'repulse') { if (b.hostile(self, u) && !b.save(u, 'hull', self.stats.save, 0, self)) b.forceMove(u, d, 3, 1) }
+      if (d.flags.pcp === 'repulse') { if (b.hostile(self, u) && !b.save(u, 'hull', self.stats.save, 0, self)) pcpRepulse(b, self, d, u) }
       else if (!b.has(u, 'immobilized') && !b.save(u, 'hull', self.stats.save, 0, self)) b.addStatus(u, 'immobilized', 'until_cleared', self, { pcp: d.id })
     },
     grantActions: (b, self, other) => (other.statuses.some(s => s.id === 'immobilized' && s.data?.pcp && mine(b, self, 'Perimeter Command Plate').some(d => d.id === s.data.pcp))
@@ -395,19 +440,36 @@ const scripts: ItemScript[] = [
   },
   {
     id: 'ms_oasis_wall',
-    fields: (_b, u) => (u.flags.oasis?.length ? [{ tiles: u.flags.oasis as Pos[], effect: 'barrier' as const, label: `${u.name}'s OASIS wall: hard cover to adjacent characters` }] : []), note: 'OASIS Wall: your movement leaves a light barrier; adjacent characters get hard cover from it (energy resistance not modelled)', partial: true,
+    fields: (_b, u) => (u.flags.oasis?.length ? [{ tiles: u.flags.oasis as Pos[], effect: 'barrier' as const, label: `${u.name}'s OASIS wall: hard cover and energy resistance to adjacent characters; can't end a move inside` }] : []),
+    note: 'OASIS Wall (protocol): until the start of your next turn you move only in straight lines, leaving a light barrier (your Size) in each space you pass through; it gives hard cover and Resistance to energy to adjacent characters, is immune to damage, is not an obstruction, and nobody can end a move inside it; it lasts until you use the system again',
     actions: () => [{
-      key: 'oasis', name: 'OASIS Wall', activation: 'protocol', heat: 2, target: 'none', text: 'Until your next turn, your movement leaves a barrier that gives hard cover.',
+      key: 'oasis', name: 'OASIS Wall', activation: 'protocol', heat: 2, target: 'none', text: 'Until your next turn, you move in straight lines and leave a light barrier behind you.',
       usable: () => true,
       run: (bt, me) => { me.flags.oasisActive = true; me.flags.oasis = []; bt.say(`${me.name} projects an OASIS wall trail.`) },
       aiTarget: (bt, me) => ({ x: me.pos.x, y: me.pos.y }),
       aiScore: (bt, me) => (!me.flags.oasisActive && me.heat + 2 <= me.stats.heatcap - 2 && hostiles(bt, me).some(h => bt.distance(me, h) <= 12) && !(me.flags.oasis?.length) ? 1.5 : 0),
     }],
     onTurnStart(_b, self) { self.flags.oasisActive = false },
-    onMove(_b, self, mover, path) { if (mover === self && self.flags.oasisActive) self.flags.oasis = [...(self.flags.oasis ?? []), ...path.slice(0, -1)] },
+    straightMovesOnly: (_b, self) => !!self.flags.oasisActive,
+    onMove(_b, self, mover, path) {
+      if (mover !== self || !self.flags.oasisActive) return
+      const size = Math.max(1, Math.ceil(self.stats.size))
+      const add = path.slice(0, -1).flatMap(p => footprint({ pos: p, stats: { size } }))
+      const seen = new Set((self.flags.oasis as Pos[]).map(p => `${p.x},${p.y}`))
+      self.flags.oasis = [...self.flags.oasis, ...add.filter(p => !seen.has(`${p.x},${p.y}`) && (seen.add(`${p.x},${p.y}`), true))]
+    },
+    forbidsEndingAt(_b, self, mover, p) {
+      const t = self.flags.oasis as Pos[] | undefined
+      return !!t?.length && footprint({ pos: p, stats: mover.stats }).some(q => t.some(x => x.x === q.x && x.y === q.y))
+    },
     adjustCover(b, self, attacker, target, c) {
       if (c === 'hard' || !(self.flags.oasis?.length)) return c
       return (self.flags.oasis as Pos[]).some(p => shields(b, attacker, target, p)) ? 'hard' : c
+    },
+    beforeAnyDamage(b, self, t, parts, opts) {
+      const src = opts.attack?.attacker ?? opts.source
+      if (!src || !(self.flags.oasis?.length) || !parts.some(p => p.type === 'Energy')) return
+      if ((self.flags.oasis as Pos[]).some(p => shields(b, src, t, p))) opts.resistTypes = [...(opts.resistTypes ?? []), 'Energy']
     },
   },
   {
@@ -458,7 +520,7 @@ const scripts: ItemScript[] = [
   },
   {
     id: 'ms_interdiction_field',
-    fields: (b, u) => (u.flags.interdiction ? [{ tiles: burstTiles(b.map, u, 3), effect: 'control' as const, label: `${u.name}'s interdiction field: hostiles save (Systems) or are Slowed` }] : []), note: 'Interdiction Field: Burst 3 around you (you are Slowed); hostiles starting in it or entering: Systems save or Slowed', partial: true,
+    fields: (b, u) => (u.flags.interdiction ? [{ tiles: burstTiles(b.map, u, 3), effect: 'control' as const, label: `${u.name}'s interdiction field: hostiles save (Systems) or are Slowed` }] : []), note: 'Interdiction Field: Burst 3 around you until you deactivate it (quick; you are Slowed): hostiles starting their turn in it or entering it for the first time in a round save (Systems) or are Slowed until the end of their next turn; only characters you allow (your side) can teleport into, out of or within it',
     actions: (_b, u) => [{
       key: 'interdiction', name: u.flags.interdiction ? 'Deactivate Interdiction Field' : 'Interdiction Field', activation: 'quick', target: 'none', text: 'Toggle a Burst 3 field: you are Slowed; hostiles in it save (Systems) or are Slowed.',
       usable: () => true,
@@ -470,6 +532,12 @@ const scripts: ItemScript[] = [
       aiTarget: (_bt, me) => ({ x: me.pos.x, y: me.pos.y }),
       aiScore: (bt, me) => (!me.flags.interdiction && hostiles(bt, me).filter(h => bt.distance(me, h) <= 4).length >= 2 ? 2.5 : 0),
     }],
+    blocksTeleport(b, self, mover, p) {
+      if (!self.flags.interdiction || !b.hostile(self, mover)) return false
+      const field = burstTiles(b.map, self, 3)
+      const inF = (q: Pos) => footprint({ pos: q, stats: mover.stats }).some(r => field.some(t => t.x === r.x && t.y === r.y))
+      return inF(p) || inF(mover.pos)
+    },
     ...fieldTriggers('interdiction', (b, self, u) => !!self.flags.interdiction && b.hostile(self, u) && b.distance(self, u) <= 3, (b, self, u) => {
       if (!b.save(u, 'sys', self.stats.save, 0, self)) b.addStatus(u, 'slowed', 'next_turn_end_target', self)
     }),

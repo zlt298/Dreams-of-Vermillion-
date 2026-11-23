@@ -215,7 +215,36 @@ export class Battle {
     const k = `${this.posKey(a, from)}>${this.posKey(b)}`
     let v = this.losCache.get(k)
     if (v === undefined) { v = hasLineOfSight(this.effectiveMap(), a, b, from); this.losCache.set(k, v) }
+    if (v && this.losZones.length && this.losBlockedByZone(a, b, from)) return false
     return v
+  }
+  /** zones characters can't draw line of sight out of (Flash Grenade) */
+  losZones: { id?: string; tiles: string[]; exempt?: string; untilRound: number; mode?: 'out' | 'border'; partialSeesThrough?: boolean }[] = []
+  private losBlockedByZone(a: Unit, b: Unit, from?: Pos): boolean {
+    this.losZones = this.losZones.filter(z => this.round <= z.untilRound)
+    for (const z of this.losZones) {
+      if (z.exempt === a.id) continue
+      const fa = footprint(a, from ?? a.pos), fb = footprint(b)
+      const inA = fa.some(p => z.tiles.includes(key(p))), inB = fb.some(p => z.tiles.includes(key(p)))
+      if ((z.mode ?? 'out') === 'out') { if (inA && !inB) return true; continue }
+      // border: blocks both ways; characters straddling it may see through (Hardlight)
+      if (z.partialSeesThrough && ((inA && !fa.every(p => z.tiles.includes(key(p)))) || (inB && !fb.every(p => z.tiles.includes(key(p)))))) continue
+      if (inA !== inB) return true
+    }
+    return false
+  }
+  /** Let `u` take a forced action it has no action economy for (Law of Blades): costs are paid from a temporary pool. */
+  withForcedAction<T>(u: Unit, fn: () => T): T {
+    const keep = { actionsLeft: u.actionsLeft, acted: u.actedThisTurn, quick: u.flags['turn:quickUsed'], spent: u.flags['turn:spent'], bonus: u.flags.bonusQuick }
+    const recovering = u.statuses.filter(s => s.id === 'bracing_recovery')
+    u.statuses = u.statuses.filter(s => s.id !== 'bracing_recovery')
+    u.actionsLeft = 2
+    u.flags['turn:quickUsed'] = []
+    try { return fn() } finally {
+      u.actionsLeft = keep.actionsLeft; u.actedThisTurn = keep.acted
+      u.flags['turn:quickUsed'] = keep.quick; u.flags['turn:spent'] = keep.spent; u.flags.bonusQuick = keep.bonus
+      u.statuses.push(...recovering)
+    }
   }
   cover(attacker: Unit, target: Unit, from?: Pos): Cover {
     const m = this.effectiveMap()
@@ -286,6 +315,7 @@ export class Battle {
     this.say(`${u.name} is ${id.toUpperCase()}.`, 'status')
     if (source && source !== u) for (const sc of scriptsFor(source)) sc.onStatusInflicted?.(this, source, u, id)
     if (id === 'stunned' || id === 'shutdown') { u.flags.wasStunned = true }
+    for (const sc of scriptsFor(u)) sc.onStatusAdded?.(this, u, id, duration, source)
     for (const o of this.alive()) if (o !== u) for (const sc of scriptsFor(o)) sc.onAnyStatusAdded?.(this, o, u, id, duration, source)
     return true
   }
@@ -498,7 +528,10 @@ export class Battle {
 
   checkVictory() {
     if (this.winner) return
-    const p = this.combatants('player').length, e = this.combatants('enemy').length
+    // temporarily turned characters (OSIRIS Fourth Gate) still count for their own side
+    const sideOf = (u: Unit) => (u.flags.turnedFrom as Side | undefined) ?? u.side
+    const all = this.combatants()
+    const p = all.filter(u => sideOf(u) === 'player').length, e = all.filter(u => sideOf(u) === 'enemy').length
     if (p === 0) this.finish('enemy', 'All lancers are down.')
     else if (e === 0) this.finish('player', 'All hostiles destroyed.')
     else if (this.sitrep.id === 'assassination' && this.sitrep.targetId && this.unit(this.sitrep.targetId)?.destroyed) this.finish('player', 'Target eliminated.')
@@ -529,7 +562,7 @@ export class Battle {
       // one reaction per turn (any character's turn); each reaction type 1/round, refreshing at your own turn start
       if (u.reactionsLeft <= 0) return 'Already reacted this turn'
       if (action && u.flags[`react:${action}`] && !(action === 'overwatch' && u.traits?.includes('reflex'))) return `${actionLabel(action)} already used this round`
-      if (this.has(u, 'grappled')) return 'Grappled'
+      if (this.has(u, 'grappled') && !(action === 'brace' && u.flags.braceWhileGrappled)) return 'Grappled'
       if (this.has(u, 'stunned')) return 'Stunned'
       if (this.has(u, 'jammed')) return 'Jammed'
       if (this.has(u, 'bracing_recovery')) return 'Recovering from brace'
@@ -609,7 +642,16 @@ export class Battle {
       this.say(`${u.name}'s REACTOR IS CRITICAL — meltdown at the end of its next turn!`, 'warn')
       return
     }
-    const dice = this.tableDice(u, u.stats.stress - u.stress)
+    let dice = this.tableDice(u, u.stats.stress - u.stress)
+    // Reactor Stabilizer: may reroll, keeping the second result
+    if (u.flags.reactorStabilizer) {
+      const bad = dice.filter(d => d === 1).length >= 1 || Math.min(...dice) <= 2
+      this.say(`Overheating check [${dice.join(', ')}]`)
+      if (this.choose({ kind: 'reactor_stabilizer', unit: u, title: 'Reactor Stabilizer', text: `Overheating check [${dice.join(', ')}]. Reroll? You must keep the second result.`, options: [{ label: 'Reroll' }, { label: 'Keep' }], defaultIndex: bad ? 0 : 1 }) === 0) {
+        dice = this.tableDice(u, u.stats.stress - u.stress)
+        this.say('  Reactor Stabilizer: rerolled.')
+      }
+    }
     const ones = dice.filter(d => d === 1).length
     const low = Math.min(...dice)
     this.say(`Overheating check [${dice.join(', ')}]`)
@@ -734,11 +776,12 @@ export class Battle {
   /**
    * Apply damage parts to a unit. Types: Kinetic, Explosive, Energy, Burn, Heat, plus internal 'Burn-tick'.
    */
-  applyDamage(t: Unit, parts: { type: string; amount: number }[], opts: { source?: Unit; ap?: boolean; irreducible?: boolean; attack?: AttackCtx; resistAll?: boolean } = {}): number {
+  applyDamage(t: Unit, parts: { type: string; amount: number }[], opts: { source?: Unit; ap?: boolean; irreducible?: boolean; attack?: AttackCtx; resistAll?: boolean; resistTypes?: string[] } = {}): number {
     if (t.destroyed) return 0
     if (t.flags.intangible) { this.say(`${t.name} is intangible: unaffected.`); return 0 }
+    for (const o of this.alive()) for (const sc of scriptsFor(o)) sc.beforeAnyDamage?.(this, o, t, parts, opts)
     const shredded = this.has(t, 'shredded')
-    const resists = (type: string) => !opts.irreducible && !shredded && (opts.resistAll || t.resist.includes(type) || t.resist.includes('all') || (t.flags.resistAll ?? 0) > 0)
+    const resists = (type: string) => !opts.irreducible && !shredded && (opts.resistAll || opts.resistTypes?.includes(type) || t.resist.includes(type) || t.resist.includes('all') || (t.flags.resistAll ?? 0) > 0)
     let hpDmg = 0, heat = 0, burn = 0
     const exposed = this.has(t, 'exposed')
     // Grunts are destroyed by heat from any source other than their own systems
@@ -838,6 +881,8 @@ export class Battle {
     const fp = new Set(footprint(u, at).map(key))
     for (const o of this.units) {
       if (o === u || mover.has(o.id)) continue
+      // phased out (FADE Cloak): pass through anything, but not end a move inside it
+      if (u.flags.intangible && !o.destroyed && footprint(o).some(p => fp.has(key(p)))) { res = 'pass'; continue }
       if (o.destroyed && !o.flags.wreck) continue
       if (!footprint(o).some(p => fp.has(key(p)))) continue
       if (o.destroyed) { res = 'pass'; continue } // wreckage: difficult terrain you can cross (not end a move on, simplification)
@@ -854,7 +899,7 @@ export class Battle {
 
   stepCost(u: Unit, from: Pos, to: Pos): number {
     let c = 1
-    if (u.flying) return 1
+    if (u.flying || u.flags.intangible) return 1
     const fp = footprint(u, to)
     const difficult = this.has(u, 'prone') || !u.flags.ignoreDifficult && fp.some(p => {
       const t = tileAt(this.map, p)
@@ -881,7 +926,7 @@ export class Battle {
       for (let y = u.pos.y - budget; y <= u.pos.y + budget; y++) for (let x = u.pos.x - budget; x <= u.pos.x + budget; x++) {
         const np = { x, y }
         const c = Math.max(Math.abs(x - u.pos.x), Math.abs(y - u.pos.y))
-        if (!c || c > budget || this.passable(u, np, mover) !== 'ok') continue
+        if (!c || c > budget || this.passable(u, np, mover) !== 'ok' || this.teleportBlocked(u, np) || this.endBlocked(u, np)) continue
         out.set(key(np), { pos: np, cost: c, prev: startKey })
       }
       ;(out as any).all = out
@@ -914,7 +959,7 @@ export class Battle {
       }
     }
     const out = new Map<string, { pos: Pos; cost: number; prev?: string }>()
-    for (const [k, v] of dist) if (v.stop) out.set(k, v)
+    for (const [k, v] of dist) if (v.stop && (k === startKey || !this.endBlocked(u, v.pos))) out.set(k, v)
     // keep pass-through nodes for path reconstruction
     ;(out as any).all = dist
     return out
@@ -955,9 +1000,13 @@ export class Battle {
     if (mes && !mes.destroyed && this.round <= u.flags.mesmerUntil && opts.mode !== 'involuntary' && chebyshev(dest, mes.pos) >= chebyshev(u.pos, mes.pos)) throw new Error(`Mesmerized: can only move toward ${mes.name}`)
     const budget = opts.mode === 'standard' ? u.moveLeft : u.flags.pendingMove ?? u.stats.speed
     // teleporting movers (u.flags.teleportMoves) aren't held by engagement
-    const p = this.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves })
+    let p = this.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves })
+    // Ramjet / OASIS Wall: voluntary moves must follow a straight line
+    if (opts.mode !== 'involuntary' && !u.flags.teleportMoves && scriptsFor(u).some(sc => sc.straightMovesOnly?.(this, u))) p = this.straightPath(u, dest, budget)
     if (!p) throw new Error('Unreachable')
     if (p.path.length <= 1) return true
+    if (opts.mode !== 'involuntary') for (const sc of scriptsFor(u)) { const v = sc.validateMove?.(this, u, dest, p.path, opts.mode); if (v && v !== true) throw new Error(v) }
+    for (const o of this.alive()) if (o !== u) for (const sc of scriptsFor(o)) { const v = sc.validateAnyMove?.(this, o, u, dest, opts.mode); if (v && v !== true) throw new Error(v) }
     const snapshot = opts.mode === 'standard'
       ? { unitId: u.id, pos: { ...u.pos }, moveLeft: u.moveLeft, acted: u.actedThisTurn, moved: !!u.flags['turn:moved'], round: this.round, startEvents: this.eventCount, endEvents: -1 }
       : null
@@ -1008,6 +1057,13 @@ export class Battle {
     this.emit({ type: 'move', unitId: u.id, path: [from, m.pos] })
   }
 
+  /** Move along an explicit path (straight swings, scripted dashes): same triggers as a normal move. */
+  moveAlong(u: Unit, path: Pos[]) {
+    if (path.length < 2) return
+    u.actedThisTurn = true
+    u.flags['turn:moved'] = true
+    this.followPath(u, path)
+  }
   private followPath(u: Unit, path: Pos[]) {
     let maxDrop = 0
     let prevE = elevationAt(this.map, u, path[0])
@@ -1064,6 +1120,9 @@ export class Battle {
       const step = { x: Math.sign(Math.round(vx * 10) / 10), y: Math.sign(Math.round(vy * 10) / 10) }
       if (!step.x && !step.y) break
       const np = { x: target.pos.x + step.x, y: target.pos.y + step.y }
+      // constructs that dissipate when something is pushed into them (H0R_OS Ideal Image)
+      for (const o of this.alive()) if (o.flags.dissipateOnPush && footprint(o).some(q => footprint(target, np).some(r => r.x === q.x && r.y === q.y))) this.removeUnit(o, 'dissipates')
+      if (this.alive().some(o => scriptsFor(o).some(sc => sc.blockForcedStep?.(this, o, target, target.pos, np)))) { this.say(`${target.name} is stopped by a barrier.`); break }
       if (this.passable(target, np, new Set([target.id])) !== 'ok') {
         this.say(`${target.name} slams into an obstacle.`)
         break
@@ -1073,6 +1132,7 @@ export class Battle {
       target.pos = np
       path.push(np)
     }
+    while (path.length > 1 && this.endBlocked(target, path[path.length - 1])) { path.pop(); target.pos = path[path.length - 1] }
     if (path.length > 1) {
       this.say(`${target.name} is ${dir === 1 ? 'knocked back' : 'pulled'} ${path.length - 1}.`)
       this.followPath(target, path)
@@ -1567,7 +1627,7 @@ export class Battle {
     for (const ctx of ctxs) {
       const t = ctx.target
       if (ctx.hit) {
-        const base = (ctx.crit ? dmgCrit : dmgNormal).map(x => ({ ...x, amount: u.flags.halfDamage ? Math.ceil(x.amount / 2) : x.amount }))
+        const base = (ctx.crit ? dmgCrit : dmgNormal).map(x => ({ ...x }))
         // bonus damage (halved vs multiple targets)
         for (const bd of ctx.bonusDamage) {
           let a = rollDice(this.rng, bd.val, { crit: ctx.crit }).total
@@ -1592,6 +1652,8 @@ export class Battle {
         if (burnTag) base.push({ type: 'Burn', amount: burnTag })
         const heatTag = tagVal(pr.tags, 'tg_heat_target')
         if (heatTag) base.push({ type: 'Heat', amount: heatTag })
+        // half damage, heat and burn (SCYLLA reactions)
+        if (u.flags.halfDamage) for (const p of base) p.amount = Math.ceil(p.amount / 2)
         let resistAll = !!ctx.resistAll
         if (!ctx.cancelDamage && !resistAll && this.braceWanted(t, u, base, ctx)) resistAll = this.brace(t)
         if (t.flags.flashAegis && resistAll && !ctx.resistAll) for (const p of base) p.amount = Math.min(p.amount, 1)
@@ -1788,6 +1850,12 @@ export class Battle {
     if (this.canSpend(t, 'reaction', 'brace') !== true) return false
     this.spend(t, 'reaction', 'brace')
     this.say(`${t.name} BRACES for impact!`, 'status')
+    // Armor-Lock Plating: bracing breaks every grapple on you
+    if (t.flags.braceWhileGrappled && this.grapples.some(g => g.a === t.id || g.d === t.id)) {
+      this.grapples = this.grapples.filter(g => g.a !== t.id && g.d !== t.id)
+      this.syncGrapples()
+      this.say(`  ${t.name} locks its armor and throws off every grapple.`)
+    }
     this.addStatus(t, 'braced', 'next_turn_end_target')
     this.addStatus(t, 'bracing_recovery', 'next_turn_end_target')
     return true
@@ -2251,7 +2319,7 @@ export class Battle {
     if (t.destroyed) return 'Destroyed'
     if (this.has(t, 'shutdown')) return 'Target is shut down (immune to tech)'
     if (this.hostile(u, t) && this.has(t, 'hidden')) return 'Hidden'
-    if (this.distance(u, t) > u.stats.sensors) return 'Out of sensor range'
+    if (this.distance(u, t) > u.stats.sensors && !this.viaMetahook(u, t)) return 'Out of sensor range'
     if (!this.los(u, t)) return 'No line of sight'
     return true
   }
@@ -2267,6 +2335,37 @@ export class Battle {
     if (u.flags.freeTech) return true
     if ((u.flags.fullTechLeft ?? 0) > 0) return true
     return this.canSpend(u, 'quick', option ? `quick_tech:${option}` : undefined)
+  }
+  /** Metahook: a linked ally's Sensors and line of sight count for your tech actions. */
+  viaMetahook(u: Unit, t: Unit): boolean {
+    const a = u.flags.metahook ? this.unit(u.flags.metahook) : undefined
+    return !!a && !a.destroyed && this.distance(a, t) <= a.stats.sensors && this.los(a, t)
+  }
+  /** A straight (orthogonal or diagonal) path to `dest`, or an error if there isn't one. */
+  straightPath(u: Unit, dest: Pos, budget: number): { path: Pos[]; cost: number } {
+    const dx = dest.x - u.pos.x, dy = dest.y - u.pos.y
+    if (dx && dy && Math.abs(dx) !== Math.abs(dy)) throw new Error('Move in a straight line')
+    const sx = Math.sign(dx), sy = Math.sign(dy), n = Math.max(Math.abs(dx), Math.abs(dy))
+    const path: Pos[] = [{ ...u.pos }]
+    let cost = 0
+    const mover = new Set([u.id])
+    for (let k = 1; k <= n; k++) {
+      const q = { x: u.pos.x + sx * k, y: u.pos.y + sy * k }
+      const pass = this.passable(u, q, mover)
+      if (pass === 'blocked' || (k === n && pass !== 'ok')) throw new Error('Something blocks the straight line')
+      cost += this.stepCost(u, path[k - 1], q)
+      path.push(q)
+    }
+    if (cost > budget) throw new Error('Not enough movement')
+    return { path, cost }
+  }
+  /** Interdiction Field and similar: may `u` teleport (out of where it is) to `p`? */
+  teleportBlocked(u: Unit, p: Pos): boolean {
+    return this.alive().some(o => scriptsFor(o).some(sc => sc.blocksTeleport?.(this, o, u, p)))
+  }
+  /** spaces a character may pass through but not end a move in (OASIS trail) */
+  endBlocked(u: Unit, p: Pos): boolean {
+    return this.alive().some(o => scriptsFor(o).some(sc => sc.forbidsEndingAt?.(this, o, u, p)))
   }
   /** Take one Quick Tech option without spending an action (reactions like Reactive Code). */
   withFreeTech<T>(u: Unit, fn: () => T): T {
@@ -2287,6 +2386,7 @@ export class Battle {
     for (const b of u.bonuses) if (b.id === 'tech_attack' && b.accuracy) ctx.accuracy += b.accuracy
     for (const s of scriptsFor(u)) s.beforeAttack?.(this, u, ctx, 'attacker')
     for (const s of scriptsFor(t)) s.beforeAttack?.(this, t, ctx, 'target')
+    for (const o of this.alive()) for (const s of scriptsFor(o)) s.beforeAnyAttack?.(this, o, ctx)
     this.say(`${u.name} — ${label} → ${t.name}.`, 'attack')
     if (this.has(u, 'hidden')) this.removeStatus(u, 'hidden')
     this.rollToHit(ctx)

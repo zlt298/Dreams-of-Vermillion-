@@ -2,7 +2,7 @@
 import type { Battle } from '../../battle'
 import { blastTiles, burstTiles, chebyshev, distanceToTile, footprint, hasLineOfSightToTile, lineTiles, tileAt, unitsOnTiles } from '../../grid'
 import { rollDice } from '../../rng'
-import type { Pos, StatusId, SystemInst, Unit } from '../../types'
+import type { Pos, StatusId, SystemInst, Unit, Weapon } from '../../types'
 import { deployableUnit } from '../generic'
 import { registerScripts, type AttackCtx, type CustomAction, type FieldOverlay, type ItemScript } from '../registry'
 
@@ -115,25 +115,77 @@ const ammoScript = (id: string): ItemScript => ({
 })
 
 // ------------------------------------------------------------------ scripts
+/** SEKHMET in control: close on the closest visible character (any side) and attack it in melee only. */
+export function sekhmetTurn(b: Battle, u: Unit) {
+  const melee = () => u.weapons.filter(w => !w.destroyed && !w.tech && b.isMelee(w))
+  const visible = (o: Unit) => o !== u && !o.destroyed && (o.kind === 'mech' || o.kind === 'npc') && !o.flags.intangible && !b.has(o, 'hidden') && (b.distance(u, o) <= 1 || b.los(u, o))
+  const target = () => b.alive().filter(visible).sort((x, y) => b.distance(u, x) - b.distance(u, y))[0]
+  const ready = (t: Unit) => melee().find(w => b.weaponUsable(u, w) === true && !b.firedThisTurn(u, w) && b.validTarget(u, w, t) === true)
+  const approach = () => {
+    const t = target()
+    if (!t || u.moveLeft <= 0 || b.canMove(u, 'standard') !== true) return
+    let best: Pos | null = null, bd = b.distance(u, t)
+    for (const r of b.reachable(u, u.moveLeft).values()) { const d = Math.max(0, chebyshev(r.pos, t.pos) - 1); if (d < bd) { bd = d; best = r.pos } }
+    if (best) try { b.move(u, best, { mode: 'standard' }) } catch { /* path blocked */ }
+  }
+  if (!target()) return
+  if (!ready(target()!)) approach()
+  for (let guard = 0; guard < 6 && !u.destroyed; guard++) {
+    const t = target()
+    if (!t) break
+    const w = ready(t)
+    if (w && !u.flags['round:sekhmetFree']) { u.flags['round:sekhmetFree'] = true; b.say('SEKHMET strikes (free Skirmish).'); b.markFired(u, w); b.weaponAttack(u, w, { targetId: t.id }, 'skirmish'); continue }
+    if (w && b.canSpend(u, 'quick', 'skirmish') === true) { b.skirmish(u, w, { targetId: t.id }); continue }
+    if (!w && b.canSpend(u, 'quick', 'boost') === true && !b.has(u, 'slowed') && !b.has(u, 'immobilized') && !b.has(u, 'grappled')) { b.boost(u); approach(); continue }
+    break
+  }
+}
+function cutCable(b: Battle, owner: Unit) {
+  const t = b.unit(owner.flags.tether)
+  if (t) t.flags.tetheredTo = undefined
+  if (owner.flags.tether) b.say(`${owner.name}'s cable is cut.`)
+  owner.flags.tether = undefined
+}
+
+/** Blinkshield: a character straddling the border is moved fully inside or outside (Agility save: it picks; otherwise the owner does). */
+function settleStraddler(b: Battle, owner: Unit, u: Unit, tiles: Pos[]) {
+  const ok = b.save(u, 'agi', owner.stats.save, 0, owner)
+  const chooser = ok ? u : owner
+  const preferIn = !b.hostile(owner, u)
+  const i = b.choose({ kind: 'blink_side', unit: chooser, title: `Blinkshield: where does ${u.name} go?`, options: [{ label: 'Inside the bubble' }, { label: 'Outside the bubble' }], defaultIndex: (chooser === u ? !b.hostile(owner, u) : preferIn) ? 0 : 1 })
+  const wantIn = i === 0
+  const okAt = (p: Pos) => { const fp = footprint({ pos: p, stats: u.stats }); return fp.every(q => free(b, q, u)) && (wantIn ? fp.every(q => tiles.some(t => t.x === q.x && t.y === q.y)) : !fp.some(q => tiles.some(t => t.x === q.x && t.y === q.y))) }
+  for (let r = 1; r <= 6; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    const p = { x: u.pos.x + dx, y: u.pos.y + dy }
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || !okAt(p)) continue
+    const from = u.pos
+    u.pos = p
+    b.emit({ type: 'move', unitId: u.id, path: [from, p] })
+    b.say(`${u.name} is shunted ${wantIn ? 'inside' : 'outside'} the Blinkshield.`)
+    return
+  }
+}
 const scripts: ItemScript[] = [
   // ---------------- SEKHMET
   {
-    id: 'ms_sekhmet_class_nhp', partial: true, note: 'SEKHMET Protocol: the NHP takes over (the AI plays your turns; it only attacks hostiles); melee crits +1d6; Take Back Control stuns you until your next turn',
+    id: 'ms_sekhmet_class_nhp',
+    note: 'SEKHMET Protocol: the NHP drives your mech — it spends every move and action closing on the closest visible character (allied or hostile) and attacking it in melee only; 1/round a free melee Skirmish; melee crits +1d6; Take Back Control (protocol) stuns you until the start of your next turn',
     actions: (_b, u) => [u.flags.sekhmet
-      ? action({ key: 'sekhmet_off', name: 'Take Back Control', activation: 'protocol', target: 'none', text: 'Retake your mech; you are Stunned until the start of your next turn.', run: (bt, me) => { me.flags.sekhmet = false; bt.addStatus(me, 'stunned', 'start_of_next_turn_target', me) } })
+      ? action({ key: 'sekhmet_off', name: 'Take Back Control', activation: 'protocol', target: 'none', text: 'Retake your mech; you are Stunned until the start of your next turn.', run: (bt, me) => { me.flags.sekhmet = false; bt.addStatus(me, 'stunned', 'start_of_next_turn_target', me) }, aiScore: () => -1 })
       : action({
-        key: 'sekhmet', name: 'SEKHMET Protocol', activation: 'protocol', target: 'none', text: 'Give your NHP control: it charges the nearest character and attacks in melee; melee crits +1d6.',
+        key: 'sekhmet', name: 'SEKHMET Protocol', activation: 'protocol', target: 'none', text: 'Give your NHP control: it charges the closest visible character (ally or hostile) and attacks it in melee; melee crits +1d6.',
         run: (bt, me) => { me.flags.sekhmet = true; bt.say(`${me.name} hands control to SEKHMET.`, 'warn') },
         aiTarget: (_bt, me) => ({ ...me.pos }),
-        aiScore: (bt, me) => (me.weapons.some(w => w.type === 'Melee') && hostiles(bt, me).some(h => bt.distance(me, h) <= me.stats.speed + 2) ? 2 : 0),
+        aiScore: (bt, me) => (me.weapons.some(w => w.type === 'Melee') && hostiles(bt, me).some(h => bt.distance(me, h) <= me.stats.speed + 2) && !allies(bt, me).some(a => bt.distance(me, a) <= 3) ? 2 : 0),
       })],
     afterAnyRoll(b, self, ctx) { if (self.flags.sekhmet && ctx.attacker === self && ctx.crit && ctx.melee) ctx.bonusDamage.push({ type: 'Kinetic', val: '1d6' } as any) },
   },
   // ---------------- Cable Winch
   {
-    id: 'ms_cable_winch_system', partial: true, note: 'Cable Winch: tether an adjacent character (Hull save unless Stunned/willing); it is dragged along to stay within 5 spaces (the dragger is Slowed)',
+    id: 'ms_cable_winch_system',
+    note: 'Cable Winch: attach to an adjacent character (Hull save unless Stunned or willing); neither may end up more than 5 apart — whoever moves tows the other (if it can drag it: up to twice its Size) and is Slowed; anyone can cut the cable with a melee or improvised hit against Evasion 10',
     actions: (_b, u) => [u.flags.tether
-      ? action({ key: 'unwinch', name: 'Release Cable', activation: 'quick', target: 'none', text: 'Remove the cable.', run: (bt, me) => { const t = bt.unit(me.flags.tether); if (t) t.flags.tetheredTo = undefined; me.flags.tether = undefined } })
+      ? action({ key: 'unwinch', name: 'Release Cable', activation: 'quick', target: 'none', text: 'Remove the cable.', run: (bt, me) => cutCable(bt, me) })
       : action({
         key: 'winch', name: 'Cable Winch', activation: 'quick', target: 'unit', range: 1, text: 'Attach a cable to an adjacent character.',
         run: (bt, me, t) => {
@@ -144,16 +196,39 @@ const scripts: ItemScript[] = [
           bt.say(`${me.name} winches onto ${target.name}.`)
         },
       })],
-    onMove(b, self, mover) {
-      const other = mover === self ? b.unit(self.flags.tether) : mover.id === self.flags.tether ? self : undefined
-      if (!other || other.destroyed) return
-      const d = b.distance(self, mover === self ? other : mover)
-      if (d <= 5) return
-      const dragged = mover === self ? other : self
-      const dragger = mover
-      b.forceMove(dragged, dragger, d - 5, -1)
-      b.addStatus(dragger, 'slowed', 'end_of_turn', self)
+    grantActions: (b, self, other) => {
+      const t = b.unit(self.flags.tether)
+      if (!t || t.destroyed || (other !== t && other !== self && !b.adjacent(other, self) && !b.adjacent(other, t))) return []
+      if (other === self) return []
+      return [action({
+        key: `cutcable:${self.id}`, name: `Cut ${self.name}'s cable`, activation: 'quick', target: 'none', text: 'Melee attack against the cable (Evasion 10): on a hit it is cut.',
+        run: (bt, me) => {
+          const acc = bt.accuracyFromStatuses(me, 'attack')
+          const r = bt.rng.d(20) + me.stats.attackBonus + (acc > 0 ? Math.max(...Array.from({ length: acc }, () => bt.rng.d(6))) : acc < 0 ? -Math.max(...Array.from({ length: -acc }, () => bt.rng.d(6))) : 0)
+          bt.say(`  ${me.name} slashes at the cable: ${r} vs 10.`)
+          if (r >= 10) cutCable(bt, self)
+        },
+        aiScore: (bt, me) => (bt.hostile(me, self) ? 2 : 0),
+      })]
     },
+    onMove(b, self, mover) {
+      const t = b.unit(self.flags.tether)
+      if (!t || t.destroyed) { if (self.flags.tether) cutCable(b, self); return }
+      if (mover !== self && mover !== t) return
+      const other = mover === self ? t : self
+      const d = b.distance(self, t)
+      if (d <= 5) return
+      // tow the other end if the mover can drag it (twice its Size); otherwise the cable snaps taut and stops the mover
+      if (other.stats.size <= mover.stats.size * 2) {
+        b.forceMove(other, mover, d - 5, -1)
+        b.addStatus(mover, 'slowed', 'end_of_turn', self)
+        b.say(`${mover.name} tows ${other.name} on the cable.`)
+      } else {
+        b.forceMove(mover, other, d - 5, -1)
+        b.say(`The cable pulls ${mover.name} up short.`)
+      }
+    },
+    onDestroyed(b, self, v) { if (v === self || v.id === self.flags.tether) cutCable(b, self) },
   },
   // ---------------- MULE Harness
   {
@@ -213,18 +288,13 @@ const scripts: ItemScript[] = [
   },
   // ---------------- Armor-Lock Plating
   {
-    id: 'ms_armor_lock_plating', partial: true, note: "Armor-Lock: after you Brace, until the end of your next turn: +1 difficulty against you, you can't fail Hull/Agility saves and can't be moved, knocked Prone or grappled (Bracing while grappling is not modelled)",
-    afterAttack(b, self, _ctx, role) {
-      if (role === 'target' && b.has(self, 'braced') && !(self.flags.armorLockUntil >= b.round)) {
-        self.flags.armorLockUntil = b.round + 1
-        self.flags.autoSaveUntil = b.round + 1
-        b.addHeat(self, 2)
-        b.say(`${self.name} locks its armor.`)
-      }
-    },
-    beforeAttack(b, self, ctx, role) { if (role === 'target' && self.flags.armorLockUntil >= b.round) { ctx.difficulty++; ctx.reasons.push('Armor-Lock -1') } },
-    canBeMoved: (b, self) => !(self.flags.armorLockUntil >= b.round),
-    blockStatus: (b, self, st) => (st === 'prone' || st === 'grappled') && self.flags.armorLockUntil >= b.round,
+    id: 'ms_armor_lock_plating',
+    note: "Armor-Lock: you can Brace while grappled (every grapple on you ends); while Braced (until the end of your next turn): +1 difficulty against you, you can't fail Hull or Agility saves or contested checks, and you are immune to Knockback, grapples, Prone and being moved by anything smaller than Size 5",
+    init: u => { u.flags.braceWhileGrappled = true },
+    onStatusAdded(b, self, st) { if (st === 'braced') { self.flags.autoSaveUntil = b.round + 1; b.say(`${self.name} locks its armor.`) } },
+    beforeAttack(b, self, ctx, role) { if (role === 'target' && b.has(self, 'braced')) { ctx.difficulty++; ctx.reasons.push('Armor-Lock -1') } },
+    canBeMoved: (b, self, source) => !(b.has(self, 'braced') && (!source || source.stats.size < 5)),
+    blockStatus: (b, self, st) => (st === 'prone' || st === 'grappled') && b.has(self, 'braced'),
   },
   // ---------------- BB Breach/Blast Charges
   {
@@ -258,7 +328,8 @@ const scripts: ItemScript[] = [
   },
   // ---------------- Magnetic Shield
   {
-    id: 'ms_magnetic_shield', partial: true, note: 'Magnetic Shield: Line 4 forcefield next to you; obstruction, soft cover, and resistance to damage for characters it covers (all damage types)',
+    id: 'ms_magnetic_shield',
+    note: 'Magnetic Shield: a Line 4 forcefield next to you for the scene (a new one replaces it): it obstructs mechs, does not block line of sight, gives soft cover, and characters it covers resist kinetic and explosive damage',
     actions: () => [action({
       key: 'magshield', name: 'Magnetic Shield', activation: 'quick', target: 'tile', range: 1, text: 'Raise a Line 4 forcefield next to you (replaces the old one).',
       run: (bt, me, t) => {
@@ -270,12 +341,13 @@ const scripts: ItemScript[] = [
       aiScore: (bt, me) => (!mineOf(bt, me, 'Magnetic Shield').length && hostiles(bt, me).some(h => bt.distance(me, h) <= 12) ? 2 : 0),
     })],
     adjustCover(b, self, attacker, target, c) {
-      if (c !== 'none' || b.hostile(self, target)) return c
+      if (c !== 'none') return c
       return mineOf(b, self, 'Magnetic Shield').some(s => shields(attacker, target, s.pos)) ? 'soft' : c
     },
-    beforeAnyAttack(b, self, ctx) {
-      if (b.hostile(self, ctx.target) || !ctx.profile?.damage.some(d => d.type === 'Kinetic' || d.type === 'Explosive')) return
-      if (mineOf(b, self, 'Magnetic Shield').some(s => shields(ctx.attacker, ctx.target, s.pos))) { ctx.resistAll = true; ctx.reasons.push('Magnetic shield') }
+    beforeAnyDamage(b, self, t, parts, opts) {
+      const src = opts.attack?.attacker ?? opts.source
+      if (!src || !parts.some(p => p.type === 'Kinetic' || p.type === 'Explosive')) return
+      if (mineOf(b, self, 'Magnetic Shield').some(s => shields(src, t, s.pos))) opts.resistTypes = [...(opts.resistTypes ?? []), 'Kinetic', 'Explosive']
     },
     fields: (b, u) => { const segs = mineOf(b, u, 'Magnetic Shield'); return segs.length ? [{ tiles: segs.map(s => s.pos), effect: 'barrier' as const, label: `${u.name}'s magnetic shield: soft cover and resistance to kinetic/explosive` }] : [] },
   },
@@ -287,13 +359,20 @@ const scripts: ItemScript[] = [
   },
   // ---------------- Flash Charges
   {
-    id: 'ms_flash_charges', partial: true, note: "Flash Charges: Flash Grenade (Blast 3 zone: characters inside can't attack out of it until the end of your next turn); Flash Mine (Burst 1 when approached: Agility save or blinded)",
+    id: 'ms_flash_charges', note: "Flash Charges: Flash Grenade (range 5, Blast 3 until the end of your next turn: characters other than you at least partly inside can't draw line of sight out of it); Flash Mine (Burst 1 when a character moves adjacent to or over it: Agility save or line of sight to adjacent spaces only until the end of its next turn)",
     actions: (b, u) => {
       const s = sys(u, 'ms_flash_charges')
       return [action({
         key: 'flash_grenade', name: 'Flash Grenade', activation: 'quick', target: 'tile', range: 5, area: { shape: 'blast', size: 3 }, text: "Blast 3 zone: characters other than you inside it can't draw line of sight out.",
         usable: () => usesOk(s),
-        run: (bt, me, t) => { spend(s); me.flags.flash = { tiles: blastTiles(bt.map, at(t), 3), until: bt.round + 1 }; bt.emit({ type: 'area', tiles: me.flags.flash.tiles, kind: 'attack' }) },
+        run: (bt, me, t) => {
+          if (chebyshev(me.pos, at(t)) > 5) throw new Error('Out of range')
+          spend(s)
+          me.flags.flash = { tiles: blastTiles(bt.map, at(t), 3), until: bt.round + 1 }
+          bt.losZones.push({ tiles: me.flags.flash.tiles.map((p: Pos) => `${p.x},${p.y}`), exempt: me.id, untilRound: bt.round + 1 })
+          bt.invalidateTerrain()
+          bt.emit({ type: 'area', tiles: me.flags.flash.tiles, kind: 'attack' })
+        },
         aiTarget: (bt, me) => { const h = nearest(bt, me, hostiles(bt, me).filter(h => bt.distance(me, h) <= 7)); return h ? { ...h.pos } : null },
         aiScore: (bt, me, t) => (t && 'x' in t ? unitsOnTiles(hostiles(bt, me), blastTiles(bt.map, t, 3)).length * 1.5 : 0),
       }), action({
@@ -301,11 +380,6 @@ const scripts: ItemScript[] = [
         usable: () => usesOk(s),
         run: (_bt, me, t) => { spend(s); me.flags.flashMines = [...(me.flags.flashMines ?? []), at(t)] },
       })]
-    },
-    beforeAnyAttack(b, self, ctx) {
-      const f = self.flags.flash
-      if (!f || b.round > f.until || ctx.attacker === self) return
-      if (onTiles(ctx.attacker, f.tiles) && !onTiles(ctx.target, f.tiles)) { ctx.cancelled = true; b.say(`  ${ctx.attacker.name} can't see out of the flash.`) }
     },
     onMove(b, self, mover, path) {
       if (!self.flags.flashMines?.length || mover === self || (mover.kind !== 'mech' && mover.kind !== 'npc')) return
@@ -349,18 +423,41 @@ const scripts: ItemScript[] = [
   },
   // ---------------- TLALOC
   {
-    id: 'ms_tlaloc_class_nhp', partial: true, note: 'TLALOC Protocol: Immobilized until your next turn; reroll each missed attack once (against the same target)',
+    id: 'ms_tlaloc_class_nhp',
+    note: 'TLALOC Protocol: Immobilized until the start of your next turn; reroll each missed attack once, at a new target within the attack\'s range (area attacks: inside the same area); no target is hit twice by one action',
     actions: () => [action({
-      key: 'tlaloc', name: 'TLALOC Protocol', activation: 'protocol', heat: 2, target: 'none', text: 'Immobilized until your next turn; reroll missed attacks once.',
-      run: (bt, me) => { me.flags.tlalocRound = bt.round; bt.addStatus(me, 'immobilized', 'start_of_next_turn_target', me) },
+      key: 'tlaloc', name: 'TLALOC Protocol', activation: 'protocol', heat: 2, target: 'none', text: 'Immobilized until your next turn; reroll each missed attack once at a new target in range.',
+      run: (bt, me) => { me.flags.tlaloc = true; bt.addStatus(me, 'immobilized', 'start_of_next_turn_target', me) },
       aiTarget: (_bt, me) => ({ ...me.pos }),
       aiScore: (bt, me) => (me.heat + 2 < me.stats.heatcap && hostiles(bt, me).some(h => me.weapons.some(w => bt.validTarget(me, w, h) === true)) ? 2 : 0),
     })],
-    beforeAttack(b, self, ctx, role) { if (role === 'attacker' && self.flags.tlalocRound === b.round && !ctx.tech) ctx.rerollOnMiss = true },
+    onTurnStart: (b, u) => { delete u.flags.tlaloc },
+    beforeAttack(b, self, ctx, role) {
+      // area attacks: the reroll stays inside the same area — reroll against the same character
+      if (role === 'attacker' && self.flags.tlaloc && !ctx.tech && ctx.multiTarget) ctx.rerollOnMiss = true
+    },
+    afterAttack(b, self, ctx, role) {
+      if (role !== 'attacker' || !self.flags.tlaloc || ctx.tech || !ctx.weapon || ctx.multiTarget || self.flags.tlalocRerolling) return
+      const k = `${b.lastAim?.targetId}:${ctx.weapon.uid}:${self.flags['turn:spent']?.length ?? 0}`
+      if (self.flags.tlalocAction !== k) { self.flags.tlalocAction = k; self.flags.tlalocHit = [] }
+      if (ctx.hit) { self.flags.tlalocHit = [...self.flags.tlalocHit, ctx.target.id]; return }
+      const w = ctx.weapon
+      const cands = b.alive().filter(o => (o.kind === 'mech' || o.kind === 'npc') && o !== self && b.hostile(self, o) && !self.flags.tlalocHit.includes(o.id) && b.validTarget(self, w, o) === true)
+      if (!cands.length) return
+      const def = Math.max(0, cands.indexOf(ctx.target))
+      const i = b.choose({ kind: 'tlaloc', unit: self, title: 'TLALOC: reroll the miss', text: `Missed ${ctx.target.name}. Reroll against:`, options: [...cands.map(c => ({ label: c.name, hint: `${b.distance(self, c)} spaces` })), { label: 'No reroll' }], defaultIndex: def })
+      if (i >= cands.length) return
+      self.flags.tlalocRerolling = true
+      b.say(`  TLALOC retargets: ${cands[i].name}.`)
+      try {
+        const r = b.weaponAttack(self, w, { targetId: cands[i].id }, 'free', { noBonusDamage: ctx.bonusDamage.length === 0 })
+        if (r.ctxs.some(c => c.hit)) self.flags.tlalocHit = [...self.flags.tlalocHit, cands[i].id]
+      } finally { delete self.flags.tlalocRerolling }
+    },
   },
   // ---------------- FADE Cloak
   {
-    id: 'ms_fade_cloak', partial: true, note: "FADE Cloak: phase out (intangible: can't attack or be attacked or damaged); at each turn start, on 1–3 you are back in realspace until your next turn (passing through obstructions is not modelled)",
+    id: 'ms_fade_cloak', note: "FADE Cloak: phase out (intangible: you can't interact with or be affected by anything; you move through obstructions but can't stop inside them); at each turn start, on 1–3 you are back in realspace until your next turn; deactivate as a quick action",
     actions: (_b, u) => [action({
       key: 'fade', name: u.flags.fade ? 'Deactivate FADE Cloak' : 'FADE Cloak', activation: 'quick', target: 'none', text: 'Toggle intangibility.',
       run: (bt, me) => { me.flags.fade = !me.flags.fade; me.flags.intangible = me.flags.fade; bt.say(me.flags.fade ? `${me.name} phases out of realspace.` : `${me.name} returns to realspace.`) },
@@ -384,14 +481,16 @@ const scripts: ItemScript[] = [
   },
   // ---------------- ATHENA
   {
-    id: 'ms_athena_class_nhp', partial: true, note: "ATHENA Simulacrum: Blast 3 model within range 50; hostiles inside don't benefit from cover, and those ending their turn there are Locked On and lose Hidden/Invisible",
+    id: 'ms_athena_class_nhp', note: "ATHENA Simulacrum: a Blast 3 model within range 50 for the scene (re-target as a quick action): you know the stats of everyone inside; hostiles inside get no cover and can't Hide or turn Invisible; hostiles ending their turn there are Locked On and lose Hidden/Invisible",
     actions: () => [action({
       key: 'athena', name: 'Simulacrum', activation: 'quick', target: 'tile', range: 50, area: { shape: 'blast', size: 3 }, text: 'Model a Blast 3 area: hostiles inside lose cover; ending a turn there gives Lock On and reveals them.',
-      run: (bt, me, t) => { me.flags.athena = blastTiles(bt.map, at(t), 3) },
+      run: (bt, me, t) => { me.flags.athena = blastTiles(bt.map, at(t), 3); for (const u of bt.alive()) if (onTiles(u, me.flags.athena)) u.flags.scanned = true },
       aiTarget: (bt, me) => { const h = nearest(bt, me, hostiles(bt, me)); return h ? { ...h.pos } : null },
       aiScore: (bt, me, t) => (t && 'x' in t ? unitsOnTiles(hostiles(bt, me), blastTiles(bt.map, t, 3)).length * 1.2 - (me.flags.athena ? 2 : 0) : 0),
     })],
     beforeAnyAttack(b, self, ctx) { if (self.flags.athena && b.hostile(self, ctx.target) && onTiles(ctx.target, self.flags.athena)) ctx.ignoreCover = true },
+    blockAnyStatus: (b, self, t, st) => !!self.flags.athena && (st === 'hidden' || st === 'invisible') && b.hostile(self, t) && onTiles(t, self.flags.athena),
+    onMove(b, self, mover) { if (self.flags.athena && onTiles(mover, self.flags.athena)) mover.flags.scanned = true },
     onAnyTurnEnd(b, self, u) {
       if (!self.flags.athena || !b.hostile(self, u) || !onTiles(u, self.flags.athena)) return
       b.removeStatus(u, 'hidden'); b.removeStatus(u, 'invisible')
@@ -419,31 +518,61 @@ const scripts: ItemScript[] = [
   },
   // ---------------- H0R_OS II / III
   {
-    id: 'ms_h0r_os_system_upgrade_ii', partial: true, note: 'H0R_OS II: Ideal Image (Size 2 hard-cover construct, immune to damage); False Idol (hostiles with line of sight to the decoy save (Systems) before acting against its target)',
+    id: 'ms_h0r_os_system_upgrade_ii',
+    note: 'H0R_OS II: Ideal Image (a Size 2 construct next to you: hard cover, blocks line of sight, immune to damage, an obstruction that dissipates if something is pushed into it; an adjacent character can dispel it with a Systems check as a full action; a new one replaces it); False Idol (a decoy of you or an ally in a free space within Sensors — hostiles with line of sight to it save (Systems) before acting against the original, and on a failure go after the decoy instead until the end of their next turn; Evasion 10, E-Defense 10, 1 HP)',
     actions: (b, u) => [action({
-      key: 'ideal_image', name: 'Construct: Ideal Image', activation: 'quick', target: 'tile', range: 1, text: 'A Size 2 construct next to you: hard cover, blocks line of sight, immune to damage.',
-      usable: () => (mineOf(b, u, 'Ideal Image').length ? 'Already constructed' : true),
+      key: 'ideal_image', name: 'Construct: Ideal Image', activation: 'quick', target: 'tile', range: 1, text: 'A Size 2 construct next to you: hard cover, blocks line of sight, immune to damage (replaces the previous one).',
       run: (bt, me, t) => {
         const p = at(t)
-        const d = deployableUnit(me, { name: 'Ideal Image', type: 'Deployable', size: 2, hp: 999, evasion: 5 } as any, p)
-        if (!footprint(d).every(q => free(bt, q))) throw new Error('No room')
-        d.resist = ['all']
+        const d = deployableUnit(me, { name: 'Ideal Image', type: 'Deployable', size: 2, hp: 1, evasion: 5 } as any, p)
+        if (!footprint(d).every(q => free(bt, q)) || !footprint(d).some(q => footprint(me).some(r => chebyshev(q, r) === 1))) throw new Error('Needs a free adjacent Size 2 space')
+        for (const old of mineOf(bt, me, 'Ideal Image')) bt.removeUnit(old, 'fades')
+        d.flags.isCover = true
+        d.flags.dissipateOnPush = true
+        d.flags.immuneDamage = true
         bt.spawn(d)
+        bt.invalidateTerrain()
       },
       aiTarget: (bt, me) => { const h = nearest(bt, me, hostiles(bt, me)); return h ? tileNear(bt, me, h.pos, 1) : null },
-      aiScore: (bt, me) => (hostiles(bt, me).some(h => bt.distance(me, h) <= 10) ? 1.5 : 0),
+      aiScore: (bt, me) => (!mineOf(bt, me, 'Ideal Image').length && hostiles(bt, me).some(h => bt.distance(me, h) <= 10) ? 1.5 : 0),
     }), action({
-      key: 'false_idol', name: 'Construct: False Idol', activation: 'quick', target: 'ally', range: u.stats.sensors, text: 'Create a decoy of an ally (or yourself); hostiles that can see it must save before acting against them.',
-      run: (bt, me, t) => { const who = (t as Unit) ?? me; me.flags.idol = { of: who.id, pos: tileNear(bt, me, who.pos, me.stats.sensors) ?? who.pos } },
-      aiTarget: (bt, me) => [...allies(bt, me), me].sort((x, y) => x.hp / x.stats.hp - y.hp / y.stats.hp)[0],
-      aiScore: (_bt, me) => (me.flags.idol ? 0 : 1.5),
+      key: 'false_idol', name: 'Construct: False Idol', activation: 'quick', target: 'tile', range: u.stats.sensors, text: 'Place a decoy of yourself or an ally (within Sensors) in a free space within Sensors (replaces the previous one).',
+      run: (bt, me, t) => {
+        const p = at(t)
+        const subjects = [me, ...allies(bt, me).filter(a => bt.distance(me, a) <= me.stats.sensors)]
+        const i = bt.choose({ kind: 'false_idol', unit: me, title: 'False Idol: whose decoy?', options: subjects.map(x => ({ label: x === me ? 'Yourself' : x.name })), defaultIndex: 0 })
+        const who = subjects[i]
+        const d = deployableUnit(me, { name: `False Idol (${who.name})`, type: 'Deployable', size: who.stats.size, hp: 1, evasion: 10, edef: 10 } as any, p)
+        if (!footprint(d).every(q => free(bt, q))) throw new Error('Space occupied')
+        for (const old of bt.alive().filter(o => o.ownerId === me.id && o.flags.idolOf)) bt.removeUnit(old, 'fades')
+        d.flags.idolOf = who.id
+        d.flags.dataName = 'False Idol'
+        bt.spawn(d)
+      },
+      aiTarget: (bt, me) => { const h = nearest(bt, me, hostiles(bt, me)); return h ? tileNear(bt, me, h.pos, me.stats.sensors) : null },
+      aiScore: (bt, me) => (bt.alive().some(o => o.ownerId === me.id && o.flags.idolOf) ? 0 : 1.5),
     })],
+    grantActions: (b, self, other) => mineOf(b, self, 'Ideal Image').filter(d => b.adjacent(other, d)).map(d => action({
+      key: `dispel:${d.id}`, name: 'Dispel Ideal Image', activation: 'full', target: 'none', text: 'Systems check: on a success the construct is destroyed.',
+      run: (bt, me) => { if (bt.check(me, 'sys')) bt.removeUnit(d, 'is dispelled') },
+      aiScore: (bt, me) => (bt.hostile(me, self) ? 1 : 0),
+    })),
+    beforeAnyDamage(b, self, t, parts) { if (t.flags.immuneDamage && t.ownerId === self.id) for (const p of parts) p.amount = 0 },
     beforeAnyAttack(b, self, ctx) {
-      const idol = self.flags.idol
-      if (!idol || ctx.target.id !== idol.of || !b.hostile(self, ctx.attacker) || !hasLineOfSightToTile(b.effectiveMap(), ctx.attacker, idol.pos)) return
-      if (!b.save(ctx.attacker, 'sys', self.stats.save, 0, self)) { ctx.cancelled = true; b.say(`  ${ctx.attacker.name} is fooled by the False Idol.`) }
+      const idol = b.alive().find(o => o.ownerId === self.id && o.flags.idolOf)
+      if (!idol || ctx.target.id !== idol.flags.idolOf || !b.hostile(self, ctx.attacker) && !b.hostile(ctx.target, ctx.attacker)) return
+      const a = ctx.attacker
+      const fooled = a.flags.fooledBy === idol.id && b.round <= (a.flags.fooledUntil ?? -1)
+      if (!fooled) {
+        if (!b.los(a, idol)) return
+        if (b.save(a, 'sys', self.stats.save, 0, self)) return
+        a.flags.fooledBy = idol.id
+        a.flags.fooledUntil = b.round + 1
+        b.say(`  ${a.name} is fooled by the False Idol.`)
+      }
+      ctx.target = idol
+      ctx.reasons.push('False Idol')
     },
-    fields: (_b, u) => (u.flags.idol ? [{ tiles: [u.flags.idol.pos], effect: 'protect' as const, label: `${u.name}'s False Idol decoy` }] : []),
   },
   {
     id: 'ms_h0r_os_system_upgrade_iii', note: 'H0R_OS III invades: Dimensional Emblems (three constructs by the target; passing through one deals 2 heat); Celestial Shackles (teleport the target back to its marked space)',
@@ -518,18 +647,45 @@ const scripts: ItemScript[] = [
   },
   // ---------------- Law of Blades
   {
-    id: 'ms_law_of_blades', partial: true, note: 'Law of Blades: Predator/Prey (the target attacks one of its allies); Slave Systems (the target Rams an adjacent ally, or Boosts toward you)',
+    id: 'ms_law_of_blades',
+    note: 'Law of Blades (full tech): Predator/Prey — on a hit the target attacks a character or object you choose with a weapon you choose, as its reaction; Slave Systems — on a hit it Boosts, Stabilizes, makes an Improvised Attack, Grapples or Rams as you choose (and at whom), as its reaction',
     actions: (_b, u) => [
-      techOpt(u, 'predator', 'Predator/Prey Concepts', 'On a hit, the target attacks one of its allies with a weapon you choose.', (bt, _me, t) => {
-        for (const w of t.weapons.filter(w => !w.destroyed && !w.tech && bt.weaponReady(t, w))) {
-          const victim = chars(bt).find(o => o !== t && !bt.hostile(t, o) && bt.validTarget(t, w, o) === true)
-          if (victim) { bt.say(`${t.name} turns its ${w.name} on ${victim.name}!`, 'attack'); bt.weaponAttack(t, w, { targetId: victim.id }, 'free'); return }
-        }
+      techOpt(u, 'predator', 'Predator/Prey Concepts', 'On a hit, the target attacks a character or object of your choice with a weapon of your choice (as its reaction).', (bt, me, t) => {
+        const opts: { label: string; w: Weapon; v: Unit }[] = []
+        for (const w of t.weapons.filter(w => !w.destroyed && !w.tech && bt.weaponReady(t, w) && !bt.isAoE(bt.profile(w))))
+          for (const v of bt.alive().filter(o => o !== t && o.kind !== 'drone' && bt.validTarget(t, w, o) === true)) opts.push({ label: `${w.name} → ${v.name}${bt.hostile(me, v) ? '' : ' (your side!)'}`, w, v })
+        if (!opts.length) { bt.say(`  ${t.name} has nothing to attack.`); return }
+        const def = Math.max(0, opts.findIndex(o => bt.hostile(me, o.v)))
+        const i = bt.choose({ kind: 'predator_prey', unit: me, title: `Predator/Prey: ${t.name} attacks…`, options: opts.slice(0, 12).map(o => ({ label: o.label })), defaultIndex: Math.min(def, 11) })
+        const o = opts[i]
+        t.reactionsLeft = Math.max(0, t.reactionsLeft - 1)
+        bt.say(`${t.name} turns its ${o.w.name} on ${o.v.name}!`, 'attack')
+        bt.weaponAttack(t, o.w, { targetId: o.v.id }, 'free')
       }),
-      techOpt(u, 'slave', 'Slave Systems', 'On a hit, the target Rams an adjacent ally, or Boosts toward you.', (bt, me, t) => {
-        const ally = chars(bt).find(o => o !== t && !bt.hostile(t, o) && bt.adjacent(o, t))
-        if (ally) { bt.forceMove(ally, t, 1, 1); if (!bt.save(ally, 'hull', me.stats.save, 0, me)) bt.addStatus(ally, 'prone', 'until_cleared', t); bt.say(`${t.name} rams ${ally.name}!`) }
-        else bt.forceMove(t, me, t.stats.speed, -1)
+      techOpt(u, 'slave', 'Slave Systems', 'On a hit, the target Boosts, Stabilizes, makes an Improvised Attack, Grapples or Rams — you choose the action and target (as its reaction).', (bt, me, t) => {
+        type Opt = { label: string; run: () => void }
+        const opts: Opt[] = []
+        const adj = bt.alive().filter(o => o !== t && (o.kind === 'mech' || o.kind === 'npc') && bt.adjacent(o, t))
+        const boostTo = (toward: Pos, dir: 1 | -1) => () => {
+          const r = bt.reachable(t, t.stats.speed)
+          const best = [...r.values()].sort((x, y) => dir * (chebyshev(y.pos, toward) - chebyshev(x.pos, toward)))[0]
+          if (best && (best.pos.x !== t.pos.x || best.pos.y !== t.pos.y)) bt.move(t, best.pos, { mode: 'boost' })
+        }
+        if (bt.canMove(t, 'boost') === true) {
+          opts.push({ label: 'Boost toward you', run: boostTo(me.pos, -1) })
+          const its = chars(bt).filter(o => o !== t && !bt.hostile(t, o))
+          if (its.length) { const c = { x: Math.round(its.reduce((a, o) => a + o.pos.x, 0) / its.length), y: Math.round(its.reduce((a, o) => a + o.pos.y, 0) / its.length) }; opts.push({ label: 'Boost away from its allies', run: boostTo(c, 1) }) }
+        }
+        opts.push({ label: 'Stabilize (it cools down)', run: () => { t.heat = 0; bt.removeStatus(t, 'exposed'); bt.say(`${t.name} stabilizes.`) } })
+        for (const v of adj) {
+          opts.push({ label: `Improvised Attack on ${v.name}`, run: () => bt.withForcedAction(t, () => bt.improvisedAttack(t, v)) })
+          opts.push({ label: `Grapple ${v.name}`, run: () => bt.withForcedAction(t, () => bt.grapple(t, v)) })
+          if (v.stats.size <= t.stats.size || t.flags.muscleNet) opts.push({ label: `Ram ${v.name}`, run: () => bt.withForcedAction(t, () => bt.ram(t, v)) })
+        }
+        const ramAlly = opts.findIndex(o => o.label.startsWith('Ram ') && adj.some(v => o.label === `Ram ${v.name}` && !bt.hostile(t, v)))
+        const i = bt.choose({ kind: 'slave_systems', unit: me, title: `Slave Systems: ${t.name} must…`, options: opts.slice(0, 12).map(o => ({ label: o.label })), defaultIndex: ramAlly >= 0 && ramAlly < 12 ? ramAlly : 0 })
+        t.reactionsLeft = Math.max(0, t.reactionsLeft - 1)
+        try { opts[i].run() } catch (e) { bt.say(`  ${t.name} can't: ${(e as Error).message}`) }
       }),
     ],
   },
@@ -556,7 +712,7 @@ const scripts: ItemScript[] = [
   },
   // ---------------- Roller charges
   {
-    id: 'ms_roller_directed_payload_charges', partial: true, note: 'Roller: a grenade rolls along a Line 10 and detonates on the first character it passes (Agility save or 1d6+3 explosive and knocked back 3); Bouncing Mine vs flyers',
+    id: 'ms_roller_directed_payload_charges', note: 'Roller Grenade: rolls along a Line 10 from you, bouncing over obstructions up to Size 1 (taller terrain stops it), detonating on the first character it passes through or beside: Agility save or 1d6+3 explosive and knocked 3 along the roll (half and no knockback on a success); Bouncing Mine: when a flyer passes over or next to it, everyone in Burst 1 saves (Systems) or takes 2d6 explosive, lands and can\'t fly until the end of its next turn (half otherwise)',
     actions: (b, u) => {
       const s = sys(u, 'ms_roller_directed_payload_charges')
       return [action({
@@ -565,11 +721,16 @@ const scripts: ItemScript[] = [
         run: (bt, me, t) => {
           spend(s)
           const line = lineTiles(bt.map, me, at(t), 10)
+          const base = tileAt(bt.map, me.pos)?.h ?? 0
           for (const p of line) {
+            const tile = tileAt(bt.map, p)
+            if (tile && tile.kind === 'block' && tile.h - base > 1) { bt.say('  The roller grenade fetches up against terrain.'); return }
             const v = chars(bt).find(o => o !== me && footprint(o).some(q => chebyshev(q, p) <= 1))
             if (!v) continue
             bt.emit({ type: 'area', tiles: [p], kind: 'explosion' })
-            half(bt, v, me, 'agi', '1d6+3', 'Explosive', failed => { if (failed && !v.destroyed) bt.forceMove(v, me, 3, 1) })
+            // knocked along the direction of the roll
+            const dir = { x: p.x + (p.x - me.pos.x) * 10, y: p.y + (p.y - me.pos.y) * 10 }
+            half(bt, v, me, 'agi', '1d6+3', 'Explosive', failed => { if (failed && !v.destroyed) bt.forceMove(v, { x: 2 * v.pos.x - dir.x, y: 2 * v.pos.y - dir.y }, 3, 1) })
             return
           }
         },
@@ -584,7 +745,9 @@ const scripts: ItemScript[] = [
       const m = (self.flags.bounceMines as Pos[]).find(x => path.some(p => chebyshev(p, x) <= 1))
       if (!m) return
       self.flags.bounceMines = (self.flags.bounceMines as Pos[]).filter(x => x !== m)
-      half(b, mover, self, 'sys', '2d6', 'Explosive', failed => { if (failed) { mover.flags.groundedUntil = b.round + 1; mover.flags.wasFlying = true; mover.flying = false } })
+      const tiles = burstTiles(b.map, { pos: m, stats: { size: 1 } } as Unit, 1)
+      b.emit({ type: 'area', tiles, kind: 'explosion' })
+      for (const v of unitsOnTiles(chars(b), tiles)) half(b, v, self, 'sys', '2d6', 'Explosive', failed => { if (failed && !v.destroyed) { const fl = v.flying || v.flags.landed; if (v.flying) b.land(v, 'bouncing mine'); v.flags.landed = false; if (fl) { v.flags.groundedUntil = b.round + 1; v.flags.wasFlying = true } } })
     },
     onAnyTurnEnd(b, _self, u) { if (u.flags.wasFlying && b.round > (u.flags.groundedUntil ?? 0)) { u.flying = true; u.flags.wasFlying = false } },
   },
@@ -681,19 +844,45 @@ const scripts: ItemScript[] = [
   },
   // ---------------- Blinkshield
   {
-    id: 'ms_blinkshield', partial: true, note: 'Blinkshield: Burst 4 time bubble until the end of your next turn; nothing crosses its border (attacks and effects across it fail); movement across the border is not blocked',
+    id: 'ms_blinkshield',
+    note: 'Blinkshield: a stationary Burst 4 bubble until the end of your next turn: nothing crosses its border — movement, attacks, effects or line of sight; characters straddling it when it forms save (Agility): on a success they pick the side, on a failure you do',
     actions: () => [action({
-      key: 'blinkshield', name: 'Blinkshield', activation: 'full', heat: 4, target: 'none', area: { shape: 'burst', size: 4 }, text: 'Burst 4 bubble: attacks and effects cannot cross its border until the end of your next turn.',
-      run: (bt, me) => { me.flags.blink = { tiles: burstTiles(bt.map, me, 4), until: bt.round + 1 } },
+      key: 'blinkshield', name: 'Blinkshield', activation: 'full', heat: 4, target: 'none', area: { shape: 'burst', size: 4 }, text: 'Burst 4 bubble until the end of your next turn: nothing can cross its border.',
+      run: (bt, me) => {
+        const tiles = burstTiles(bt.map, me, 4)
+        me.flags.blink = { tiles, turns: 2 }
+        bt.losZones.push({ id: `blink:${me.id}`, tiles: tiles.map(p => `${p.x},${p.y}`), untilRound: 9999, mode: 'border' })
+        bt.invalidateTerrain()
+        for (const u of chars(bt)) if (onTiles(u, tiles) && !fully(u, tiles)) settleStraddler(bt, me, u, tiles)
+      },
       aiTarget: (_bt, me) => ({ ...me.pos }),
       aiScore: (bt, me) => (me.heat + 4 < me.stats.heatcap && hostiles(bt, me).filter(h => bt.distance(me, h) > 4 && bt.distance(me, h) <= 12).length >= 2 ? 2.5 : 0),
     })],
+    onTurnEnd(b, self) { if (self.flags.blink && --self.flags.blink.turns <= 0) { delete self.flags.blink; b.losZones = b.losZones.filter(z => z.id !== `blink:${self.id}`); b.invalidateTerrain() } },
     beforeAnyAttack(b, self, ctx) {
       const f = self.flags.blink
-      if (!f || b.round > f.until) return
-      if (fully(ctx.attacker, f.tiles) !== fully(ctx.target, f.tiles)) { ctx.cancelled = true; b.say('  The attack cannot cross the Blinkshield.') }
+      if (!f) return
+      if (onTiles(ctx.attacker, f.tiles) !== onTiles(ctx.target, f.tiles)) { ctx.cancelled = true; b.say('  The attack cannot cross the Blinkshield.') }
     },
-    fields: (b, u) => (u.flags.blink && b.round <= u.flags.blink.until ? [{ tiles: u.flags.blink.tiles, effect: 'barrier' as const, label: `${u.name}'s Blinkshield: nothing crosses its border` }] : []),
+    validateAnyMove(b, self, mover, dest) {
+      const f = self.flags.blink
+      if (!f) return true
+      const inNow = onTiles(mover, f.tiles), inThen = footprint({ pos: dest, stats: mover.stats }).some(p => f.tiles.some((t: Pos) => t.x === p.x && t.y === p.y))
+      return inNow === inThen ? true : 'The Blinkshield cannot be crossed'
+    },
+    validateMove(b, self, dest) {
+      const f = self.flags.blink
+      if (!f) return true
+      const inThen = footprint({ pos: dest, stats: self.stats }).some(p => f.tiles.some((t: Pos) => t.x === p.x && t.y === p.y))
+      return onTiles(self, f.tiles) === inThen ? true : 'The Blinkshield cannot be crossed'
+    },
+    blockForcedStep(b, self, mover, from, to) {
+      const f = self.flags.blink
+      if (!f) return false
+      const inside = (p: Pos) => footprint({ pos: p, stats: mover.stats }).some(q => f.tiles.some((t: Pos) => t.x === q.x && t.y === q.y))
+      return inside(from) !== inside(to)
+    },
+    fields: (b, u) => (u.flags.blink ? [{ tiles: u.flags.blink.tiles, effect: 'barrier' as const, label: `${u.name}'s Blinkshield: nothing crosses its border` }] : []),
   },
   // ---------------- Flash Anchor
   {
@@ -713,29 +902,39 @@ const scripts: ItemScript[] = [
   },
   // ---------------- Hardlight Defense System
   {
-    id: 'ms_hardlight_defense_system', partial: true, note: 'Hardlight Defense: Burst 3 shield (you are Immobilized); attacks across its border fail; characters crossing it take 2 burn (line of sight blocking is not modelled)',
+    id: 'ms_hardlight_defense_system',
+    note: 'Hardlight Defense: a Burst 3 shield for the scene (you are Immobilized; deactivate as a protocol): it blocks line of sight both ways and attacks or effects can\'t pass it (characters straddling it are exempt); crossing it the first time in a round, or starting a turn on the boundary, deals 2 burn',
     actions: (_b, u) => [u.flags.hardlight
-      ? action({ key: 'hardlight_off', name: 'Deactivate Hardlight Defense', activation: 'protocol', target: 'none', text: 'Drop the shield.', run: (_bt, me) => { me.flags.hardlight = undefined; me.statuses = me.statuses.filter(s => !s.data?.hardlight) } })
+      ? action({ key: 'hardlight_off', name: 'Deactivate Hardlight Defense', activation: 'protocol', target: 'none', text: 'Drop the shield.', run: (bt, me) => { me.flags.hardlight = undefined; me.statuses = me.statuses.filter(s => !s.data?.hardlight); bt.losZones = bt.losZones.filter(z => z.id !== `hardlight:${me.id}`); bt.invalidateTerrain() } })
       : action({
         key: 'hardlight', name: 'Hardlight Defense System', activation: 'full', heat: 2, target: 'none', area: { shape: 'burst', size: 3 }, text: 'Raise a Burst 3 hardlight shield; you are Immobilized.',
-        run: (bt, me) => { me.flags.hardlight = burstTiles(bt.map, me, 3); bt.addStatus(me, 'immobilized', 'until_cleared', me, { hardlight: true }) },
+        run: (bt, me) => {
+          me.flags.hardlight = burstTiles(bt.map, me, 3)
+          bt.addStatus(me, 'immobilized', 'until_cleared', me, { hardlight: true })
+          bt.losZones.push({ id: `hardlight:${me.id}`, tiles: me.flags.hardlight.map((p: Pos) => `${p.x},${p.y}`), untilRound: 9999, mode: 'border', partialSeesThrough: true })
+          bt.invalidateTerrain()
+        },
         aiTarget: (_bt, me) => ({ ...me.pos }),
         aiScore: (bt, me) => (me.heat + 2 < me.stats.heatcap && hostiles(bt, me).filter(h => bt.distance(me, h) > 3 && bt.distance(me, h) <= 12).length >= 2 && allies(bt, me).some(a => bt.distance(me, a) <= 3) ? 2.5 : 0),
       })],
     beforeAnyAttack(b, self, ctx) {
       const tiles = self.flags.hardlight as Pos[] | undefined
       if (!tiles) return
-      const ina = fully(ctx.attacker, tiles), int = fully(ctx.target, tiles)
       const partial = (u: Unit) => onTiles(u, tiles) && !fully(u, tiles)
-      if (ina !== int && !partial(ctx.attacker) && !partial(ctx.target)) { ctx.cancelled = true; b.say('  The hardlight shield blocks the attack.') }
+      if (partial(ctx.attacker) || partial(ctx.target)) return
+      if (onTiles(ctx.attacker, tiles) !== onTiles(ctx.target, tiles)) { ctx.cancelled = true; b.say('  The hardlight shield blocks the attack.') }
     },
     onMove(b, self, mover, path) {
       const tiles = self.flags.hardlight as Pos[] | undefined
-      if (!tiles || mover === self || path.length < 2) return
-      const inside = (p: Pos) => tiles.some(t => t.x === p.x && t.y === p.y)
-      if (inside(path[0]) !== inside(path[path.length - 1]) && oncePerRound(mover, `hardlight:${self.id}`)) b.applyDamage(mover, [{ type: 'Burn', amount: 2 }], { source: self })
+      if (!tiles || path.length < 2) return
+      const inside = (p: Pos) => footprint({ pos: p, stats: mover.stats }).some(q => tiles.some(t => t.x === q.x && t.y === q.y))
+      if (path.some((p, i) => i > 0 && inside(p) !== inside(path[i - 1])) && oncePerRound(mover, `hardlight:${self.id}`)) b.applyDamage(mover, [{ type: 'Burn', amount: 2 }], { source: self })
     },
-    fields: (_b, u) => (u.flags.hardlight ? [{ tiles: u.flags.hardlight, effect: 'barrier' as const, label: `${u.name}'s hardlight shield: attacks can't cross; crossing deals 2 burn` }] : []),
+    onAnyTurnStart(b, self, u) {
+      const tiles = self.flags.hardlight as Pos[] | undefined
+      if (tiles && onTiles(u, tiles) && !fully(u, tiles) && oncePerRound(u, `hardlight:${self.id}`)) b.applyDamage(u, [{ type: 'Burn', amount: 2 }], { source: self })
+    },
+    fields: (_b, u) => (u.flags.hardlight ? [{ tiles: u.flags.hardlight, effect: 'barrier' as const, label: `${u.name}'s hardlight shield: blocks line of sight and attacks; crossing deals 2 burn` }] : []),
   },
   // ---------------- NOAH
   {

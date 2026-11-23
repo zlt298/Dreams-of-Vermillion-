@@ -106,6 +106,22 @@ export interface ItemScript {
   onDamaged?(b: Battle, self: Unit, d: DamageCtx): void
   /** measure this weapon attack from another point (Throughbolt); may apply its own effects first */
   attackOrigin?(b: Battle, self: Unit, w: Weapon, aim: { targetId?: string; tile?: Pos }): Pos | null | undefined
+  /** your voluntary moves must follow straight lines (Ramjet, OASIS Wall) */
+  straightMovesOnly?(b: Battle, self: Unit): boolean
+  /** veto a voluntary move: return a reason string to refuse it */
+  validateMove?(b: Battle, self: Unit, dest: Pos, path: Pos[], mode: string): true | string | undefined
+  /** forbid `mover` teleporting to `p` (Interdiction Field) */
+  blocksTeleport?(b: Battle, self: Unit, mover: Unit, p: Pos): boolean
+  /** `mover` may pass through `p` but not end a move there (OASIS trail) */
+  forbidsEndingAt?(b: Battle, self: Unit, mover: Unit, p: Pos): boolean
+  /** stop forced movement from crossing between two spaces (barriers) */
+  blockForcedStep?(b: Battle, self: Unit, mover: Unit, from: Pos, to: Pos): boolean
+  /** veto another unit's move (tethers): return a reason string to refuse it */
+  validateAnyMove?(b: Battle, self: Unit, mover: Unit, dest: Pos, mode: string): true | string | undefined
+  /** any character (you included) is about to take damage: parts and opts may be changed */
+  beforeAnyDamage?(b: Battle, self: Unit, target: Unit, parts: { type: string; amount: number }[], opts: { source?: Unit; resistAll?: boolean; resistTypes?: string[]; ap?: boolean; attack?: AttackCtx }): void
+  /** you gained a status */
+  onStatusAdded?(b: Battle, self: Unit, status: StatusId, duration: Duration, source?: Unit): void
   /** a character failed a save against you */
   onSaveFailed?(b: Battle, self: Unit, target: Unit, stat: string): void
   /** another unit gained a status */

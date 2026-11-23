@@ -7,6 +7,7 @@ import type { Effect, Pos, Unit, Weapon } from '../rules/types'
 import type { CustomAction } from '../rules/effects/registry'
 import { averageDice } from '../rules/rng'
 import { hasTag, tagVal } from '../rules/stats'
+import { sekhmetTurn } from '../rules/effects/scripts/systems2'
 
 const STATUS_VALUE: Record<string, number> = {
   stunned: 9, exposed: 6, immobilized: 3.5, impaired: 3, jammed: 3, shredded: 3, slowed: 2, prone: 2.5, lockon: 1.5,
@@ -371,6 +372,7 @@ function runAiTurnInner(b: Battle, u: Unit) {
       if (b.has(u, 'shutdown')) { b.bootUp(u); return }
       if (b.has(u, 'prone') && !b.has(u, 'immobilized')) b.standUp(u)
       if (b.has(u, 'grappled') && u.statuses.find(s => s.id === 'grappled')?.data?.by !== u.id) { try { b.breakGrapple(u) } catch (e) { if (e instanceof PendingChoice) throw e } }
+      if (u.flags.sekhmet) { sekhmetTurn(b, u); return }
       const plan = planFor(b, u)
       // protocols first
       for (const o of plan.actions.filter(o => o.cost === 'protocol')) safe(() => execute(b, u, o))

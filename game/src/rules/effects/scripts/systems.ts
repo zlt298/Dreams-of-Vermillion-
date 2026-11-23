@@ -41,6 +41,64 @@ function aoeSave(b: Battle, self: Unit, tiles: Pos[], stat: 'hull' | 'agi' | 'sy
   for (const t of unitsOnTiles(b.alive(), tiles)) if (t !== self && filter(t) && !b.save(t, stat, self.stats.save, 0, self)) onFail(t)
 }
 
+const accFor = (b: Battle, u: Unit) => { const a = b.accuracyFromStatuses(u, 'check', 'hull'); return a ? (a > 0 ? Math.max(...Array.from({ length: a }, () => b.rng.d(6))) : -Math.max(...Array.from({ length: -a }, () => b.rng.d(6)))) : 0 }
+function lbocSync(b: Battle, self: Unit) {
+  const on = !!self.flags.lboc && !self.destroyed
+  const tiles = on ? burstTiles(b.map, self, 2) : []
+  const inside = (u: Unit) => footprint(u).every(p => tiles.some(t => t.x === p.x && t.y === p.y))
+  for (const u of b.alive()) {
+    if (u.kind !== 'mech' && u.kind !== 'npc') continue
+    const mine = u.statuses.find(s => s.id === 'invisible' && s.data?.lboc === self.id)
+    const want = on && !b.hostile(self, u) && inside(u)
+    if (want && !b.has(u, 'invisible')) b.addStatus(u, 'invisible', 'until_cleared', self, { lboc: self.id })
+    else if (!want && mine) b.removeStatus(u, 'invisible')
+  }
+}
+function lbocOff(b: Battle, self: Unit) {
+  delete self.flags.lboc
+  self.statuses = self.statuses.filter(s => !(s.id === 'slowed' && s.data?.lboc))
+  b.say(`${self.name}'s cloaking field drops.`)
+  lbocSync(b, self)
+}
+const META_CONDITIONS = ['immobilized', 'impaired', 'jammed', 'lockon', 'shredded', 'slowed', 'stunned']
+function metaUnlink(b: Battle, self: Unit) {
+  const a = b.unit(self.flags.metahook)
+  if (a && a.flags.metaOrigSys != null) { a.stats.sys = a.flags.metaOrigSys; delete a.flags.metaOrigSys }
+  delete self.flags.metahook
+}
+function metaCheck(b: Battle, self: Unit) {
+  const a = b.unit(self.flags.metahook)
+  if (!self.flags.metahook) return
+  if (!a || a.destroyed || b.distance(self, a) > self.stats.sensors || !b.los(self, a)) { metaUnlink(b, self); b.say(`${self.name}'s Metahook link breaks.`) }
+}
+const centroid = (ps: Pos[], fallback: Pos): Pos => (ps.length ? { x: Math.round(ps.reduce((a, p) => a + p.x, 0) / ps.length), y: Math.round(ps.reduce((a, p) => a + p.y, 0) / ps.length) } : fallback)
+function turnTarget(b: Battle, self: Unit, t: Unit) {
+  t.flags.turnedFrom = t.side
+  t.flags.turnedBy = self.id
+  // until the end of its next turn (the turn it is taking now, if any, doesn't count)
+  t.flags.turnedTurns = t.activeTurn ? 2 : 1
+  t.side = self.side
+  b.say(`  Fourth Gate: ${t.name} turns on its allies until the end of its next turn!`, 'warn')
+  b.emit({ type: 'status', unitId: t.id, status: 'turned', added: true })
+}
+function unturn(b: Battle, t: Unit) {
+  if (!t.flags.turnedFrom) return
+  t.side = t.flags.turnedFrom
+  delete t.flags.turnedFrom; delete t.flags.turnedBy; delete t.flags.turnedTurns
+  b.say(`${t.name} returns to its own side.`, 'status')
+  b.emit({ type: 'status', unitId: t.id, status: 'turned', added: false })
+  b.checkVictory()
+}
+
+function excomm(b: Battle, self: Unit, u: Unit) {
+  if (u.flags['round:excomm']) return
+  const ally = b.alive().find(o => o !== u && (o.kind === 'mech' || o.kind === 'npc') && !b.hostile(u, o) && b.adjacent(u, o))
+  if (!ally) return
+  u.flags['round:excomm'] = true
+  b.say(`  Excommunicate: ${u.name} and ${ally.name} take 3 heat.`)
+  b.applyDamage(u, [{ type: 'Heat', amount: 3 }], { source: self })
+  b.applyDamage(ally, [{ type: 'Heat', amount: 3 }], { source: self })
+}
 registerScripts([
   // ------------------------------------------------------------ GMS
   narrative('ms_comp_con_class_assistant_unit', 'AI tag; COMP/CON can pilot while you are out of the mech'),
@@ -155,29 +213,72 @@ registerScripts([
   // ------------------------------------------------------------ IPS-N
   { id: 'ms_synthetic_muscle_netting', note: 'Ram/Grapple larger targets', init: u => { u.flags.muscleNet = true } },
   {
-    id: 'ms_reinforced_cabling', partial: true, note: 'Drag Down (Grapple Swing not modelled)',
-    actions: (b, u) => [action({
-      key: 'dragdown', name: 'Drag Down', activation: 'quick', target: 'enemy', range: 5, text: 'Contested Hull check vs a character within 5: the loser is knocked Prone.',
-      run: (bt, self, t) => {
-        const target = t as Unit
-        const a = bt.rng.d(20) + self.stats.hull, d = bt.rng.d(20) + target.stats.hull
-        bt.say(`  Drag Down: ${a} vs ${d}`)
-        bt.addStatus(a >= d ? target : self, 'prone', 'until_cleared', self)
-      },
-      aiScore: () => 2,
-    })],
+    id: 'ms_reinforced_cabling',
+    note: 'Grapple Swing: 1/turn, instead of walking your standard move, fly your Speed in a straight line over a clear path to a free space; Drag Down: contested Hull check against a character within 5 and line of sight, the loser is knocked Prone',
+    actions: (b, u) => [
+      action({
+        key: 'grappleswing', name: 'Grapple Swing', activation: 'free', target: 'tile', range: u.stats.speed,
+        text: 'Use your standard move to fly your Speed in a straight line (orthogonal or diagonal) over a clear path, ending in a free space.',
+        usable: (bt, self) => (self.flags['turn:swing'] ? 'Already used this turn' : self.moveLeft < self.stats.speed ? 'Use it instead of your standard move' : bt.canMove(self, 'standard')),
+        run: (bt, self, t) => {
+          const dest = t && 'x' in t ? t : (t as Unit).pos
+          const dx = dest.x - self.pos.x, dy = dest.y - self.pos.y
+          const n = Math.max(Math.abs(dx), Math.abs(dy))
+          if (!n || (dx && dy && Math.abs(dx) !== Math.abs(dy))) throw new Error('Must be a straight line')
+          if (n > self.stats.speed) throw new Error('Too far')
+          const sx = Math.sign(dx), sy = Math.sign(dy)
+          const path: Pos[] = [{ ...self.pos }]
+          for (let k = 1; k <= n; k++) {
+            const p = { x: self.pos.x + sx * k, y: self.pos.y + sy * k }
+            if (bt.alive().some(o => o !== self && !o.flags.flat && footprint(o).some(q => footprint({ pos: p, stats: self.stats }).some(r => r.x === q.x && r.y === q.y)))) throw new Error('The path is not clear')
+            path.push(p)
+          }
+          self.flags['turn:swing'] = true
+          self.moveLeft = 0
+          bt.say(`${self.name} swings on its cables.`)
+          bt.moveAlong(self, path)
+        },
+        aiScore: () => -1,
+      }),
+      action({
+        key: 'dragdown', name: 'Drag Down', activation: 'quick', target: 'enemy', range: 5, text: 'Contested Hull check vs a character within 5 and line of sight: the loser is knocked Prone.',
+        run: (bt, self, t) => {
+          const target = t as Unit
+          if (bt.distance(self, target) > 5) throw new Error('Out of range')
+          if (!bt.los(self, target)) throw new Error('No line of sight')
+          const a = bt.rng.d(20) + self.stats.hull + accFor(bt, self), d = bt.rng.d(20) + target.stats.hull + accFor(bt, target)
+          bt.say(`  Drag Down: ${a} vs ${d}`)
+          bt.addStatus(a >= d ? target : self, 'prone', 'until_cleared', self)
+        },
+        aiScore: () => 2,
+      }),
+    ],
   },
   {
-    id: 'ms_argonaut_shield', partial: true, note: 'Ward gains resistance; you take the damage they actually take',
+    id: 'ms_argonaut_shield',
+    note: 'Argonaut Shield: an adjacent character gains Resistance to all damage while it stays adjacent; you take half the damage it would take (before its Armor and Resistance)',
     actions: (b, u) => [action({
-      key: 'argonaut', name: 'Argonaut Shield', activation: 'quick', target: 'ally', range: 1, text: 'An adjacent character gains Resistance to all damage while adjacent; you take part of the damage.',
-      run: (bt, self, t) => { self.flags.argonautWard = (t as Unit).id },
+      key: 'argonaut', name: 'Argonaut Shield', activation: 'quick', target: 'ally', range: 1, text: 'An adjacent character gains Resistance to all damage while adjacent to you; you take half the damage it would take, before armor and resistance.',
+      run: (bt, self, t) => {
+        const w = t as Unit
+        if (!w || w === self || !bt.adjacent(self, w)) throw new Error('Choose an adjacent character')
+        self.flags.argonautWard = w.id
+        bt.say(`${self.name} raises the Argonaut Shield over ${w.name}.`)
+      },
+      aiTarget: (bt, self) => bt.alive().filter(o => o !== self && !bt.hostile(self, o) && (o.kind === 'mech' || o.kind === 'npc') && bt.adjacent(self, o)).sort((x, y) => x.hp / x.stats.hp - y.hp / y.stats.hp)[0] ?? null,
       aiScore: () => 2,
     })],
-    beforeAnyAttack(b, self, ctx) { if (self.flags.argonautWard === ctx.target.id && b.adjacent(self, ctx.target)) ctx.resistAll = true },
-    afterAnyAttack(b, self, ctx) {
-      if (self.flags.argonautWard === ctx.target.id && b.adjacent(self, ctx.target) && ctx.damageDealt) b.applyDamage(self, [{ type: 'Kinetic', amount: ctx.damageDealt }], { source: ctx.attacker })
+    beforeAnyDamage(b, self, t, parts, opts) {
+      if (self.flags.argonautWard !== t.id) return
+      if (!b.adjacent(self, t)) { delete self.flags.argonautWard; return }
+      const share = parts.filter(p => ['Kinetic', 'Explosive', 'Energy', 'Burn'].includes(p.type) && p.amount > 0).map(p => ({ type: p.type, amount: Math.ceil(p.amount / 2) }))
+      opts.resistAll = true
+      if (share.length && !self.flags.argonautTaking) {
+        self.flags.argonautTaking = true
+        try { b.applyDamage(self, share, { source: opts.source }) } finally { delete self.flags.argonautTaking }
+      }
     },
+    onAnyTurnStart(b, self) { const w = b.unit(self.flags.argonautWard); if (self.flags.argonautWard && (!w || w.destroyed || !b.adjacent(self, w))) delete self.flags.argonautWard },
   },
   {
     id: 'ms_aceso_stabilizer', note: 'Overshield grit+4 with immunity to Impaired/Jammed while it lasts',
@@ -197,12 +298,26 @@ registerScripts([
   },
   { id: 'ms_bulwark_mods', note: 'Ignore difficult terrain', init: u => { u.flags.ignoreDifficult = true } },
   {
-    id: 'ms_ramjet', note: 'Boost +2, melee knockback 2 (straight-line restriction not enforced)', partial: true,
+    id: 'ms_ramjet',
+    note: 'Ramjet (protocol): until your next turn, Boost +2 and melee attacks (Ram and Grapple too) gain Knockback 2; every move must be your full Speed in a straight line, stopping early only at an obstruction or hostile',
     actions: (b, u) => [action({
-      key: 'ramjet', name: 'Ramjet', activation: 'protocol', target: 'none', text: 'Until your next turn: Boost +2 spaces, melee attacks Knockback 2.',
+      key: 'ramjet', name: 'Ramjet', activation: 'protocol', target: 'none', text: 'Until your next turn: Boost +2, melee Knockback 2; moves must be full-Speed straight lines (you may stop at an obstruction or hostile).',
       run: (bt, self) => { self.flags.ramjet = true; self.bonuses.push({ id: 'boost', val: 2, condition: '{ramjet}' }) },
     })],
-    onTurnStart: (b, u) => { delete u.flags.ramjet },
+    onTurnStart: (b, u) => { if (u.flags.ramjet) { delete u.flags.ramjet; u.bonuses = u.bonuses.filter(x => x.condition !== '{ramjet}') } },
+    straightMovesOnly: (_b, self) => !!self.flags.ramjet,
+    validateMove(b, self, dest, path) {
+      if (!self.flags.ramjet || self.flags.teleportMoves) return true
+      const sx = Math.sign(dest.x - self.pos.x), sy = Math.sign(dest.y - self.pos.y)
+      const n = path.length - 1
+      // stopping short of your full Speed is allowed only against an obstruction, a hostile or the map edge
+      const next = { x: dest.x + sx, y: dest.y + sy }
+      const tile = next.x >= 0 && next.y >= 0 && next.x < b.map.w && next.y < b.map.h ? b.map.tiles[next.y * b.map.w + next.x] : undefined
+      const blocked = !tile || tile.kind === 'block' || b.alive().some(o => o !== self && footprint(o).some(q => q.x === next.x && q.y === next.y))
+      const full = Math.min(self.stats.speed, self.moveLeft + (self.flags['turn:moved'] ? 0 : 0))
+      if (n < full && !blocked) return `Ramjet: move your full Speed (${full}) unless something blocks you`
+      return true
+    },
     afterAttack(b, self, ctx, role) { if (role === 'attacker' && self.flags.ramjet && ctx.melee && ctx.hit && !ctx.target.destroyed) b.forceMove(ctx.target, self, 2, 1) },
   },
   {
@@ -356,12 +471,35 @@ registerScripts([
     onDamaged(b, self) { if (self.statuses.some(s => s.id === 'invisible' && s.data?.camo)) b.removeStatus(self, 'invisible') },
   },
   {
-    id: 'ms_markerlight', partial: true, note: '2 heat + Lock On + no soft cover (weak-spot crit reaction not modelled)',
+    id: 'ms_markerlight',
+    note: 'Markerlight (full tech): 2 heat, Lock On, no soft cover until the Lock On clears; once before your next turn, when an ally hits the target, you may declare a weak spot (reaction): the hit becomes a critical',
     actions: (b, u) => [action({
-      key: 'markerlight', name: 'Markerlight', activation: 'full_tech', target: 'enemy', range: u.stats.sensors, text: 'Tech attack: 2 heat, Lock On, target loses soft cover until the Lock On is cleared.',
-      run: (bt, self, t) => { const c = bt.techAttackRoll(self, t as Unit, 'Markerlight'); if (c.hit) { bt.applyDamage(t as Unit, [{ type: 'Heat', amount: 2 }], { source: self }); bt.addStatus(t as Unit, 'lockon', 'until_cleared', self); (t as Unit).flags.markerlit = true } },
+      key: 'markerlight', name: 'Markerlight', activation: 'full_tech', target: 'enemy', range: u.stats.sensors, text: 'Tech attack: 2 heat, Lock On, target loses soft cover until the Lock On is cleared; you may turn one ally hit on it into a critical before your next turn.',
+      run: (bt, self, t) => {
+        const target = t as Unit
+        const v = bt.techTargetValid(self, target)
+        if (v !== true) throw new Error(v)
+        if (!bt.los(self, target) && !bt.viaMetahook(self, target)) throw new Error('No line of sight')
+        const c = bt.techAttackRoll(self, target, 'Markerlight')
+        if (c.hit) {
+          bt.applyDamage(target, [{ type: 'Heat', amount: 2 }], { source: self })
+          bt.addStatus(target, 'lockon', 'until_cleared', self)
+          target.flags.markerlit = true
+          self.flags.markerTarget = target.id
+        }
+      },
       aiScore: () => 4,
     })],
+    onTurnStart: (b, u) => { delete u.flags.markerTarget },
+    afterAnyRoll(b, self, ctx) {
+      if (self.flags.markerTarget !== ctx.target.id || !ctx.hit || ctx.crit || ctx.tech || ctx.attacker === self || b.hostile(self, ctx.attacker) || !ctx.attacker.canCrit) return
+      if (b.canSpend(self, 'reaction') !== true) return
+      if (!b.offerReaction(self, 'markerlight', 'Weak spot?', `${ctx.attacker.name} hit ${ctx.target.name}. Spend ${self.name}'s reaction to make it a critical hit?`)) return
+      self.reactionsLeft--
+      delete self.flags.markerTarget
+      ctx.crit = true
+      b.say(`  ${self.name} marks a weak spot: CRITICAL HIT!`, 'attack')
+    },
     adjustCover: (b, self, attacker, target, c) => (target.flags.markerlit && b.has(target, 'lockon') && c === 'soft' ? 'none' : c),
   },
   {
@@ -382,13 +520,20 @@ registerScripts([
     },
   },
   {
-    id: 'ms_lb_oc_cloaking_field', partial: true, note: 'Slowed; you and allies within burst 2 are Invisible (re-evaluated each turn)',
-    fields: (b, u) => (u.flags.lboc ? [{ tiles: burstTiles(b.map, u, 2), effect: 'protect' as const, label: `${u.name}'s cloaking field: allies inside are Invisible` }] : []),
+    id: 'ms_lb_oc_cloaking_field',
+    note: 'LB/OC Cloaking Field: you are Slowed; you and allies completely inside a Burst 2 are Invisible; lasts until the end of your next turn or until you are Stunned, take damage or deactivate it (quick)',
+    fields: (b, u) => (u.flags.lboc ? [{ tiles: burstTiles(b.map, u, 2), effect: 'protect' as const, label: `${u.name}'s cloaking field: allies wholly inside are Invisible` }] : []),
     actions: (b, u) => [action({
-      key: 'lboc', name: u.flags.lboc ? 'Deactivate Cloaking Field' : 'LB/OC Cloaking Field', activation: 'quick', target: 'none', text: 'Toggle: you are Slowed; you and allies wholly inside burst 2 are Invisible.',
-      run: (bt, self) => { self.flags.lboc = !self.flags.lboc; if (self.flags.lboc) bt.addStatus(self, 'slowed', 'until_cleared', self, { lboc: true }); else self.statuses = self.statuses.filter(s => !s.data?.lboc) },
+      key: 'lboc', name: u.flags.lboc ? 'Deactivate Cloaking Field' : 'LB/OC Cloaking Field', activation: 'quick', target: 'none', text: u.flags.lboc ? 'End the cloaking field.' : 'You are Slowed; you and allies wholly inside burst 2 are Invisible until the end of your next turn.',
+      run: (bt, self) => { if (self.flags.lboc) lbocOff(bt, self); else { self.flags.lboc = { turns: 2 }; bt.addStatus(self, 'slowed', 'until_cleared', self, { lboc: true }); lbocSync(bt, self) } },
+      aiScore: (bt, self) => (self.flags.lboc ? -1 : 2),
     })],
-    beforeAnyAttack(b, self, ctx) { if (self.flags.lboc && !b.hostile(self, ctx.target) && b.distance(self, ctx.target) <= 2) ctx.forceInvisible = true },
+    onMove: (b, self) => lbocSync(b, self),
+    onAnyTurnStart: (b, self) => lbocSync(b, self),
+    onTurnStart: (b, self) => lbocSync(b, self),
+    onTurnEnd(b, self) { if (self.flags.lboc && --self.flags.lboc.turns <= 0) lbocOff(b, self) },
+    onDamaged(b, self, d) { if (self.flags.lboc && d.amount > 0 && d.kind === 'hp') lbocOff(b, self) },
+    onStatusAdded(b, self, st) { if (st === 'stunned' && self.flags.lboc) lbocOff(b, self) },
   },
   // ------------------------------------------------------------ HORUS
   { id: 'ms_scanner_swarm', note: '+1 acc on tech vs adjacent', beforeAttack(b, self, ctx, role) { if (role === 'attacker' && ctx.tech && b.adjacent(self, ctx.target)) ctx.accuracy++ } },
@@ -405,19 +550,102 @@ registerScripts([
     ],
   },
   {
-    id: 'ms_metahook', partial: true, note: 'Link with an ally: they gain +1 accuracy on tech attacks',
-    actions: (b, u) => [action({ key: 'metahook', name: 'Metahook', activation: 'quick_tech', target: 'ally', range: u.stats.sensors, text: 'Link systems with an ally within sensors.', run: (bt, self, t) => { (t as Unit).bonuses.push({ id: 'tech_attack', accuracy: 1 }) } })],
-  },
-  {
-    id: 'ms_osiris_class_nhp', partial: true, note: 'Hurl Into the Duat: tech attack dealing heat equal to 2 + tech attack',
+    id: 'ms_metahook',
+    note: 'Metahook (quick tech): link with an ally within Sensors and line of sight while it stays there: your tech actions can use its Sensors and line of sight, it uses your Systems for checks and saves, and heat or conditions either of you takes are taken by the other; one link at a time',
     actions: (b, u) => [action({
-      key: 'duat', name: 'Hurl Into the Duat', activation: 'quick_tech', target: 'enemy', range: u.stats.sensors, text: 'Powerful system attack.',
-      run: (bt, self, t) => { const c = bt.techAttackRoll(self, t as Unit, 'Hurl Into the Duat'); if (c.hit) bt.applyDamage(t as Unit, [{ type: 'Heat', amount: 2 + self.stats.techAttack }], { source: self }) },
+      key: 'metahook', name: u.flags.metahook ? 'Metahook (relink)' : 'Metahook', activation: 'quick_tech', target: 'ally', range: u.stats.sensors, text: 'Link systems with an ally within Sensors and line of sight.',
+      run: (bt, self, t) => {
+        const a = t as Unit
+        if (!a || a === self || bt.hostile(self, a)) throw new Error('Choose an ally')
+        if (bt.distance(self, a) > self.stats.sensors || !bt.los(self, a)) throw new Error('Needs Sensors range and line of sight')
+        metaUnlink(bt, self)
+        self.flags.metahook = a.id
+        a.flags.metaOrigSys = a.stats.sys
+        a.stats.sys = Math.max(a.stats.sys, self.stats.sys)
+        bt.say(`${self.name} links systems with ${a.name}.`)
+      },
+      aiScore: () => -1,
     })],
+    onMove: (b, self) => metaCheck(b, self),
+    onAnyTurnStart: (b, self) => metaCheck(b, self),
+    onHeat(b, self, amount) { const a = b.unit(self.flags.metahook); if (a && !self.flags.metaSync) { self.flags.metaSync = true; try { b.addHeat(a, amount) } finally { delete self.flags.metaSync } } },
+    onAnyHeat(b, self, t, amount) { if (t.id === self.flags.metahook && !self.flags.metaSync) { self.flags.metaSync = true; try { b.addHeat(self, amount) } finally { delete self.flags.metaSync } } },
+    onStatusAdded(b, self, st, dur, src) { const a = b.unit(self.flags.metahook); if (a && META_CONDITIONS.includes(st)) b.addStatus(a, st, dur, src) },
+    onAnyStatusAdded(b, self, t, st, dur, src) { if (t.id === self.flags.metahook && META_CONDITIONS.includes(st)) b.addStatus(self, st, dur, src) },
+    onDestroyed(b, self, v) { if (v.id === self.flags.metahook || v === self) metaUnlink(b, self) },
   },
   {
-    id: 'ms_mimic_mesh', partial: true, note: 'Battlefield Awareness modelled as +1 evasion for the linked ally',
-    actions: (b, u) => [action({ key: 'mimic', name: 'Activate Mimic Mesh', activation: 'quick', target: 'ally', range: u.stats.sensors, text: 'Choose an ally: you may move toward them as a reaction.', run: () => {} })],
+    id: 'ms_osiris_class_nhp',
+    note: 'Hurl Into the Duat (quick tech, 1/round): 2 heat and the next Gate in turn — I: you steer its next standard move; II: Slowed and Impaired; III: Stunned (until the end of its next turn); IV: it fights for your side until the end of its next turn (ends if your side harms, attacks or forces a save on it)',
+    actions: (b, u) => [action({
+      key: 'duat', name: `Hurl Into the Duat (Gate ${['I', 'II', 'III', 'IV'][u.flags.duatGate ?? 0]})`, activation: 'quick_tech', target: 'enemy', range: u.stats.sensors, text: 'Tech attack: 2 heat and the next Gate effect.',
+      usable: (bt, self) => (self.flags['round:duat'] ? 'Once per round' : true),
+      run: (bt, self, t) => {
+        const target = t as Unit
+        const v = bt.techTargetValid(self, target)
+        if (v !== true) throw new Error(v)
+        self.flags['round:duat'] = true
+        const c = bt.techAttackRoll(self, target, 'Hurl Into the Duat')
+        if (!c.hit || target.destroyed) return
+        bt.applyDamage(target, [{ type: 'Heat', amount: 2 }], { source: self })
+        if (target.destroyed) return
+        const gate = self.flags.duatGate ?? 0
+        self.flags.duatGate = (gate + 1) % 4
+        if (gate === 0) { target.flags.duatSteer = self.id; bt.say(`  First Gate: ${self.name} controls ${target.name}'s next standard move.`) }
+        else if (gate === 1) { bt.addStatus(target, 'slowed', 'next_turn_end_target', self); bt.addStatus(target, 'impaired', 'next_turn_end_target', self) }
+        else if (gate === 2) bt.addStatus(target, 'stunned', 'next_turn_end_target', self)
+        else turnTarget(bt, self, target)
+      },
+      aiScore: () => 4,
+    })],
+    onAnyTurnStart(b, self, u) {
+      if (u.flags.duatSteer !== self.id) return
+      delete u.flags.duatSteer
+      if (u.moveLeft <= 0 || b.canMove(u, 'standard') !== true) return
+      const opts = [
+        { label: 'Toward me', hint: `${u.name} walks its Speed toward ${self.name}`, to: self.pos, dir: -1 },
+        { label: 'Away from me', hint: 'as far from you as it can', to: self.pos, dir: 1 },
+        { label: 'Away from its allies', hint: 'strand it from its team', to: centroid(b.alive().filter(o => o !== u && !b.hostile(u, o) && o.kind !== 'deployable').map(o => o.pos), u.pos), dir: 1 },
+        { label: 'Stay put', hint: 'it does not move', to: u.pos, dir: 0 },
+      ]
+      const i = b.choose({ kind: 'duat_steer', unit: self, title: `First Gate: steer ${u.name}`, options: opts.map(o => ({ label: o.label, hint: o.hint })), defaultIndex: 2 })
+      const o = opts[i]
+      const r = b.reachable(u, u.moveLeft)
+      const score = (p: Pos) => Math.max(Math.abs(p.x - o.to.x), Math.abs(p.y - o.to.y)) * o.dir
+      const best = o.dir === 0 ? null : [...r.values()].sort((x, y) => score(y.pos) - score(x.pos))[0]
+      if (best && (best.pos.x !== u.pos.x || best.pos.y !== u.pos.y)) { b.say(`${self.name} steers ${u.name}'s move.`); try { b.move(u, best.pos, { mode: 'standard' }) } catch { /* blocked */ } }
+      u.moveLeft = 0
+    },
+    onAnyTurnEnd(b, self, u) {
+      if (u.flags.turnedBy !== self.id) return
+      if (--u.flags.turnedTurns <= 0) unturn(b, u)
+    },
+    beforeAnyAttack(b, self, ctx) { if (ctx.target.flags.turnedBy === self.id && !b.hostile(ctx.attacker, self) && ctx.attacker !== ctx.target) unturn(b, ctx.target) },
+    beforeAnyDamage(b, self, t, parts, opts) { if (t.flags.turnedBy === self.id && opts.source && !b.hostile(opts.source, self) && opts.source !== t) unturn(b, t) },
+  },
+  {
+    id: 'ms_mimic_mesh',
+    note: 'Mimic Mesh: choose an ally within Sensors; until the end of your next turn, Battlefield Awareness (reaction, any number of times): when a hostile action targets that ally, move 3 spaces straight toward it first, ignoring engagement and without provoking',
+    actions: (b, u) => [action({
+      key: 'mimic', name: 'Activate Mimic Mesh', activation: 'quick', target: 'ally', range: u.stats.sensors, text: 'Choose an ally within Sensors: until the end of your next turn you may move 3 toward it whenever a hostile acts against it.',
+      run: (bt, self, t) => {
+        const a = t as Unit
+        if (!a || a === self || bt.hostile(self, a) || bt.distance(self, a) > self.stats.sensors) throw new Error('Choose an ally within Sensors')
+        self.flags.mimicMesh = { ally: a.id, turns: 2 }
+      },
+      aiTarget: (bt, self) => bt.alive().filter(o => o !== self && !bt.hostile(self, o) && o.kind === 'mech' && bt.distance(self, o) <= self.stats.sensors).sort((x, y) => x.hp / x.stats.hp - y.hp / y.stats.hp)[0] ?? null,
+      aiScore: () => 1,
+    })],
+    onTurnEnd(b, self) { if (self.flags.mimicMesh && --self.flags.mimicMesh.turns <= 0) delete self.flags.mimicMesh },
+    beforeAnyAttack(b, self, ctx) {
+      const m = self.flags.mimicMesh
+      if (!m || ctx.target.id !== m.ally || !b.hostile(ctx.attacker, ctx.target) || b.adjacent(self, ctx.target)) return
+      if (b.canSpend(self, 'reaction') !== true || b.has(self, 'immobilized') || b.has(self, 'stunned')) return
+      if (!b.offerReaction(self, 'mimic_mesh', 'Battlefield Awareness?', `${ctx.attacker.name} acts against ${ctx.target.name}. Spend ${self.name}'s reaction to move 3 toward it first?`)) return
+      self.reactionsLeft--
+      b.say(`${self.name} dashes toward ${ctx.target.name} (Battlefield Awareness).`)
+      b.forceMove(self, ctx.target, 3, -1)
+    },
   },
   {
     id: 'ms___scorpion_v70.1', note: '//SCORPION: when a tech attack hits you, the attacker is Impaired and takes 2 heat',
@@ -430,34 +658,98 @@ registerScripts([
     },
   },
   {
-    id: 'ms_scylla_class_nhp', partial: true, note: 'Unleash SCYLLA: two half-damage reaction skirmishes vs attackers',
-    actions: (b, u) => [action({ key: 'scylla', name: 'Unleash SCYLLA', activation: 'quick', target: 'none', text: 'Until your next turn, gain two reactions to Skirmish (half damage) against attackers.', run: (bt, self) => { self.flags.scylla = 2 } })],
+    id: 'ms_scylla_class_nhp',
+    note: 'Unleash SCYLLA: until your next turn, two special reactions to Skirmish (half damage, heat and burn) the character that triggers them — chosen trigger: a hostile attacking you or an ally within 3, or a hostile attacking a chosen object',
+    actions: (b, u) => [action({
+      key: 'scylla', name: 'Unleash SCYLLA', activation: 'quick', target: 'none', text: 'Until your next turn, gain two special reactions to Skirmish (half damage) against hostiles that trigger them.',
+      run: (bt, self) => {
+        const objs = bt.alive().filter(o => (o.kind === 'deployable' || o.flags.isCover) && bt.los(self, o))
+        const i = bt.choose({ kind: 'scylla_trigger', unit: self, title: 'Unleash SCYLLA: trigger', options: [{ label: 'Protect: attacks on you or allies within 3' }, ...objs.map(o => ({ label: `Guard ${o.name}`, hint: `at ${o.pos.x},${o.pos.y}` }))], defaultIndex: 0 })
+        self.flags.scylla = { left: 2, guard: i > 0 ? objs[i - 1].id : null }
+        if (i > 0) bt.say(`${self.name}'s SCYLLA guards ${objs[i - 1].name}.`)
+      },
+    })],
     onTurnStart: (b, u) => { delete u.flags.scylla },
-    afterAttack(b, self, ctx, role) {
-      if (role !== 'target' || !(self.flags.scylla > 0) || ctx.attacker.destroyed) return
-      const w = b.bestThreatWeapon(self, ctx.attacker) ?? self.weapons.find(w => b.weaponReady(self, w) && b.validTarget(self, w, ctx.attacker) === true)
+    afterAnyAttack(b, self, ctx) {
+      const sc = self.flags.scylla
+      if (!sc || sc.left <= 0 || self.destroyed || ctx.attacker.destroyed || !b.hostile(self, ctx.attacker) || ctx.attacker === self) return
+      const t = ctx.target
+      const trig = sc.guard ? t.id === sc.guard : (t === self || (!b.hostile(self, t) && b.distance(self, t) <= 3 && t.kind !== 'deployable'))
+      if (!trig || ctx.mode === 'secondary') return
+      const k = `scyllaFired:${b.eventCount}:${ctx.attacker.id}`
+      if (self.flags.scyllaLast === k) return
+      const w = self.weapons.find(x => !x.tech && b.weaponUsable(self, x, false) === true && b.validTarget(self, x, ctx.attacker) === true && x.size !== 'Superheavy')
       if (!w) return
-      self.flags.scylla--
+      if (!b.offerReaction(self, 'scylla', 'SCYLLA reaction?', `${ctx.attacker.name} attacked ${t.name}. Skirmish it with ${w.name} (half damage)? ${sc.left} left.`)) return
+      self.flags.scyllaLast = k
+      sc.left--
       self.flags.halfDamage = true
-      b.weaponAttack(self, w, { targetId: ctx.attacker.id }, 'free')
-      delete self.flags.halfDamage
+      try { b.weaponAttack(self, w, { targetId: ctx.attacker.id }, 'free') } finally { delete self.flags.halfDamage }
     },
   },
   {
-    id: 'ms_puppetmaster', partial: true, note: 'Electropulse (Guide the Flock not modelled)',
-    actions: (b, u) => [action({
-      key: 'electropulse', name: 'Electropulse', activation: 'quick_tech', target: 'none', text: 'Hostiles within sensors adjacent to any drone/deployable take 2 energy.',
-      run: (bt, self) => {
-        const deps = bt.alive().filter(d => d.kind === 'drone' || d.kind === 'deployable')
-        for (const t of hostile(bt, self)) if (bt.distance(self, t) <= self.stats.sensors && deps.some(d => bt.adjacent(d, t))) bt.applyDamage(t, [{ type: 'Energy', amount: 2 }], { source: self })
-      },
-    })],
+    id: 'ms_puppetmaster', partial: true,
+    note: 'Guide the Flock (quick tech): drones within Sensors move up to 4 toward a chosen space — as a group (yours, hostile or all) rather than each to its own space; Electropulse (quick tech): characters you choose within Sensors that are adjacent to any drone or deployable take 2 energy',
+    actions: (b, u) => [
+      action({
+        key: 'guideflock', name: 'Guide the Flock', activation: 'quick_tech', target: 'tile', range: u.stats.sensors, text: 'Move drones within Sensors (any owner) up to 4 spaces toward the chosen space.',
+        run: (bt, self, t) => {
+          const p = t && 'x' in t ? t : (t as Unit).pos
+          const drones = bt.alive().filter(d => d.kind === 'drone' && bt.distance(self, d) <= self.stats.sensors)
+          const groups = [
+            { label: 'My and allied drones', list: drones.filter(d => !bt.hostile(self, d)) },
+            { label: 'Hostile drones', list: drones.filter(d => bt.hostile(self, d)) },
+            { label: 'All drones', list: drones },
+          ]
+          const i = bt.choose({ kind: 'guideflock', unit: self, title: 'Guide the Flock: which drones?', options: groups.map(g => ({ label: g.label, hint: `${g.list.length} drone(s)` })), defaultIndex: groups[1].list.length ? 1 : 0 })
+          for (const d of groups[i].list) {
+            let best = d.pos, bd = chebyshev(d.pos, p)
+            for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+              const q = { x: d.pos.x + dx, y: d.pos.y + dy }
+              if (!bt.map.tiles[q.y * bt.map.w + q.x] || q.x < 0 || q.y < 0 || q.x >= bt.map.w || q.y >= bt.map.h) continue
+              if (bt.alive().some(o => o !== d && !o.flags.flat && footprint(o).some(r => r.x === q.x && r.y === q.y))) continue
+              if (chebyshev(q, p) < bd) { best = q; bd = chebyshev(q, p) }
+            }
+            if (best !== d.pos) { const from = d.pos; d.pos = best; bt.emit({ type: 'move', unitId: d.id, path: [from, best] }) }
+          }
+          bt.invalidateTerrain()
+        },
+        aiScore: () => -1,
+      }),
+      action({
+        key: 'electropulse', name: 'Electropulse', activation: 'quick_tech', target: 'none', text: 'Characters you choose within Sensors that are adjacent to any drone or deployable take 2 energy damage.',
+        run: (bt, self) => {
+          const deps = bt.alive().filter(d => d.kind === 'drone' || d.kind === 'deployable')
+          const inRange = bt.alive().filter(t => (t.kind === 'mech' || t.kind === 'npc') && t !== self && bt.distance(self, t) <= self.stats.sensors && deps.some(d => d !== t && bt.adjacent(d, t)))
+          const opts = [{ label: 'Hostiles only' }, { label: 'Everyone in reach (allies too)' }]
+          const i = inRange.some(t => !bt.hostile(self, t)) ? bt.choose({ kind: 'electropulse', unit: self, title: 'Electropulse: targets', options: opts, defaultIndex: 0 }) : 0
+          for (const t of inRange) if (i === 1 || bt.hostile(self, t)) bt.applyDamage(t, [{ type: 'Energy', amount: 2 }], { source: self })
+        },
+      }),
+    ],
   },
   {
-    id: 'ms_beckoner', partial: true, note: 'Summon invade (Beckon swap not modelled)',
-    actions: (b, u) => [invade('beckoner', 'Summon', 'All characters within 3 of the target are pulled adjacent to it.', (bt, self, t) => {
-      for (const o of bt.alive()) if (o !== t && bt.distance(o, t) <= 3 && o.kind !== 'deployable') bt.forceMove(o, t, 3, -1)
-    })(b, u)],
+    id: 'ms_beckoner',
+    note: 'Beckon (invade): you take 1d6+2 AP energy and swap places with a mech of your Size or larger (teleport; fails if either space can\'t hold the other); Summon (invade): every character within 3 of the target is pulled adjacent to it, or as close as possible',
+    actions: (b, u) => [
+      invade('beckoner', 'Beckon', 'You take 1d6+2 AP energy and swap places with the target (a mech your Size or larger).', (bt, self, t) => {
+        bt.applyDamage(self, [{ type: 'Energy', amount: rollDice(bt.rng, '1d6+2').total }], { ap: true })
+        if (self.destroyed) return
+        if (t.kind !== 'mech' && !(t.kind === 'npc' && !t.isGrunt) || t.stats.size < self.stats.size) { bt.say('  Beckon fails: the target must be a mech your Size or larger.'); return }
+        const a = { ...self.pos }, c = { ...t.pos }
+        const fits = (u: Unit, at: Pos) => footprint({ pos: at, stats: u.stats }).every(p => bt.map.tiles[p.y * bt.map.w + p.x] && p.x >= 0 && p.y >= 0 && p.x < bt.map.w && p.y < bt.map.h && !bt.alive().some(o => o !== u && o !== self && o !== t && !o.flags.flat && footprint(o).some(q => q.x === p.x && q.y === p.y)))
+        if (!fits(self, c) || !fits(t, a)) { bt.say('  Beckon fails: no room to swap.'); return }
+        if (bt.teleportBlocked(self, c) || bt.teleportBlocked(t, a)) { bt.say('  Beckon fails: an interdiction field blocks the swap.'); return }
+        self.pos = c; t.pos = a
+        bt.emit({ type: 'move', unitId: self.id, path: [a, c] })
+        bt.emit({ type: 'move', unitId: t.id, path: [c, a] })
+        bt.invalidateTerrain()
+        bt.say(`  ${self.name} and ${t.name} swap places.`)
+      })(b, u),
+      invade('beckoner', 'Summon', 'All characters within 3 of the target are pulled adjacent to it (or as close as possible).', (bt, self, t) => {
+        for (const o of bt.alive()) if (o !== t && bt.distance(o, t) <= 3 && o.kind !== 'deployable') bt.forceMove(o, t, 3, -1)
+      })(b, u),
+    ],
   },
   {
     id: 'ms_smite', note: 'Smite / Sear invades',
@@ -509,17 +801,92 @@ registerScripts([
     },
   },
   {
-    id: 'ms_aggressive_system_sync', partial: true, note: 'Chains of Prometheus (4 heat; 2 heat when ending turns beyond range 3)',
-    actions: (b, u) => [action({
-      key: 'chains', name: 'Chains of Prometheus', activation: 'full_tech', target: 'enemy', range: u.stats.sensors, text: 'Tech attack: 4 heat; for the scene, 2 heat whenever it ends a turn more than 3 from you.',
-      run: (bt, self, t) => { const c = bt.techAttackRoll(self, t as Unit, 'Chains of Prometheus'); if (c.hit) { bt.applyDamage(t as Unit, [{ type: 'Heat', amount: 4 }], { source: self }); (t as Unit).flags.chainedBy = self.id } },
-      aiScore: () => 5,
-    })],
+    id: 'ms_aggressive_system_sync',
+    note: 'Chains of Prometheus (full tech): 4 heat, then 2 heat whenever it ends a turn more than 3 from you; Excommunicate (full tech): the first time each round it starts its turn next to an ally or moves next to one on its turn, both take 3 heat; one target each; a successful Systems save as a full action ends either',
+    actions: (b, u) => [
+      action({
+        key: 'chains', name: 'Chains of Prometheus', activation: 'full_tech', target: 'enemy', range: u.stats.sensors, text: 'Tech attack: 4 heat; for the scene, 2 heat whenever it ends a turn more than 3 from you.',
+        run: (bt, self, t) => {
+          const target = t as Unit
+          const v = bt.techTargetValid(self, target); if (v !== true) throw new Error(v)
+          const c = bt.techAttackRoll(self, target, 'Chains of Prometheus')
+          if (!c.hit) return
+          bt.applyDamage(target, [{ type: 'Heat', amount: 4 }], { source: self })
+          for (const o of bt.units) if (o.flags.chainedBy === self.id) delete o.flags.chainedBy
+          target.flags.chainedBy = self.id
+        },
+        aiScore: () => 5,
+      }),
+      action({
+        key: 'excommunicate', name: 'Excommunicate', activation: 'full_tech', target: 'enemy', range: u.stats.sensors, text: 'Tech attack: for the scene, the first time each round it is next to an ally on its turn, both take 3 heat.',
+        run: (bt, self, t) => {
+          const target = t as Unit
+          const v = bt.techTargetValid(self, target); if (v !== true) throw new Error(v)
+          const c = bt.techAttackRoll(self, target, 'Excommunicate')
+          if (!c.hit) return
+          for (const o of bt.units) if (o.flags.excommBy === self.id) delete o.flags.excommBy
+          target.flags.excommBy = self.id
+          bt.say(`  ${target.name} is excommunicated.`)
+        },
+        aiScore: (bt, self, t) => (t && 'id' in t && bt.alive().some(o => o !== t && !bt.hostile(t as Unit, o) && bt.distance(o, t as Unit) <= 2) ? 4 : 1),
+      }),
+    ],
+    grantActions: (b, self, other) => {
+      const out: CustomAction[] = []
+      for (const [flag, label] of [['chainedBy', 'Chains of Prometheus'], ['excommBy', 'Excommunicate']] as const) {
+        if (other.flags[flag] !== self.id) continue
+        out.push(action({
+          key: `shake:${flag}:${self.id}`, name: `Break ${label}`, activation: 'full', target: 'none', text: `Systems save (vs ${self.stats.save}) to end ${label}.`,
+          run: (bt, me) => { if (bt.save(me, 'sys', self.stats.save, 0, self)) { delete me.flags[flag]; bt.say(`${me.name} breaks free of ${label}.`) } },
+          aiScore: (bt, me) => (me.heat >= me.stats.heatcap - 3 ? 3 : 0.5),
+        }))
+      }
+      return out
+    },
     onAnyTurnEnd(b, self, u) { if (u.flags.chainedBy === self.id && b.distance(self, u) > 3) b.applyDamage(u, [{ type: 'Heat', amount: 2 }], { source: self }) },
+    onAnyTurnStart(b, self, u) { if (u.flags.excommBy === self.id) excomm(b, self, u) },
+    onMove(b, self, mover) { if (mover.flags.excommBy === self.id && mover.activeTurn) excomm(b, self, mover) },
   },
   {
-    id: 'ms_metafold_carver', partial: true, note: 'Ophidian Trek (pull 1d6+1); Fold Space not modelled',
-    actions: (b, u) => [invade('carver', 'Ophidian Trek', 'Target is teleported 1d6+1 spaces toward you.', (bt, self, t) => { bt.forceMove(t, self, rollDice(bt.rng, '1d6+1').total, -1) })(b, u)],
+    id: 'ms_metafold_carver',
+    note: 'Ophidian Trek (invade): the target teleports 1d6+1 straight toward you (or as close as possible); it fails if the space is occupied or terrain; Fold Space (invade): the target leaves the battlefield until the start of its next turn, returning to its space or the nearest free one',
+    actions: (b, u) => [
+      invade('carver', 'Ophidian Trek', 'The target teleports 1d6+1 spaces directly toward you (fails onto occupied spaces or terrain).', (bt, self, t) => {
+        const n = rollDice(bt.rng, '1d6+1').total
+        const d = Math.max(0, bt.distance(self, t) - 1)
+        const k = Math.min(n, d)
+        if (k <= 0) return
+        const dx = self.pos.x - t.pos.x, dy = self.pos.y - t.pos.y, len = Math.max(Math.abs(dx), Math.abs(dy)) || 1
+        const dest = { x: t.pos.x + Math.round((dx / len) * k), y: t.pos.y + Math.round((dy / len) * k) }
+        const blocked = footprint({ pos: dest, stats: t.stats }).some(p => { const tile = bt.map.tiles[p.y * bt.map.w + p.x]; return !tile || tile.kind === 'block' || bt.alive().some(o => o !== t && !o.flags.flat && footprint(o).some(q => q.x === p.x && q.y === p.y)) })
+        if (blocked || bt.teleportBlocked(t, dest)) { bt.say(`  Ophidian Trek fails: the space is occupied.`); return }
+        const from = { ...t.pos }
+        t.pos = dest
+        bt.emit({ type: 'move', unitId: t.id, path: [from, dest] })
+        bt.invalidateTerrain()
+        bt.say(`  ${t.name} is folded ${k} spaces toward ${self.name}.`)
+      })(b, u),
+      invade('carver', 'Fold Space', 'The target disappears until the start of its next turn.', (bt, self, t) => {
+        t.flags.folded = { at: { ...t.pos }, reactions: t.reactionsLeft }
+        t.flags.intangible = true
+        t.reactionsLeft = 0
+        bt.say(`  ${t.name} is folded out of space.`, 'status')
+        bt.emit({ type: 'status', unitId: t.id, status: 'folded', added: true })
+      })(b, u),
+    ],
+    onAnyTurnStart(b, self, u) {
+      const f = u.flags.folded
+      if (!f) return
+      delete u.flags.folded
+      delete u.flags.intangible
+      const occupied = (p: Pos) => b.alive().some(o => o !== u && !o.flags.flat && footprint(o).some(q => footprint({ pos: p, stats: u.stats }).some(r => r.x === q.x && r.y === q.y)))
+      let at: Pos = f.at
+      for (let r = 1; r <= 6 && occupied(at); r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const q = { x: f.at.x + dx, y: f.at.y + dy }; if (q.x >= 0 && q.y >= 0 && q.x < b.map.w && q.y < b.map.h && !occupied(q) && b.map.tiles[q.y * b.map.w + q.x].kind !== 'block' && occupied(at)) at = q }
+      u.pos = at
+      b.say(`${u.name} returns from folded space.`, 'status')
+      b.emit({ type: 'status', unitId: u.id, status: 'folded', added: false })
+      b.invalidateTerrain()
+    },
   },
   {
     id: 'ms_hunter_lock', note: 'First hit each round vs the locked target deals +3',
@@ -626,18 +993,31 @@ registerScripts([
     },
   },
   {
-    id: 'ms_enclave_pattern_support_shield', partial: true, note: 'Burst 3 dome: +1 difficulty to attacks from outside; Blinkfield Intervention (2 heat → resistance)',
-    fields: (b, u) => (u.flags.enclaveUntil && b.round <= u.flags.enclaveUntil ? [{ tiles: burstTiles(b.map, u, 3), effect: 'protect' as const, label: `${u.name}'s Enclave dome: +1 difficulty on attacks from outside` }] : []),
-    actions: (b, u) => [action({ key: 'enclave', name: 'Enclave Support Shield', activation: 'quick', target: 'none', text: 'Burst 3 dome until the end of your next turn; you are Immobilized.', run: (bt, self) => { self.flags.enclaveUntil = bt.round + 1; bt.addStatus(self, 'immobilized', 'next_turn_end_target', self) } })],
+    id: 'ms_enclave_pattern_support_shield',
+    note: 'ENCLAVE dome (burst 3, until the end of your next turn; you are Immobilized): ranged and melee attacks from outside on characters inside take +1 difficulty; Blinkfield Intervention (reaction): when a character or object inside is attacked, take 2 heat to give it Resistance to all damage from that attack',
+    fields: (b, u) => (u.flags.enclave ? [{ tiles: burstTiles(b.map, u, 3), effect: 'protect' as const, label: `${u.name}'s Enclave dome: +1 difficulty on attacks from outside` }] : []),
+    actions: (b, u) => [action({
+      key: 'enclave', name: 'Enclave Support Shield', activation: 'quick', target: 'none', text: 'Burst 3 dome until the end of your next turn; you are Immobilized.',
+      run: (bt, self) => { self.flags.enclave = { turns: 2 }; bt.addStatus(self, 'immobilized', 'until_cleared', self, { enclave: true }) },
+    })],
+    onTurnEnd(b, self) { if (self.flags.enclave && --self.flags.enclave.turns <= 0) { delete self.flags.enclave; self.statuses = self.statuses.filter(x => !(x.id === 'immobilized' && x.data?.enclave)) } },
     beforeAnyAttack(b, self, ctx) {
-      if (!self.flags.enclaveUntil || b.round > self.flags.enclaveUntil || b.hostile(self, ctx.target) || b.distance(self, ctx.target) > 3 || b.distance(self, ctx.attacker) <= 3) return
-      ctx.difficulty++
-      if (b.canSpend(self, 'reaction') === true && ctx.target.hp <= ctx.target.stats.hp / 2) { self.reactionsLeft--; b.addHeat(self, 2); ctx.resistAll = true }
+      if (!self.flags.enclave || self.destroyed) return
+      const inside = (u: Unit) => b.distance(self, u) <= 3
+      if (!inside(ctx.target)) return
+      if (!ctx.tech && !inside(ctx.attacker)) { ctx.difficulty++; ctx.reasons.push('Enclave dome -1') }
+      if (ctx.resistAll || b.canSpend(self, 'reaction') !== true || self.heat + 2 > self.stats.heatcap) return
+      const want = !b.hostile(self, ctx.target) && b.hostile(self, ctx.attacker)
+      if (!b.offerReaction(self, 'blinkfield', 'Blinkfield Intervention?', `${ctx.attacker.name} attacks ${ctx.target.name} inside the dome. Take 2 heat to give it Resistance to all damage from this attack?`, want && ctx.target.hp <= ctx.target.stats.hp / 2)) return
+      self.reactionsLeft--
+      b.addHeat(self, 2)
+      ctx.resistAll = true
+      ctx.reasons.push('Blinkfield Intervention')
     },
   },
   {
-    id: 'ms_reactor_stabilizer', partial: true, note: 'Overheat reroll (approximated as +1 accuracy on Engineering checks)',
-    init: u => { u.bonuses.push({ id: 'engineering', accuracy: 1 }) },
+    id: 'ms_reactor_stabilizer', note: 'Reroll overheating checks (you must keep the second result)',
+    init: u => { u.flags.reactorStabilizer = true },
   },
   {
     id: 'ms_redundant_systems_upgrade', note: 'Stabilize as a quick action',

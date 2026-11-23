@@ -64,12 +64,15 @@ describe('systems', () => {
     b.weaponAttack(e, rifle(e), { targetId: a.id }, 'free')
     expect(a.flags.flicker).toBe(false)
   })
-  it("Flash Grenade: characters inside can't attack out", () => {
+  it("Flash Grenade: characters inside can't draw line of sight out (the thrower is exempt)", () => {
     const { a, e, b } = setup(['ms_flash_charges'])
     b.useCustom(a, act(b, a, /Flash Grenade/), { x: 5, y: 8 })
     toEnemyTurn(b, a, e)
+    expect(b.los(e, a)).toBe(false)
     const r = b.weaponAttack(e, rifle(e), { targetId: a.id }, 'free')
-    expect(r.ctxs[0]?.hit).toBe(false)
+    expect(r.ok).toBe(false)
+    expect(r.reason).toMatch(/line of sight/i)
+    expect(b.los(a, e)).toBe(true)
   })
   it('Flash Mine blinds a character that approaches it', () => {
     const { a, e, b } = setup(['ms_flash_charges'])
