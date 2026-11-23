@@ -8,7 +8,7 @@ import {
 } from '../grid'
 import { parseDice, Rng, rollDice, rollAccuracy, averageDice } from '../rng'
 export const maxOf = (v: string | number) => { const d = parseDice(v); return d.count * d.sides + d.flat }
-import { hasTag, tagVal, nextUid, isWeaponType } from '../stats'
+import { hasTag, tagVal, nextUid, isWeaponType, uidState } from '../stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
@@ -117,6 +117,25 @@ import * as terrain from './terrain'
 import * as tech from './tech'
 import * as fields from './fields'
 
+/** One recorded top-level command: its arguments are encoded as ids (see replay). */
+export interface CommandEntry { op: string; args: unknown[]; answers: number[] }
+/** Everything needed to rebuild a battle from its start. */
+export interface BattleRecord { version: 1; seed: number; uid: number; map: GridMap; units: Unit[]; sitrep: Sitrep }
+
+/** Encode command arguments: units, weapons, custom actions and mines by id; plain data as is. */
+export function encodeArg(v: unknown): unknown {
+  if (v == null || typeof v !== 'object') return typeof v === 'function' ? undefined : v
+  if (Array.isArray(v)) return v.map(encodeArg)
+  const o = v as any
+  if ('uid' in o && 'profiles' in o) return { $w: o.uid }
+  if ('id' in o && 'stats' in o && 'flags' in o) return { $u: o.id }
+  if ('key' in o && typeof o.run === 'function') return { $a: o.key }
+  if ('ownerId' in o && 'radius' in o && 'pos' in o && 'id' in o) return { $m: o.id }
+  const out: any = {}
+  for (const k of Object.keys(o)) if (typeof o[k] !== 'function') out[k] = encodeArg(o[k])
+  return out
+}
+
 export class Battle {
   map: GridMap
   units: Unit[]
@@ -141,6 +160,13 @@ export class Battle {
   /** while the AI drives a unit of this side, its side's questions take the default */
   aiSide: Side | null = null
   txDepth = 0
+  /** the battle's seed and starting state (taken in start) for replays */
+  seed = 0
+  record: BattleRecord | null = null
+  /** top-level commands since start, with the player decisions they consumed */
+  commands: CommandEntry[] = []
+  cmdDepth = 0
+  currentCommand: CommandEntry | null = null
   /** set while resolving a Blast attack: cover is measured from here */
   blastCentre: Pos | null = null
   /** the aim of the most recent weapon attack (scripts read it after the attack) */
@@ -154,6 +180,7 @@ export class Battle {
     this.map = cfg.map
     this.units = cfg.units
     this.rng = new Rng(cfg.seed)
+    this.seed = cfg.seed
     this.sitrep = cfg.sitrep ?? { id: 'standard', name: 'Basic Combat', description: 'Defeat all enemy forces.' }
   }
 
@@ -399,16 +426,39 @@ export class Battle {
     return ok
   }
 
-  start() { return turns.start(this) }
+  start() {
+    this.record = { version: 1, seed: this.seed, uid: uidState(), map: JSON.parse(JSON.stringify(this.map)), units: JSON.parse(JSON.stringify(this.units)), sitrep: JSON.parse(JSON.stringify(this.sitrep)) }
+    this.commands = []
+    return turns.start(this)
+  }
+  /** Run a command, recording it when it is a top-level player or AI command (nested calls aren't recorded). */
+  command<T>(op: string, args: unknown[], fn: () => T): T {
+    if (this.cmdDepth > 0 || this.sandboxDepth > 0 || !this.record) return fn()
+    const entry: CommandEntry = { op, args: args.map(encodeArg), answers: [] }
+    this.commands.push(entry)
+    const prev = this.currentCommand
+    this.currentCommand = entry
+    this.cmdDepth++
+    try { return fn() } catch (e) {
+      if (!(e instanceof PendingChoice)) this.commands = this.commands.filter(x => x !== entry)
+      throw e
+    } finally { this.cmdDepth--; this.currentCommand = prev }
+  }
+  /** a player decision taken during the current command (replays feed it back) */
+  noteAnswer(i: number) { this.currentCommand?.answers.push(i) }
+  /** UI settings that change outcomes, made through commands so replays see them */
+  setProfile(u: Unit, w: Weapon, i: number) { return this.command('setProfile', [u, w, i], () => { w.profileIndex = i }) }
+  setWeaponFlag(u: Unit, w: Weapon, flag: string, value: unknown) { return this.command('setWeaponFlag', [u, w, flag, value], () => { (w.flags ??= {})[flag] = value }) }
+  setPolicy(u: Unit, kind: keyof UnitPolicies, value: 'auto' | 'ask' | 'off') { return this.command('setPolicy', [u, kind, value], () => { u.policies[kind] = value }) }
   startRound() { return turns.startRound(this) }
   hasActivations(side: Side): boolean { return turns.hasActivations(this, side) }
   canActivate(u: Unit): true | string { return turns.canActivate(this, u) }
   /** a unit that takes its turn right after the current one (Goblin INSTINCT Rig on its host's turn) */
   chainTurn: string | null = null
 
-  beginTurn(u: Unit) { return turns.beginTurn(this, u) }
+  beginTurn(u: Unit) { return this.command('beginTurn', [u], () => turns.beginTurn(this, u)) }
 
-  endTurn(u: Unit = this.active!) { return turns.endTurn(this, u) }
+  endTurn(u: Unit = this.active!) { return this.command('endTurn', [u], () => turns.endTurn(this, u)) }
   removeStatusIfExpiredRecovery(_u: Unit) {}
   endRound() { return turns.endRound(this) }
   sitrepScore?: number
@@ -462,14 +512,14 @@ export class Battle {
   canMove(u: Unit, mode: MoveOpts['mode']): true | string { return movement.canMove(this, u, mode) }
 
   /** Move a unit along the cheapest path. Standard moves spend moveLeft. */
-  move(u: Unit, dest: Pos, opts: MoveOpts = { mode: 'standard' }): boolean { return movement.move(this, u, dest, opts) }
+  move(u: Unit, dest: Pos, opts: MoveOpts = { mode: 'standard' }): boolean { return this.command('move', [u, dest, opts], () => movement.move(this, u, dest, opts)) }
 
   /** Last undoable standard move (cleared as soon as anything else happens). */
   lastMove: { unitId: string; pos: Pos; moveLeft: number; acted: boolean; moved: boolean; round: number; startEvents: number; endEvents: number } | null = null
 
   canUndoMove(u: Unit): boolean { return movement.canUndoMove(this, u) }
 
-  undoMove(u: Unit) { return movement.undoMove(this, u) }
+  undoMove(u: Unit) { return this.command('undoMove', [u], () => movement.undoMove(this, u)) }
 
   /** Move along an explicit path (straight swings, scripted dashes): same triggers as a normal move. */
   moveAlong(u: Unit, path: Pos[]) { return movement.moveAlong(this, u, path) }
@@ -538,7 +588,7 @@ export class Battle {
   buildWeaponCtx(attacker: Unit, w: Weapon, target: Unit, mode: AttackCtx['mode'], consume: boolean, multi = false): AttackCtx { return attacks.buildWeaponCtx(this, attacker, w, target, mode, consume, multi) }
 
   /** Main entry for weapon attacks (skirmish/barrage call this). Handles AoE, rolls and on-hit effects. */
-  weaponAttack(u: Unit, w: Weapon, aim: AttackAim, mode: AttackCtx['mode'] = 'free', opts: { noBonusDamage?: boolean; autoHit?: boolean; from?: Pos } = {}): AttackSummary { return attacks.weaponAttack(this, u, w, aim, mode, opts) }
+  weaponAttack(u: Unit, w: Weapon, aim: AttackAim, mode: AttackCtx['mode'] = 'free', opts: { noBonusDamage?: boolean; autoHit?: boolean; from?: Pos } = {}): AttackSummary { return this.command('weaponAttack', [u, w, aim, mode, opts], () => attacks.weaponAttack(this, u, w, aim, mode, opts)) }
 
   /** Reroll a resolved attack roll (Valiant Aid): the second result stands. */
   rerollToHit(ctx: AttackCtx) { return attacks.rerollToHit(this, ctx) }
@@ -562,9 +612,9 @@ export class Battle {
   offerReaction(u: Unit, kind: string, title: string, text: string, heuristic = true): boolean { return decisions.offerReaction(this, u, kind, title, text, heuristic) }
   brace(t: Unit): boolean { return attacks.brace(this, t) }
 
-  skirmish(u: Unit, w: Weapon, aim: AttackAim, aux?: { weapon: Weapon; aim: AttackAim }): AttackSummary { return actions.skirmish(this, u, w, aim, aux) }
+  skirmish(u: Unit, w: Weapon, aim: AttackAim, aux?: { weapon: Weapon; aim: AttackAim }): AttackSummary { return this.command('skirmish', [u, w, aim, aux], () => actions.skirmish(this, u, w, aim, aux)) }
 
-  barrage(u: Unit, a: { weapon: Weapon; aim: AttackAim }, b?: { weapon: Weapon; aim: AttackAim }, auxes: { weapon: Weapon; aim: AttackAim }[] = []): AttackSummary { return actions.barrage(this, u, a, b, auxes) }
+  barrage(u: Unit, a: { weapon: Weapon; aim: AttackAim }, b?: { weapon: Weapon; aim: AttackAim }, auxes: { weapon: Weapon; aim: AttackAim }[] = []): AttackSummary { return this.command('barrage', [u, a, b, auxes], () => actions.barrage(this, u, a, b, auxes)) }
   /** Auxiliary weapons that may follow up a barrage/skirmish with these weapons. */
   auxFollowUps(u: Unit, fired: Weapon[]): Weapon[] { return actions.auxFollowUps(this, u, fired) }
 
@@ -580,31 +630,31 @@ export class Battle {
   /** Raise a size-1 section of hard cover on a free ground space (debris, barricades). */
   raiseCover(p: Pos, opts: { indestructible?: boolean; owner?: string } = {}): boolean { return terrain.raiseCover(this, p, opts) }
   /** Skirmish against a terrain block: attack roll vs Evasion 5, weapon damage to the section. */
-  attackTerrain(u: Unit, w: Weapon, p: Pos): AttackSummary { return terrain.attackTerrain(this, u, w, p) }
-  markFired(u: Unit, w: Weapon) { return terrain.markFired(this, u, w) }
+  attackTerrain(u: Unit, w: Weapon, p: Pos): AttackSummary { return this.command('attackTerrain', [u, w, p], () => terrain.attackTerrain(this, u, w, p)) }
+  markFired(u: Unit, w: Weapon) { return this.command('markFired', [u, w], () => terrain.markFired(this, u, w)) }
 
-  boost(u: Unit) { return terrain.boost(this, u) }
+  boost(u: Unit) { return this.command('boost', [u], () => terrain.boost(this, u)) }
 
-  standUp(u: Unit) { return terrain.standUp(this, u) }
+  standUp(u: Unit) { return this.command('standUp', [u], () => terrain.standUp(this, u)) }
 
-  overcharge(u: Unit) { return terrain.overcharge(this, u) }
+  overcharge(u: Unit) { return this.command('overcharge', [u], () => terrain.overcharge(this, u)) }
 
-  stabilize(u: Unit, mode: 'cool' | 'repair', clear?: { unit: Unit; status?: StatusId | 'burn' | 'reload' }) { return terrain.stabilize(this, u, mode, clear) }
+  stabilize(u: Unit, mode: 'cool' | 'repair', clear?: { unit: Unit; status?: StatusId | 'burn' | 'reload' }) { return this.command('stabilize', [u, mode, clear], () => terrain.stabilize(this, u, mode, clear)) }
 
-  disengage(u: Unit) { return terrain.disengage(this, u) }
+  disengage(u: Unit) { return this.command('disengage', [u], () => terrain.disengage(this, u)) }
 
   /** Hide: needs to be out of LoS of all hostiles or in cover from them. */
   canHide(u: Unit): boolean { return terrain.canHide(this, u) }
-  hide(u: Unit) { return terrain.hide(this, u) }
-  search(u: Unit) { return terrain.search(this, u) }
+  hide(u: Unit) { return this.command('hide', [u], () => terrain.hide(this, u)) }
+  search(u: Unit) { return this.command('search', [u], () => terrain.search(this, u)) }
 
-  ram(u: Unit, t: Unit) { return terrain.ram(this, u, t) }
+  ram(u: Unit, t: Unit) { return this.command('ram', [u, t], () => terrain.ram(this, u, t)) }
 
   /** Active grapples: attacker `a` holds defender `d`; `winner` decides same-size contests. */
   grapples: { a: string; d: string; winner?: string }[] = []
   draggingId: string | null = null
 
-  grapple(u: Unit, t: Unit) { return terrain.grapple(this, u, t) }
+  grapple(u: Unit, t: Unit) { return this.command('grapple', [u, t], () => terrain.grapple(this, u, t)) }
   /** Begin a grapple (also used by systems such as Impale). */
   startGrapple(a: Unit, d: Unit) { return terrain.startGrapple(this, a, d) }
   /** Combined Size of everyone grappling `d`, against `d`'s own Size. */
@@ -616,20 +666,20 @@ export class Battle {
   /** Same-size grapples: contested Hull check at the start of a turn decides who counts as larger. */
   grappleContest(u: Unit) { return terrain.grappleContest(this, u) }
   /** Defender: contested Hull check as a quick action to break free. */
-  breakGrapple(u: Unit) { return terrain.breakGrapple(this, u) }
+  breakGrapple(u: Unit) { return this.command('breakGrapple', [u], () => terrain.breakGrapple(this, u)) }
   /** Attacker: end your grapples as a free action. */
-  releaseGrapple(u: Unit) { return terrain.releaseGrapple(this, u) }
+  releaseGrapple(u: Unit) { return this.command('releaseGrapple', [u], () => terrain.releaseGrapple(this, u)) }
   /** The larger side drags the smaller along when it moves (mirroring its movement). */
   dragGrappled(u: Unit, from: Pos) { return terrain.dragGrappled(this, u, from) }
   dragSpot(p: Unit, want: Pos, holder: Unit): Pos | null { return terrain.dragSpot(this, p, want, holder) }
 
-  improvisedAttack(u: Unit, t: Unit) { return terrain.improvisedAttack(this, u, t) }
+  improvisedAttack(u: Unit, t: Unit) { return this.command('improvisedAttack', [u, t], () => terrain.improvisedAttack(this, u, t)) }
 
-  reload(u: Unit, w: Weapon) { return terrain.reload(this, u, w) }
+  reload(u: Unit, w: Weapon) { return this.command('reload', [u, w], () => terrain.reload(this, u, w)) }
 
-  shutDown(u: Unit) { return terrain.shutDown(this, u) }
-  bootUp(u: Unit) { return terrain.bootUp(this, u) }
-  selfDestruct(u: Unit) { return terrain.selfDestruct(this, u) }
+  shutDown(u: Unit) { return this.command('shutDown', [u], () => terrain.shutDown(this, u)) }
+  bootUp(u: Unit) { return this.command('bootUp', [u], () => terrain.bootUp(this, u)) }
+  selfDestruct(u: Unit) { return this.command('selfDestruct', [u], () => terrain.selfDestruct(this, u)) }
 
   techTargetValid(u: Unit, t: Unit, option?: string): true | string { return tech.techTargetValid(this, u, t, option) }
   /** Quick Tech can be taken more than once per turn, but a different option must be chosen each time
@@ -647,19 +697,19 @@ export class Battle {
   /** Take one Quick Tech option without spending an action (reactions like Reactive Code). */
   withFreeTech<T>(u: Unit, fn: () => T): T { return tech.withFreeTech(this, u, fn) }
   /** Full Tech: two quick tech actions. */
-  fullTech(u: Unit) { return tech.fullTech(this, u) }
+  fullTech(u: Unit) { return this.command('fullTech', [u], () => tech.fullTech(this, u)) }
   /**
    * The roll for an INVADE: a tech attack against hostiles; a willing ally is invaded automatically
    * (no roll, it isn't an attack, and the caller deals no heat).
    */
   invadeRoll(u: Unit, t: Unit, label: string): AttackCtx { return tech.invadeRoll(this, u, t, label) }
   techAttackRoll(u: Unit, t: Unit, label: string): AttackCtx { return tech.techAttackRoll(this, u, t, label) }
-  invade(u: Unit, t: Unit, option: 'fragment' | { name: string; effects: Effect[]; heat?: number } = 'fragment') { return tech.invade(this, u, t, option) }
-  lockOn(u: Unit, t: Unit) { return tech.lockOn(this, u, t) }
-  bolster(u: Unit, t: Unit) { return tech.bolster(this, u, t) }
-  scan(u: Unit, t: Unit): string { return tech.scan(this, u, t) }
+  invade(u: Unit, t: Unit, option: 'fragment' | { name: string; effects: Effect[]; heat?: number } = 'fragment') { return this.command('invade', [u, t, option], () => tech.invade(this, u, t, option)) }
+  lockOn(u: Unit, t: Unit) { return this.command('lockOn', [u, t], () => tech.lockOn(this, u, t)) }
+  bolster(u: Unit, t: Unit) { return this.command('bolster', [u, t], () => tech.bolster(this, u, t)) }
+  scan(u: Unit, t: Unit): string { return this.command('scan', [u, t], () => tech.scan(this, u, t)) }
 
-  activateCore(u: Unit) { return tech.activateCore(this, u) }
+  activateCore(u: Unit) { return this.command('activateCore', [u], () => tech.activateCore(this, u)) }
 
   /** Every persistent zone on the map (terrain areas, drone and system fields), for overlays and tooltips. */
   fieldOverlays(): FieldOverlay[] { return fields.fieldOverlays(this) }
@@ -688,13 +738,13 @@ export class Battle {
   /** Detonate a mine (triggered by `by`, or remotely). */
   detonateMine(m: Mine, by?: Unit) { return fields.detonateMine(this, m, by) }
   /** Search for Mines (quick): a Systems check finds every hostile mine within Sensors. */
-  searchMines(u: Unit, paid = false): number { return fields.searchMines(this, u, paid) }
+  searchMines(u: Unit, paid = false): number { return this.command('searchMines', [u, paid], () => fields.searchMines(this, u, paid)) }
   /** Disarm Mine (quick): a detected mine in an adjacent space; a failed Systems check sets it off. */
-  disarmMine(u: Unit, m: Mine, paid = false) { return fields.disarmMine(this, u, m, paid) }
+  disarmMine(u: Unit, m: Mine, paid = false) { return this.command('disarmMine', [u, m, paid], () => fields.disarmMine(this, u, m, paid)) }
   addArea(a: Omit<AreaEffect, 'id'>) { return fields.addArea(this, a) }
 
   customActions(u: Unit): CustomAction[] { return fields.customActions(this, u) }
-  useCustom(u: Unit, a: CustomAction, target?: Unit | Pos) { return fields.useCustom(this, u, a, target) }
+  useCustom(u: Unit, a: CustomAction, target?: Unit | Pos) { return this.command('useCustom', [u, a, target], () => fields.useCustom(this, u, a, target)) }
 }
 
 export function other(s: Side): Side {

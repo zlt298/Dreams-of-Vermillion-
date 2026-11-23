@@ -7,3 +7,5 @@ installTagTips()
 
 const app = new App(document.getElementById('app')!)
 ;(window as any).__dov = app
+// battle replay export for bug reports and scripted checks
+;(app as any).exportBattle = (note?: string) => app.battle?.exportBattle(note)

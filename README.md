@@ -130,6 +130,11 @@ To add fidelity, register a script keyed by the item id in `game/src/rules/effec
 - You can INVADE a willing ally: it succeeds automatically, deals no heat and isn't an attack (useful with beneficial invade options).
 - Not implemented (out of scope): pilots on foot (Eject, Mount, Jockey), and narrative skill checks and downtime.
 
+### Battle replays (bug reports)
+Every battle records its seed, starting state and every top-level command: player actions, AI turns, and the decisions taken in the HUD picker. The **⤓** button in the battle header downloads it as `dov-battle-<time>.json` (with an optional note). `cd game && npm run replay -- <file> [--upto N] [--log N]` replays it headlessly, prints the log tail and checks the final state hash against the export. `--upto N` stops just before command N, to inspect the state ahead of a bug. Scripts can call `window.__dov.exportBattle()`, and `src/replay/replay.ts` exports `exportBattle`, `replayBattle` and `stateHash`.
+
+Engine rule for replays: change battle state only through `Battle` methods. UI toggles go through `setProfile`, `setWeaponFlag` and `setPolicy`. Anything mutated directly isn't recorded and breaks the replay.
+
 ## Enemies: an original NPC ruleset + Claude skill
 
 Massif's NPC data is a paid content pack, so the bundled enemies use an **original ruleset** modelled on LANCER's NPC structure. Roles: Striker, Artillery, Controller, Defender, Support, Biological. Tiers: 1–3. Templates follow the official rules: Grunt, Veteran (with a Veteran trait), Elite (two turns), Commander, Ultra (two turns, Deadly, Juggernaut, Legendary), Mercenary. Features are written in a small effect DSL, and an encounter budget keeps teams fair.

@@ -4,6 +4,7 @@ import { Lancer } from '../data/lancer'
 import { pickNextUnit, runAiTurn } from '../ai/ai'
 import { annotateTags, rangeChip, tagChip, tagInfo } from './tags'
 import { type Battle, type ChoiceQuestion, stripHtml } from '../rules/battle'
+import { exportBattle, type BattleExport } from '../replay/replay'
 import { blastTiles, burstTiles, coneTiles, key, lineTiles, footprint } from '../rules/grid'
 import type { CustomAction } from '../rules/effects/registry'
 import { hasTag, tagVal } from '../rules/stats'
@@ -172,6 +173,18 @@ export class BattleScreen {
     this.mode = { k: 'attack', action: 'aux', weapon: aux, via, queue: rest }
     this.toast(`Optional: fire ${aux.name} (auxiliary on a mount you fired, no bonus damage) — Esc to skip`)
   }
+  /** The battle so far as a replay file (seed, starting state, commands). */
+  exportBattle(note?: string): BattleExport { return exportBattle(this.b, note) }
+  private downloadBattle() {
+    const note = window.prompt('Optional: what went wrong? (saved in the file)') ?? undefined
+    const data = JSON.stringify(this.exportBattle(note || undefined))
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }))
+    a.download = `dov-battle-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+    this.toast('Battle exported: replay it with `npm run replay -- <file>`')
+  }
   private picker: HTMLDivElement | null = null
   /** Show a decision in the HUD; number keys pick, Esc takes the default. */
   ask(q: ChoiceQuestion): Promise<number> {
@@ -316,6 +329,7 @@ export class BattleScreen {
         else if (sel && sel.side === 'player' && !this.b.activeId && sel.activationsLeft > 0 && this.b.currentSide === 'player') this.cmd(() => { runAiTurn(this.b, sel); this.mode = { k: 'idle' } }, true)
         return
       case 'cancel': this.mode = a ? { k: 'move' } : { k: 'idle' }; this.render(); return
+      case 'export': this.downloadBattle(); return
       case 'rotl': this.view.rotate(-1); return
       case 'rotr': this.view.rotate(1); return
       case 'speed': { const order = [1, 2, 4, 0]; this.view.setSpeed(order[(order.indexOf(this.view.speed) + 1) % order.length]); this.render(); return }
@@ -323,7 +337,7 @@ export class BattleScreen {
       case 'policy':
         if (sel && (arg === 'brace' || arg === 'overwatch' || arg === 'reactions')) {
           const order = ['auto', 'ask', 'off'] as const
-          sel.policies[arg] = order[(order.indexOf(sel.policies[arg] ?? 'ask') + 1) % order.length]
+          this.b.setPolicy(sel, arg, order[(order.indexOf(sel.policies[arg] ?? 'ask') + 1) % order.length])
           this.render()
         }
         return
@@ -339,9 +353,9 @@ export class BattleScreen {
           this.render()
         }
         return
-      case 'shape': if (w) { (w.flags ??= {}).shape = w.flags.shape === 'line' ? 'cone' : 'line'; this.previewCache.clear(); this.render() } return
-      case 'throughbolt': if (w) { (w.flags ??= {}).throughbolt = !w.flags.throughbolt; this.render() } return
-      case 'profile': if (w && arg) { const i = Number(el.dataset.i); this.cmd(() => { w.profileIndex = i }) } return
+      case 'shape': if (w && a) { this.b.setWeaponFlag(a, w, 'shape', w.flags?.shape === 'line' ? 'cone' : 'line'); this.previewCache.clear(); this.render() } return
+      case 'throughbolt': if (w && a) { this.b.setWeaponFlag(a, w, 'throughbolt', !w.flags?.throughbolt); this.render() } return
+      case 'profile': if (w && arg && a) { const i = Number(el.dataset.i); this.cmd(() => { this.b.setProfile(a, w, i) }) } return
       case 'reload': if (w) this.cmd(() => this.b.reload(a, w)); return
       case 'boost': this.cmd(() => this.b.boost(a)); return
       case 'overcharge': this.cmd(() => this.b.overcharge(a)); return
@@ -501,7 +515,7 @@ export class BattleScreen {
     const top = `<div class="topbar">
       <div><b>${esc(this.title)}</b> · ${esc(s.name)}${s.rounds && s.id === 'holdout' ? ` (${b.round}/${s.rounds})` : ''}${s.id === 'control' ? ` (held ${b.sitrepScore ?? 0}/${s.rounds})` : ''} — <span class="muted">${esc(s.description)}</span></div>
       <div>Round ${b.round} · <span class="${b.currentSide}">${b.winner ? (b.winner === 'player' ? 'VICTORY' : 'DEFEAT') : b.currentSide === 'player' ? 'Your move' : 'Enemy activity'}</span>
-      <button data-act="rotl" title="Rotate (Q)">⟲</button><button data-act="rotr" title="Rotate (E)">⟳</button><button data-act="speed" title="Animation speed (click to cycle; ⏭ skips animations)">${this.view.speed === 0 ? '⏭ skip' : '×' + this.view.speed}</button>${b.winner && !this.ended ? '<button data-act="finish" class="primary">Continue ▶</button>' : ''}</div></div>`
+      <button data-act="rotl" title="Rotate (Q)">⟲</button><button data-act="rotr" title="Rotate (E)">⟳</button><button data-act="speed" title="Animation speed (click to cycle; ⏭ skips animations)">${this.view.speed === 0 ? '⏭ skip' : '×' + this.view.speed}</button><button data-act="export" title="Download this battle as a replay file (for bug reports: replay it with npm run replay)">⤓</button>${b.winner && !this.ended ? '<button data-act="finish" class="primary">Continue ▶</button>' : ''}</div></div>`
     const roster = (side: 'player' | 'enemy') => b.units.filter(u => u.side === side && (u.kind === 'mech' || u.kind === 'npc')).map(u => {
       const hp = Math.max(0, u.hp)
       return `<div class="card ${u === sel ? 'sel' : ''} ${u.destroyed ? 'dead' : ''} ${u.activeTurn ? 'active' : ''}" data-act="select" data-arg="${u.id}">

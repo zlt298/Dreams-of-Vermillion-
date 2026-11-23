@@ -321,7 +321,7 @@ One full pass once §1–§2 are in. Includes:
 ### 7. Tooling
 1. CI (S).
 2. ✅ Split `battle.ts` (done: `rules/battle/`).
-3. Deterministic replays (M).
+3. ✅ Deterministic replays (done: ⤓ export and `npm run replay`).
 4. Bundle code-splitting (S).
 
 ### Later or optional

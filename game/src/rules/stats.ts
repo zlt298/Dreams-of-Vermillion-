@@ -6,6 +6,9 @@ import { scriptsFor } from './effects/registry'
 
 let uidCounter = 0
 export const nextUid = (p = 'u') => `${p}${++uidCounter}`
+/** the id counter (battle replays restore it so spawned drones and mines get the same ids) */
+export const uidState = () => uidCounter
+export const setUidState = (n: number) => { uidCounter = n }
 
 export function normalizeStatus(id: string): StatusId {
   const s = id.toLowerCase().replace(/[^a-z]/g, '')

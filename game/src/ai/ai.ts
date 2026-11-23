@@ -363,7 +363,7 @@ export function runAiTurn(b: Battle, u: Unit) {
   // an AI-driven player unit (Auto, SEKHMET) answers its own side's questions with the defaults
   const prevSide = b.aiSide
   if (u.side === 'player') b.aiSide = 'player'
-  try { runAiTurnInner(b, u) } finally { b.aiSide = prevSide }
+  try { b.command('aiTurn', [u], () => runAiTurnInner(b, u)) } finally { b.aiSide = prevSide }
 }
 function runAiTurnInner(b: Battle, u: Unit) {
   if (b.activeId !== u.id) b.beginTurn(u)

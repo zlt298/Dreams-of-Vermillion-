@@ -103,7 +103,7 @@ export function checkpoint(bt: Battle): () => void {
   const fields = (o: any, skip: string[] = []) => { const r: any = {}; for (const k of Object.keys(o)) if (!skip.includes(k)) r[k] = dc(o[k]); return r }
   const units = bt.units.map(u => ({ u, f: fields(u, ['weapons', 'systems']), weapons: u.weapons.slice(), systems: u.systems.slice(), w: u.weapons.map(w => fields(w)), s: u.systems.map(x => fields(x)) }))
   const tiles = bt.map.tiles.map(t => ({ ...t }))
-  const SKIP = new Set(['units', 'map', 'rng', 'log', 'events', 'listeners', 'chooser', 'answers', 'txDepth', 'mapCache', 'losCache', 'coverCache', 'cacheVersion', 'terrainVersion'])
+  const SKIP = new Set(['units', 'map', 'rng', 'log', 'events', 'listeners', 'chooser', 'answers', 'txDepth', 'record', 'mapCache', 'losCache', 'coverCache', 'cacheVersion', 'terrainVersion'])
   const self = bt as any
   const rest: Record<string, any> = {}
   for (const k of Object.keys(self)) if (!SKIP.has(k) && typeof self[k] !== 'function') rest[k] = dc(self[k])
@@ -171,10 +171,11 @@ export function choose(bt: Battle, q: ChoiceQuestion): number {
   if (q.options.length <= 1 || bt.sandboxDepth || q.unit.side !== 'player' || bt.aiSide === q.unit.side) return def
   const pol = q.policy ? (q.unit.policies[q.policy] ?? 'ask') : 'ask'
   if (pol !== 'ask') return def
-  if (bt.answers.length) return clamp(bt.answers.shift()!)
+  if (bt.answers.length) { const i = clamp(bt.answers.shift()!); bt.noteAnswer(i); return i }
   if (!bt.chooser || !bt.txDepth) return def // outside a transaction there is no way to suspend
   const r = bt.chooser(q)
   if (r === undefined) throw new PendingChoice(q)
+  bt.noteAnswer(clamp(r))
   return clamp(r)
 }
 
