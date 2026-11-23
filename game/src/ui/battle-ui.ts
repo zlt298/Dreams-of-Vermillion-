@@ -332,6 +332,7 @@ export class BattleScreen {
       case 'export': this.downloadBattle(); return
       case 'rotl': this.view.rotate(-1); return
       case 'rotr': this.view.rotate(1); return
+      case 'gfx': this.view.setQuality(this.view.quality === 'high' ? 'low' : 'high'); this.toast(`Graphics: ${this.view.quality} quality`); this.render(); return
       case 'speed': { const order = [1, 2, 4, 0]; this.view.setSpeed(order[(order.indexOf(this.view.speed) + 1) % order.length]); this.render(); return }
       case 'finish': if (this.b.winner && !this.ended) { this.ended = true; this.onEnd(this.b.winner as 'player' | 'enemy') } return
       case 'policy':
@@ -515,7 +516,7 @@ export class BattleScreen {
     const top = `<div class="topbar">
       <div><b>${esc(this.title)}</b> · ${esc(s.name)}${s.rounds && s.id === 'holdout' ? ` (${b.round}/${s.rounds})` : ''}${s.id === 'control' ? ` (held ${b.sitrepScore ?? 0}/${s.rounds})` : ''} — <span class="muted">${esc(s.description)}</span></div>
       <div>Round ${b.round} · <span class="${b.currentSide}">${b.winner ? (b.winner === 'player' ? 'VICTORY' : 'DEFEAT') : b.currentSide === 'player' ? 'Your move' : 'Enemy activity'}</span>
-      <button data-act="rotl" title="Rotate (Q)">⟲</button><button data-act="rotr" title="Rotate (E)">⟳</button><button data-act="speed" title="Animation speed (click to cycle; ⏭ skips animations)">${this.view.speed === 0 ? '⏭ skip' : '×' + this.view.speed}</button><button data-act="export" title="Download this battle as a replay file (for bug reports: replay it with npm run replay)">⤓</button>${b.winner && !this.ended ? '<button data-act="finish" class="primary">Continue ▶</button>' : ''}</div></div>`
+      <button data-act="rotl" title="Rotate (Q)">⟲</button><button data-act="rotr" title="Rotate (E)">⟳</button><button data-act="speed" title="Animation speed (click to cycle; ⏭ skips animations)">${this.view.speed === 0 ? '⏭ skip' : '×' + this.view.speed}</button><button data-act="gfx" title="Graphics quality: high adds bloom, film grain, ambient particles and practical lights">${this.view.quality === 'high' ? '◈ high' : '◇ low'}</button><button data-act="export" title="Download this battle as a replay file (for bug reports: replay it with npm run replay)">⤓</button>${b.winner && !this.ended ? '<button data-act="finish" class="primary">Continue ▶</button>' : ''}</div></div>`
     const roster = (side: 'player' | 'enemy') => b.units.filter(u => u.side === side && (u.kind === 'mech' || u.kind === 'npc')).map(u => {
       const hp = Math.max(0, u.hp)
       return `<div class="card ${u === sel ? 'sel' : ''} ${u.destroyed ? 'dead' : ''} ${u.activeTurn ? 'active' : ''}" data-act="select" data-arg="${u.id}">
