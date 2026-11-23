@@ -64,8 +64,7 @@ registerScripts([
         if (!ctx.hit) return
         bt.forceMove(self, target, 10, -1)
         if (!bt.adjacent(self, target)) { bt.say('  No space to land: the grapple breaks.'); return }
-        bt.addStatus(target, 'grappled', 'until_cleared', self, { by: self.id })
-        bt.addStatus(self, 'grappled', 'until_cleared', self, { by: self.id, with: target.id })
+        bt.startGrapple(self, target)
         if (target.stats.size < self.stats.size) bt.addStatus(target, 'immobilized', 'until_cleared', self, { grapple: self.id })
       },
     })],

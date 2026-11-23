@@ -32,7 +32,8 @@ function charge(b: Battle, u: Unit, toward: Pos, max: number): Unit[] {
   for (let i = 0; i < max; i++) {
     const nx = { x: cur.x + dx, y: cur.y + dy }
     const t = tileAt(b.map, nx), t0 = tileAt(b.map, cur)
-    if (!t || !t0 || t.h - t0.h > 1) break
+    if (!t || !t0) break
+    if (t.h - t0.h > 1) { b.damageTerrain(nx, 20); const t2 = tileAt(b.map, nx)!; if (t2.h - t0.h > 1) break }
     const blockers = b.alive().filter(o => o !== u && !o.flags.flat && footprint(o).some(q => q.x === nx.x && q.y === nx.y))
     if (blockers.some(o => o.stats.size > u.stats.size || o.kind === 'deployable')) break
     for (const o of blockers) if (!passed.includes(o)) passed.push(o)
@@ -214,7 +215,7 @@ registerScripts([
     },
   },
   {
-    id: 't_juggernaut:3', partial: true, note: 'Unstoppable Force: boost your full speed in a straight line through same-size characters (Hull save or Prone), 1d3+3 heat (obstruction damage not modelled)',
+    id: 't_juggernaut:3', note: 'Unstoppable Force: boost your full speed in a straight line through same-size characters (Hull save or Prone) and walls (20 AP kinetic each), 1d3+3 heat',
     actions: (_b, u) => [action({
       key: 'unstoppable', name: 'Unstoppable Force (Boost)', activation: 'quick', target: 'tile', range: u.stats.speed,
       text: 'Boost in a straight line at full speed through characters your size or smaller; take 1d3+3 heat.',
@@ -250,7 +251,7 @@ registerScripts([
   },
   // ---------------- Siege Specialist 1: Jackhammer
   {
-    id: 't_siege_specialist:1', partial: true, note: 'Jackhammer: 10 AP kinetic to an object (deployables); characters adjacent to the impact are knocked back 2 and take 2 kinetic (terrain is not destroyed)',
+    id: 't_siege_specialist:1', note: 'Jackhammer: 10 AP kinetic to an object or terrain section; characters adjacent to the impact are knocked back 2 and take 2 kinetic',
     actions: (b, u) => {
       const cannon = u.weapons.find(w => w.type === 'Cannon' && !w.destroyed)
       if (!cannon) return []
@@ -259,8 +260,7 @@ registerScripts([
         key: 'jackhammer', name: 'Jackhammer Round', activation: 'quick', target: 'tile', range, text: '10 AP kinetic to an object; adjacent characters are knocked back 2 and take 2 kinetic.',
         run: (bt, me, t) => {
           const p = t && 'x' in t ? t : (t as Unit).pos
-          const obj = bt.alive().find(o => o.kind === 'deployable' && footprint(o).some(q => q.x === p.x && q.y === p.y))
-          if (obj) bt.applyDamage(obj, [{ type: 'Kinetic', amount: 10 }], { source: me, ap: true })
+          bt.damageObjectsIn([p], 10, { source: me, ap: true })
           bt.emit({ type: 'area', tiles: [p], kind: 'explosion' })
           for (const o of chars(bt)) if (o !== me && footprint(o).some(q => chebyshev(q, p) === 1)) {
             bt.applyDamage(o, [{ type: 'Kinetic', amount: 2 }], { source: me })

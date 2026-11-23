@@ -22,6 +22,7 @@ export type BattleEvent =
   | { type: 'round'; round: number }
   | { type: 'area'; tiles: Pos[]; kind: string }
   | { type: 'spawn'; unitId: string }
+  | { type: 'terrain'; tiles: Pos[] }
   | { type: 'end'; winner: Side }
   | { type: 'text'; unitId?: string; text: string }
 
@@ -233,6 +234,8 @@ export class Battle {
     for (const o of this.alive()) if (o !== u) for (const sc of scriptsFor(o)) if (sc.blockAnyStatus?.(this, o, u, id, source)) { this.say(`${u.name} is protected from ${id}.`, 'status'); return false }
     if (u.kind === 'deployable' && ['prone', 'slowed', 'immobilized', 'impaired', 'jammed'].includes(id) && u.stats.speed === 0) return false
     if (id === 'prone' && u.flying) { this.say(`${u.name} is flying and can't be knocked prone.`, 'status'); return false }
+    // flyers that are Immobilized or Stunned fall (they land; they take off again when they next move)
+    if ((id === 'immobilized' || id === 'stunned') && u.flying && !data?.grapple && !data?.lift) this.land(u, `${id}`)
     const inst: StatusInstance = { id, source: source?.id, data }
     if (duration === 'end_of_turn') { inst.clockUnit = this.activeId ?? u.id; inst.turnsLeft = 1 }
     else if (duration === 'next_turn_end_target') { inst.clockUnit = u.id; inst.turnsLeft = u.activeTurn ? 2 : 1 }
@@ -375,6 +378,8 @@ export class Battle {
     // "You can only take one reaction per turn – your turn or other characters' turns": refresh everyone's per-turn budget
     for (const o of this.units) if (!o.destroyed) o.reactionsLeft = this.has(o, 'bracing_recovery') ? 0 : o.reactionsPerRound
     this.tickStatuses(u, true)
+    if (this.grapples.length) this.grappleContest(u)
+    this.syncZeroG(u)
     u.moveLeft = u.stats.speed
     if (this.has(u, 'bracing_recovery')) { u.actionsLeft = 1; u.moveLeft = 0 }
     if (this.has(u, 'stunned')) { u.actionsLeft = 0; u.moveLeft = 0 }
@@ -546,6 +551,7 @@ export class Battle {
       this.emit({ type: 'damage', unitId: u.id, amount: 1, kind: 'stress' })
       this.say(`${u.name} OVERHEATS — takes 1 stress (${u.stress} left).`, 'damage')
       for (const s of scriptsFor(u)) s.onStressDamage?.(this, u)
+      if (u.flying && !u.destroyed && !this.save(u, 'agi', 10)) this.land(u, 'loses control')
       this.overheatCheck(u)
     }
   }
@@ -660,6 +666,7 @@ export class Battle {
     // destroyed mechs become wreckage: hard cover and an obstruction (unless vaporised)
     if ((u.kind === 'mech' || (u.kind === 'npc' && u.role !== 'Biological')) && !/meltdown|self-destruct|unstable|blinkspace|heat/.test(why)) u.flags.wreck = true
     if (u.flags.isCover || u.flags.wreck) this.invalidateTerrain()
+    if (this.grapples.some(g => g.a === u.id || g.d === u.id)) this.syncGrapples()
     this.emit({ type: 'destroyed', unitId: u.id })
     this.say(`${u.name} is DESTROYED (${why}).`, 'damage')
     for (const o of this.alive()) for (const s of scriptsFor(o)) s.onDestroyed?.(this, o, u)
@@ -752,6 +759,7 @@ export class Battle {
       this.say(`${t.name} takes STRUCTURE damage (${t.structure} left).`, 'damage')
       t.hp = t.stats.hp - excess
       for (const s of scriptsFor(t)) s.onStructureDamage?.(this, t)
+      if (t.flying && !t.destroyed && !this.save(t, 'agi', 10)) this.land(t, 'loses control')
       this.structureCheck(t)
     }
   }
@@ -860,7 +868,7 @@ export class Battle {
     if (mode === 'involuntary') return true
     if (this.has(u, 'immobilized')) return 'Immobilized'
     if (this.has(u, 'stunned')) return 'Stunned'
-    if (this.has(u, 'grappled') && u.statuses.find(s => s.id === 'grappled')?.data?.by !== u.id) return 'Grappled'
+    if (this.grapples.some(g => g.a === u.id || g.d === u.id) && !this.grappleInfo(u).dominant) return 'Grappled (held by a larger side)'
     if (mode !== 'standard' && this.has(u, 'slowed') && mode !== 'disengage') return 'Slowed'
     return true
   }
@@ -869,6 +877,7 @@ export class Battle {
   move(u: Unit, dest: Pos, opts: MoveOpts = { mode: 'standard' }): boolean {
     const ok = this.canMove(u, opts.mode)
     if (ok !== true) throw new Error(ok)
+    if (u.flags.landed && opts.mode !== 'involuntary') { u.flying = true; u.flags.landed = false; this.say(`${u.name} takes off again.`) }
     if (this.has(u, 'prone') && opts.mode === 'standard') throw new Error('Stand up first')
     // Mesmer Beacon: voluntary movement only toward the source
     const mes = u.flags.mesmerBy ? this.unit(u.flags.mesmerBy) : undefined
@@ -890,7 +899,12 @@ export class Battle {
     if (opts.mode !== 'involuntary' && !u.flags['turn:disengaged']) this.triggerOverwatch(u)
     if (u.destroyed) return false
     if (this.has(u, 'stunned') || this.has(u, 'immobilized')) return false
-    this.followPath(u, p.path)
+    const movedFrom = { ...u.pos }
+    // the larger side of a grapple drags its partner along: check adjacency only after the drag
+    const drags = opts.mode !== 'involuntary' && this.grapples.length > 0 && this.grappleInfo(u).dominant
+    if (drags) this.draggingId = u.id
+    try { this.followPath(u, p.path) } finally { this.draggingId = null }
+    if (drags && !u.destroyed) this.dragGrappled(u, movedFrom)
     // undo is only allowed if the move revealed/triggered nothing: its sole event is the move itself
     if (snapshot) {
       const last = this.events[this.events.length - 1]
@@ -955,6 +969,8 @@ export class Battle {
     }
     // hidden is lost if no longer in cover / out of sight
     if (this.has(u, 'hidden') && !(u.flags.prowl && u.activeTurn) && !this.canHide(u)) this.removeStatus(u, 'hidden')
+    if (this.grapples.length && this.draggingId !== u.id) this.syncGrapples()
+    if (u.flags.zeroG || this.areas.some(a => a.kind === 'zero_g')) this.syncZeroG(u)
     this.updateEngagementTerminal(u)
   }
   private updateEngagementTerminal(_u: Unit) {}
@@ -1646,6 +1662,67 @@ export class Battle {
   firedThisTurn(u: Unit, w: Weapon): boolean {
     return (u.flags['turn:fired'] ?? []).includes(w.uid)
   }
+  // ------------------------------------------------------------------ objects and terrain
+  /** Damage carried by each terrain block's top section (house rule: 10 HP per level of height, Evasion 5). */
+  terrainDamage = new Map<string, number>()
+  static TERRAIN_SECTION_HP = 10
+
+  /** Damage a terrain block. Every 10 damage knocks one level off; a block with no levels left becomes rubble. */
+  damageTerrain(p: Pos, amount: number, opts: { source?: Unit; quiet?: boolean } = {}): boolean {
+    const t = tileAt(this.map, p)
+    if (!t || t.kind !== 'block' || amount <= 0) return false
+    const k = `${p.x},${p.y}`
+    let dmg = (this.terrainDamage.get(k) ?? 0) + amount
+    let levels = 0
+    while (dmg >= Battle.TERRAIN_SECTION_HP && t.h > 0) { dmg -= Battle.TERRAIN_SECTION_HP; t.h--; levels++ }
+    if (t.h <= 0) { t.h = 0; t.kind = 'rubble'; dmg = 0 }
+    this.terrainDamage.set(k, dmg)
+    if (!levels) { if (!opts.quiet) this.say(`  The terrain takes ${amount} damage (${Battle.TERRAIN_SECTION_HP - dmg} left on this section).`); return false }
+    this.say(t.kind === 'rubble' ? '  The structure collapses into rubble!' : `  ${levels} level(s) of the structure are blown away.`, 'damage')
+    this.invalidateTerrain()
+    this.emit({ type: 'terrain', tiles: [{ ...p }] })
+    return true
+  }
+  /** Objects in an area take automatic damage: deployables, and terrain blocks. */
+  damageObjectsIn(tiles: Pos[], amount: number, opts: { source?: Unit; ap?: boolean } = {}) {
+    for (const o of this.alive().filter(o => (o.kind === 'deployable') && footprint(o).some(q => tiles.some(t => t.x === q.x && t.y === q.y)))) this.applyDamage(o, [{ type: 'Explosive', amount }], { source: opts.source, ap: opts.ap })
+    for (const p of tiles) this.damageTerrain(p, amount, { source: opts.source, quiet: true })
+  }
+  /** Raise a size-1 section of hard cover on a free ground space (debris, barricades). */
+  raiseCover(p: Pos): boolean {
+    const t = tileAt(this.map, p)
+    if (!t || t.kind === 'block' || this.alive().some(o => !o.flags.flat && footprint(o).some(q => q.x === p.x && q.y === p.y))) return false
+    t.h += 1
+    t.kind = 'block'
+    this.terrainDamage.delete(`${p.x},${p.y}`)
+    this.invalidateTerrain()
+    this.emit({ type: 'terrain', tiles: [{ ...p }] })
+    return true
+  }
+  /** Skirmish against a terrain block: attack roll vs Evasion 5, weapon damage to the section. */
+  attackTerrain(u: Unit, w: Weapon, p: Pos): AttackSummary {
+    const t = tileAt(this.map, p)
+    if (!t || t.kind !== 'block') return { ctxs: [], ok: false, reason: 'Not a piece of terrain' }
+    if (w.size === 'Superheavy') return { ctxs: [], ok: false, reason: 'Superheavy weapons require Barrage' }
+    const c = this.canSpend(u, 'quick', 'skirmish')
+    if (c !== true) return { ctxs: [], ok: false, reason: c }
+    const pre = this.weaponUsable(u, w)
+    if (pre !== true) return { ctxs: [], ok: false, reason: pre }
+    if (this.firedThisTurn(u, w)) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
+    if (distanceToTile(this.map, u, p) > this.weaponReach(u, w)) return { ctxs: [], ok: false, reason: 'Out of range' }
+    this.spend(u, 'quick', 'skirmish')
+    this.markFired(u, w)
+    const pr = this.profile(w)
+    const roll = this.rollD20(u, 'attack') + (w.attackBonus ?? u.stats.attackBonus)
+    this.say(`${u.name} attacks the terrain with ${w.name}: ${roll} vs Evasion 5.`, 'attack')
+    if (hasTag(pr.tags, 'tg_loading')) w.loaded = false
+    if (w.usesLeft != null) w.usesLeft--
+    if (roll >= 5) {
+      const dmg = pr.damage.filter(d => d.type !== 'Heat' && d.type !== 'Burn').reduce((n, d) => n + rollDice(this.rng, d.val).total, 0)
+      this.damageTerrain(p, dmg, { source: u })
+    } else this.say('  Miss.')
+    return { ctxs: [], ok: true }
+  }
   markFired(u: Unit, w: Weapon) {
     u.flags['turn:fired'] = [...(u.flags['turn:fired'] ?? []), w.uid]
   }
@@ -1779,6 +1856,11 @@ export class Battle {
     for (const s of scriptsFor(u)) s.afterAttack?.(this, u, ctx, 'attacker')
   }
 
+  // ------------------------------------------------------------------ grapples
+  /** Active grapples: attacker `a` holds defender `d`; `winner` decides same-size contests. */
+  grapples: { a: string; d: string; winner?: string }[] = []
+  private draggingId: string | null = null
+
   grapple(u: Unit, t: Unit) {
     const c = this.canSpend(u, 'quick', 'grapple')
     if (c !== true) throw new Error(c)
@@ -1788,27 +1870,127 @@ export class Battle {
     if (this.has(u, 'impaired')) ctx.difficulty++
     this.say(`${u.name} attempts to GRAPPLE ${t.name}.`, 'attack')
     this.rollToHit(ctx)
-    if (ctx.hit) {
-      this.addStatus(t, 'grappled', 'until_cleared', u, { by: u.id })
-      this.addStatus(u, 'grappled', 'until_cleared', u, { by: u.id, with: t.id })
-      if (t.stats.size < u.stats.size) this.addStatus(t, 'immobilized', 'until_cleared', u, { grapple: u.id })
-    }
+    if (ctx.hit) this.startGrapple(u, t)
   }
+  /** Begin a grapple (also used by systems such as Impale). */
+  startGrapple(a: Unit, d: Unit) {
+    if (a.destroyed || d.destroyed || this.grapples.some(g => g.a === a.id && g.d === d.id)) return
+    for (const s of scriptsFor(d)) if (s.blockStatus?.(this, d, 'grappled', a)) { this.say(`${d.name} can't be grappled.`, 'status'); return }
+    if (d.immune.includes('grappled')) { this.say(`${d.name} is immune to grapples.`, 'status'); return }
+    this.grapples.push({ a: a.id, d: d.id })
+    this.say(`${a.name} GRAPPLES ${d.name}.`, 'status')
+    this.syncGrapples()
+  }
+  /** Combined Size of everyone grappling `d`, against `d`'s own Size. */
+  private grappleDominance(g: { a: string; d: string; winner?: string }): 'attackers' | 'defender' {
+    const d = this.unit(g.d)!
+    const attackers = this.grapples.filter(x => x.d === g.d).map(x => this.unit(x.a)).filter((x): x is Unit => !!x && !x.destroyed)
+    const aSize = attackers.reduce((n, x) => n + x.stats.size, 0)
+    if (aSize !== d.stats.size) return aSize > d.stats.size ? 'attackers' : 'defender'
+    return g.winner === g.d ? 'defender' : 'attackers'
+  }
+  /** Units this one is holding or being held by, and whether it currently counts as the larger side. */
+  grappleInfo(u: Unit): { partners: Unit[]; dominant: boolean; attacker: boolean; defender: boolean } {
+    const mine = this.grapples.filter(g => g.a === u.id || g.d === u.id)
+    const partners = mine.map(g => this.unit(g.a === u.id ? g.d : g.a)).filter((x): x is Unit => !!x)
+    const dominant = mine.length > 0 && mine.every(g => (this.grappleDominance(g) === 'attackers') === (g.a === u.id))
+    return { partners, dominant, attacker: mine.some(g => g.a === u.id), defender: mine.some(g => g.d === u.id) }
+  }
+  /** Drop broken grapples (destroyed, no longer adjacent) and refresh Grappled/Immobilized. */
+  syncGrapples() {
+    const before = this.grapples.length
+    this.grapples = this.grapples.filter(g => {
+      const a = this.unit(g.a), d = this.unit(g.d)
+      const ok = !!a && !!d && !a.destroyed && !d.destroyed && this.adjacent(a, d)
+      if (!ok && a && d) this.say(`The grapple between ${a.name} and ${d.name} breaks.`, 'status')
+      return ok
+    })
+    const touched = new Set<Unit>()
+    for (const u of this.units) {
+      const n = u.statuses.length
+      u.statuses = u.statuses.filter(s => s.id !== 'grappled' && !(s.id === 'immobilized' && s.data?.grapple))
+      if (u.statuses.length !== n) touched.add(u)
+    }
+    for (const g of this.grapples) {
+      const a = this.unit(g.a)!, d = this.unit(g.d)!
+      a.statuses.push({ id: 'grappled', source: a.id, data: { by: a.id, with: d.id } })
+      d.statuses.push({ id: 'grappled', source: a.id, data: { by: a.id } })
+      const loser = this.grappleDominance(g) === 'attackers' ? d : a
+      if (!loser.statuses.some(s => s.id === 'immobilized' && s.data?.grapple)) loser.statuses.push({ id: 'immobilized', source: a.id, data: { grapple: true } })
+      touched.add(a); touched.add(d)
+    }
+    if (touched.size || before !== this.grapples.length) for (const u of touched) this.emit({ type: 'status', unitId: u.id, status: 'grappled', added: this.has(u, 'grappled') })
+  }
+  /** Same-size grapples: contested Hull check at the start of a turn decides who counts as larger. */
+  private grappleContest(u: Unit) {
+    for (const g of this.grapples.filter(x => x.a === u.id || x.d === u.id)) {
+      const a = this.unit(g.a), d = this.unit(g.d)
+      if (!a || !d) continue
+      const attackersSize = this.grapples.filter(x => x.d === g.d).reduce((n, x) => n + (this.unit(x.a)?.stats.size ?? 0), 0)
+      if (attackersSize !== d.stats.size) continue
+      const iAmAttacker = g.a === u.id
+      if ((this.grappleDominance(g) === 'attackers') === iAmAttacker) continue // already on top
+      const other = iAmAttacker ? d : a
+      const mine = this.rollD20(u, 'check') + u.stats.hull, theirs = this.rollD20(other, 'check') + other.stats.hull
+      this.say(`${u.name} contests the grapple (Hull ${mine} vs ${theirs}).`)
+      if (mine > theirs) { g.winner = u.id === g.d ? g.d : g.a; this.say(`  ${u.name} gains the upper hand.`) }
+    }
+    this.syncGrapples()
+  }
+  /** Defender: contested Hull check as a quick action to break free. */
   breakGrapple(u: Unit) {
     const c = this.canSpend(u, 'quick', 'break_grapple')
     if (c !== true) throw new Error(c)
-    const g = u.statuses.find(s => s.id === 'grappled')
-    if (!g) throw new Error('Not grappled')
+    const holds = this.grapples.filter(g => g.d === u.id)
+    if (!holds.length) throw new Error(this.grapples.some(g => g.a === u.id) ? 'You are the grappler: release it as a free action' : 'Not grappled')
     this.spend(u, 'quick', 'break_grapple')
-    const other = this.unit(g.data?.by === u.id ? g.data?.with : g.data?.by)
-    const mine = this.rng.d(20) + u.stats.hull
-    const theirs = other ? this.rng.d(20) + other.stats.hull : 0
-    if (mine > theirs || !other) {
-      this.removeStatus(u, 'grappled')
-      if (other) { this.removeStatus(other, 'grappled') }
-      u.statuses = u.statuses.filter(s => !(s.id === 'immobilized' && s.data?.grapple))
-      this.say(`${u.name} breaks free.`)
-    } else this.say(`${u.name} fails to break the grapple.`)
+    const best = holds.map(g => this.unit(g.a)).filter((x): x is Unit => !!x).sort((x, y) => y.stats.hull - x.stats.hull)[0]
+    const mine = this.rollD20(u, 'check') + u.stats.hull
+    const theirs = best ? this.rollD20(best, 'check') + best.stats.hull : 0
+    if (mine > theirs || !best) {
+      this.grapples = this.grapples.filter(g => g.d !== u.id)
+      this.say(`${u.name} breaks free (Hull ${mine} vs ${theirs}).`)
+    } else this.say(`${u.name} fails to break the grapple (Hull ${mine} vs ${theirs}).`)
+    this.syncGrapples()
+  }
+  /** Attacker: end your grapples as a free action. */
+  releaseGrapple(u: Unit) {
+    if (!this.grapples.some(g => g.a === u.id)) throw new Error('Not grappling anyone')
+    this.grapples = this.grapples.filter(g => g.a !== u.id)
+    this.say(`${u.name} releases its grapple.`)
+    this.syncGrapples()
+  }
+  /** The larger side drags the smaller along when it moves (mirroring its movement). */
+  private dragGrappled(u: Unit, from: Pos) {
+    const info = this.grappleInfo(u)
+    if (!info.dominant) return
+    const dx = u.pos.x - from.x, dy = u.pos.y - from.y
+    if (!dx && !dy) return
+    for (const p of info.partners) {
+      if (p.destroyed) continue
+      const want = { x: p.pos.x + dx, y: p.pos.y + dy }
+      let dest: Pos | null = this.dragSpot(p, want, u)
+      if (!dest) continue
+      const prev = p.pos
+      p.pos = dest
+      this.emit({ type: 'move', unitId: p.id, path: [prev, dest] })
+      this.say(`${u.name} drags ${p.name} along.`)
+    }
+    this.syncGrapples()
+  }
+  private dragSpot(p: Unit, want: Pos, holder: Unit): Pos | null {
+    const free = (q: Pos) => footprint(p, q).every(t => tileAt(this.map, t) && !this.alive().some(o => o !== p && !o.flags.flat && footprint(o).some(z => z.x === t.x && z.y === t.y)))
+    if (free(want) && this.adjacent(holder, p, holder.pos) && chebyshev(want, holder.pos) <= Math.max(holder.stats.size, p.stats.size)) return want
+    let best: Pos | null = null
+    for (let dy = -p.stats.size - 1; dy <= holder.stats.size; dy++) for (let dx = -p.stats.size - 1; dx <= holder.stats.size; dx++) {
+      const q = { x: holder.pos.x + dx, y: holder.pos.y + dy }
+      if (!free(q)) continue
+      const save = p.pos; p.pos = q
+      const adj = this.adjacent(holder, p)
+      p.pos = save
+      if (adj && (!best || chebyshev(q, want) < chebyshev(best, want))) best = q
+    }
+    return best
   }
 
   improvisedAttack(u: Unit, t: Unit) {
@@ -1983,8 +2165,8 @@ export class Battle {
       const owner = a.ownerId ? this.unit(a.ownerId) : undefined
       out.push({
         tiles: a.tiles, ownerId: a.ownerId,
-        effect: a.kind === 'damage' ? 'harm' : a.kind === 'difficult' ? 'terrain' : 'protect',
-        label: `${a.kind === 'damage' ? 'Damaging area' : a.kind === 'difficult' ? 'Difficult terrain' : 'Soft cover (obscured)'}${owner ? ` — ${owner.name}` : ''}`,
+        effect: a.kind === 'damage' ? 'harm' : a.kind === 'difficult' ? 'terrain' : a.kind === 'zero_g' ? 'control' : 'protect',
+        label: `${a.kind === 'damage' ? 'Damaging area' : a.kind === 'difficult' ? 'Difficult terrain' : a.kind === 'zero_g' ? "Zero-g: everyone can fly and can't fall; Slowed without a flight system" : 'Soft cover (obscured)'}${owner ? ` — ${owner.name}` : ''}`,
       })
     }
     for (const o of this.alive()) {
@@ -1993,6 +2175,29 @@ export class Battle {
       for (const s of scriptsFor(o)) if (s.fields) out.push(...s.fields(this, o).map(f => ({ ownerId: o.id, ...f })))
     }
     return out
+  }
+  /** Zero-g areas: characters inside can fly and can't fall, but are Slowed unless they already fly. */
+  syncZeroG(u: Unit) {
+    if (u.destroyed || (u.kind !== 'mech' && u.kind !== 'npc')) return
+    const inside = this.areas.some(a => a.kind === 'zero_g' && footprint(u).some(p => a.tiles.some(t => t.x === p.x && t.y === p.y)))
+    if (inside && !u.flags.zeroG) {
+      u.flags.zeroG = true
+      u.flags.zeroGNative = u.flying
+      if (!u.flying) { u.flying = true; u.statuses.push({ id: 'slowed', source: u.id, data: { zeroG: true } }); this.say(`${u.name} floats in zero-g.`, 'status') }
+    } else if (!inside && u.flags.zeroG) {
+      u.flags.zeroG = false
+      u.flying = !!u.flags.zeroGNative
+      u.statuses = u.statuses.filter(s => !s.data?.zeroG)
+      this.say(`${u.name} leaves the zero-g area.`, 'status')
+    }
+  }
+  /** A flyer falls to the ground (the battlefield models one level of altitude, so no fall damage). */
+  land(u: Unit, why: string) {
+    if (!u.flying || u.flags.zeroG) return
+    u.flying = false
+    u.flags.landed = true
+    this.invalidateTerrain()
+    this.say(`${u.name} ${why} and drops to the ground.`, 'status')
   }
   /** Blinded: line of sight only to adjacent spaces (flash bombs, Blind tech). */
   isBlinded(u: Unit): boolean {

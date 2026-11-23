@@ -1,7 +1,7 @@
 // CORE systems that need more than a passive bonus: Raleigh, Black Witch, Dusk Wing, Goblin, Pegasus,
 // Barbarossa, Sherman (and the Pegasus frame traits).
 import type { Battle } from '../../battle'
-import { blastTiles, chebyshev, distanceToTile, footprint, hasLineOfSightToTile, tileAt, unitsOnTiles } from '../../grid'
+import { blastTiles, chebyshev, distanceToTile, footprint, hasLineOfSightToTile, lineTiles, tileAt, unitsOnTiles } from '../../grid'
 import { rollDice } from '../../rng'
 import type { Pos, Unit } from '../../types'
 import { registerScripts, type CustomAction, type ItemScript } from '../registry'
@@ -297,6 +297,7 @@ const scripts: ItemScript[] = [
             if (die === 2) bt.addStatus(ctx.target, 'impaired', 'next_turn_end_target', self)
             if (die === 1) bt.addStatus(ctx.target, 'stunned', 'next_turn_end_target', self)
           }
+          bt.damageObjectsIn(tiles, die === 3 ? 20 : die === 2 ? 40 : 100, { source: self, ap: true })
           bt.areas.push({ id: `apoc-${bt.round}-${self.id}`, kind: 'soft_cover', tiles, ownerId: self.id, ...(die === 1 ? {} : { expiresRound: bt.round + 1 }) })
           if (die === 2) bt.areas.push({ id: `apoc-fire-${bt.round}-${self.id}`, kind: 'damage', tiles, damage: '4', ownerId: self.id, expiresRound: bt.round + 1 })
           if (die === 1) bt.areas.push({ id: `apoc-crater-${bt.round}-${self.id}`, kind: 'difficult', tiles, ownerId: self.id })
@@ -335,15 +336,11 @@ const scripts: ItemScript[] = [
       b.say(`${u.name} engages COREBURN: ${u.flags.zfCharges} charges.`)
     },
     beforeAttack(_b, self, ctx, role) { if (role === 'attacker' && ctx.weapon?.dataId === 'mw_sherman_integrated') self.flags.zfFired = self.flags.zfCharges ?? 1 },
-    afterAttack(b, self, ctx, role) {
-      if (role !== 'attacker' || ctx.weapon?.dataId !== 'mw_sherman_integrated' || self.flags.zfFired == null) return
-      if (self.flags.coreburn && ctx.hit && (ctx.target.kind === 'deployable' || ctx.target.kind === 'drone') && !ctx.target.destroyed) {
-        b.applyDamage(ctx.target, [{ type: 'Energy', amount: 10 * self.flags.zfFired }], { source: self, ap: true })
-      }
-    },
-    afterAnyAttack(_b, self, ctx) {
-      // reset once the whole attack (all line targets) has resolved
-      if (ctx.attacker === self && self.flags.zfFired != null && ctx.weapon?.dataId === 'mw_sherman_integrated') { self.flags.zfCharges = 1; syncZf(self); self.flags.zfFired = undefined }
+    afterAnyAttack(b, self, ctx) {
+      // once the whole line attack has resolved: COREBURN scorches objects and terrain along the beam, then charges reset
+      if (ctx.attacker !== self || self.flags.zfFired == null || ctx.weapon?.dataId !== 'mw_sherman_integrated') return
+      if (self.flags.coreburn) b.damageObjectsIn(lineTiles(b.map, self, ctx.target.pos, 4 * self.flags.zfFired), 10 * self.flags.zfFired, { source: self, ap: true })
+      self.flags.zfCharges = 1; syncZf(self); self.flags.zfFired = undefined
     },
   },
 ]

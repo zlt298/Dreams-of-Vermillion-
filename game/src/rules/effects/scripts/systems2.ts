@@ -1,6 +1,6 @@
 // Systems previously resolved by hand: grenades and mines, shields and barriers, NHPs, utility.
 import type { Battle } from '../../battle'
-import { blastTiles, burstTiles, chebyshev, footprint, hasLineOfSightToTile, lineTiles, tileAt, unitsOnTiles } from '../../grid'
+import { blastTiles, burstTiles, chebyshev, distanceToTile, footprint, hasLineOfSightToTile, lineTiles, tileAt, unitsOnTiles } from '../../grid'
 import { rollDice } from '../../rng'
 import type { Pos, StatusId, SystemInst, Unit } from '../../types'
 import { deployableUnit } from '../generic'
@@ -234,7 +234,7 @@ const scripts: ItemScript[] = [
       const out = [action({
         key: 'thermal_grenade', name: 'Thermal Grenade', activation: 'quick', target: 'tile', range: 5, area: { shape: 'blast', size: 1 }, text: 'Blast 1 within range 5: Agility save or 1d6 energy (half on success).',
         usable: () => usesOk(s),
-        run: (bt, me, t) => { spend(s); const tiles = blastTiles(bt.map, at(t), 1); bt.emit({ type: 'area', tiles, kind: 'explosion' }); for (const v of unitsOnTiles(chars(bt), tiles)) if (v !== me) half(bt, v, me, 'agi', '1d6', 'Energy') },
+        run: (bt, me, t) => { spend(s); const tiles = blastTiles(bt.map, at(t), 1); bt.emit({ type: 'area', tiles, kind: 'explosion' }); for (const v of unitsOnTiles(chars(bt), tiles)) if (v !== me) half(bt, v, me, 'agi', '1d6', 'Energy'); bt.damageObjectsIn(tiles, 10, { source: me, ap: true }) },
       }), action({
         key: 'breach_charge', name: 'Plant Breaching Charge', activation: 'quick', target: 'tile', range: 1, text: 'Plant a breaching charge next to you; detonate it later as a quick action.',
         usable: () => (u.flags.breach ? 'Already planted' : usesOk(s)),
@@ -247,6 +247,7 @@ const scripts: ItemScript[] = [
           me.flags.breach = undefined
           bt.emit({ type: 'area', tiles, kind: 'explosion' })
           for (const v of unitsOnTiles(chars(bt), tiles)) half(bt, v, me, 'agi', '2d6', 'Explosive', undefined, true)
+          bt.damageObjectsIn(tiles, 30, { source: me, ap: true })
         },
         aiTarget: (bt, me) => (unitsOnTiles(hostiles(bt, me), blastTiles(bt.map, me.flags.breach, 1)).length ? { ...me.pos } : null),
         aiScore: () => 4,
@@ -646,8 +647,20 @@ const scripts: ItemScript[] = [
   },
   // ---------------- Tesseract
   {
-    id: 'ms_tesseract', partial: true, note: 'Tesseract Pinpoint Focus: lift a character 6 spaces (hostiles: Engineering save, 1/scene each): Immobilized and flying until it sinks at the end of its next turn (Spread Focus zero-g is not modelled)',
+    id: 'ms_tesseract', note: 'Tesseract: Spread Focus (Blast 3 zero-g area for the scene) and Pinpoint Focus (lift a character: Immobilized and flying until it sinks at the end of its next turn; hostiles Engineering save, 1/scene each)',
     actions: () => [action({
+      key: 'spread_focus', name: 'Spread Focus', activation: 'quick_tech', techOption: 'spread_focus', target: 'tile', range: 10, area: { shape: 'blast', size: 3 },
+      text: 'A Blast 3 zero-g area within Sensors for the rest of the scene (replaces your previous one).',
+      run: (bt, me, t) => {
+        const p = at(t)
+        if (distanceToTile(bt.map, me, p) > me.stats.sensors) throw new Error('Out of Sensors')
+        const old = bt.areas.filter(a => a.kind === 'zero_g' && a.ownerId === me.id)
+        bt.areas = bt.areas.filter(a => !old.includes(a))
+        bt.addArea({ kind: 'zero_g', tiles: blastTiles(bt.map, p, 3), ownerId: me.id })
+        for (const u of bt.alive()) bt.syncZeroG(u)
+      },
+      aiTarget: () => null,
+    }), action({
       key: 'pinpoint', name: 'Pinpoint Focus', activation: 'quick_tech', target: 'unit', range: 10, text: 'Lift a character into the air: Immobilized and flying until the end of its next turn.',
       run: (bt, me, t) => {
         const v = t as Unit
@@ -659,7 +672,7 @@ const scripts: ItemScript[] = [
         v.flags.liftedUntil = bt.round + 1
         v.flags.liftWasFlying = v.flying
         v.flying = true
-        bt.addStatus(v, 'immobilized', 'next_turn_end_target', me)
+        bt.addStatus(v, 'immobilized', 'next_turn_end_target', me, { lift: true })
         bt.say(`${v.name} floats into the air.`)
       },
       aiScore: (bt, me, t) => (t && 'id' in t && bt.hostile(me, t) && t.weapons.some(w => bt.isMelee(w)) ? 2 : 0),

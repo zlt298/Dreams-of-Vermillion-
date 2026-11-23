@@ -274,13 +274,16 @@ registerScripts([
     beforeAttack(_b, self, ctx, role) { if (role === 'attacker' && ctx.multiTarget) ctx.bonusDamage.push({ type: 'Explosive', val: tv(self, [2, 3, 4]) } as any) },
   },
   {
-    id: 'npc:npcf_earthshaker_shells_bombard', note: 'Earthshaker Shells: cannon hits force Hull saves vs Prone in Burst 3 (no cover segments yet)', partial: true,
+    id: 'npc:npcf_earthshaker_shells_bombard', note: 'Earthshaker Shells: cannon hits force Hull saves vs Prone in Burst 3 and throw up two sections of debris cover',
     afterAttack(b, self, ctx, role) {
       if (role !== 'attacker' || ctx.weapon?.type !== 'Cannon' || self.flags['turn:earthshaker']) return
       self.flags['turn:earthshaker'] = true
       const tiles = burstTiles(b.map, ctx.target, 3)
       b.emit({ type: 'area', tiles, kind: 'attack' })
       for (const o of unitsOnTiles(chars(b), tiles)) if (o !== self && b.hostile(self, o) && !b.save(o, 'hull', self.stats.save)) b.addStatus(o, 'prone', 'until_cleared', self)
+      // two Size 1 sections of debris (hard cover), on the side nearest the Bombard
+      let made = 0
+      for (const p of [...tiles].sort((x, y) => chebyshev(x, self.pos) - chebyshev(y, self.pos))) if (made < 2 && b.raiseCover(p)) made++
     },
   },
   siegeArmor('npc:npcf_siege_armor_bombard'),
@@ -316,8 +319,7 @@ registerScripts([
         dash(bt, self, target.pos, 8)
         if (!bt.adjacent(self, target)) return
         if (!bt.save(target, 'hull', self.stats.save, -1)) {
-          bt.addStatus(target, 'grappled', 'until_cleared', self, { by: self.id })
-          bt.addStatus(self, 'grappled', 'until_cleared', self, { by: self.id, with: target.id })
+          bt.startGrapple(self, target)
         }
       },
       aiScore: (bt, self, t) => (t && 'id' in t && !bt.adjacent(self, t) ? 4 : 0),

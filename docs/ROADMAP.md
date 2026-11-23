@@ -220,8 +220,14 @@ The 32 systems that used to be resolved by hand now have scripts (`scripts/syste
   - other units preventing forced movement or statuses
   - standard moves now fire the movement hook
 
+### Grapples and environment rules
+- **Grapples (core book):** sizes add together when several characters grapple one target; the smaller side is Immobilized and dragged along when the larger side moves. Same-size grapples hold a contested Hull check each turn. Only the defender can Break Free; the attacker can Release as a free action. A grapple ends when adjacency breaks or either party is destroyed.
+- **Flight:** flyers land when Immobilized or Stunned, or on a failed Agility save after Structure or Stress damage, and take off on their next voluntary move.
+- **Zero-g areas:** characters inside fly and are Slowed unless they could already fly. Tesseract Spread Focus creates one.
+- **Destructible terrain (house rule):** each block level has 10 HP and Evasion 5; a skirmish can target a block, and a block with no levels left becomes rubble. Jackhammer, the BB charges, the Apocalypse Rail, COREBURN, Unstoppable Force and Earthshaker (raising debris cover) all use it.
+
 ### Rules fidelity snapshot
-Out of the 392 items in lancer-data, 316 (81%) are fully executed and 66 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
+Out of the 392 items in lancer-data, 319 (81%) are fully executed and 63 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
 
 | section | scripted | partial | auto | manual |
 |---|---|---|---|---|
@@ -253,14 +259,14 @@ Remaining here:
 ### 2. Player content (L, in batches, each with a test)
 Driven by `npm run coverage -- --list`.
 1. ✅ **CORE systems:** done; Goblin Symbiosis is partial.
-2. ✅ **Systems:** every system is now executed; 33 are approximations (see `npm run coverage -- --list`).
-3. ✅ **Talent ranks:** every rank is now executed; 18 are approximations (see `npm run coverage -- --list`).
+2. ✅ **Systems:** every system is now executed; 32 are approximations (see `npm run coverage -- --list`).
+3. ✅ **Talent ranks:** every rank is now executed; 16 are approximations (see `npm run coverage -- --list`).
 4. **Manual weapons and mods:**
    - Vorpal Gun, Mimic Gun, Siege Cannon, Autopod
    - prototype weapons
    - Throughbolt Rounds, UNCLE
 5. **Finish the partial scripts** (39 items).
-6. **Grapple completion and environment rules (M).**
+6. ✅ **Grapple completion and environment rules:** done (see Done).
 
 ### 3. UX
 1. Minimap or overview toggle (S).

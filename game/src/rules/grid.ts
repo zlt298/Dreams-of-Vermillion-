@@ -21,7 +21,7 @@ export type MapTheme = 'outskirts' | 'industrial' | 'cleanroom'
 /** Short-lived area effects (smoke clouds, fire...). */
 export interface AreaEffect {
   id: string
-  kind: 'soft_cover' | 'damage' | 'difficult'
+  kind: 'soft_cover' | 'damage' | 'difficult' | 'zero_g'
   tiles: Pos[]
   expiresRound?: number
   expiresAfterTurnOf?: string

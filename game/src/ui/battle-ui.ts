@@ -204,7 +204,13 @@ export class BattleScreen {
     if (m.k === 'attack') {
       const aoe = this.b.isAoE(this.b.profile(m.weapon))
       const aim = aoe ? { tile } : { targetId: target?.id }
-      if (!aoe && !target) return
+      // no character there: a single-target skirmish can be aimed at a terrain block instead
+      if (!aoe && !target) {
+        if (m.action === 'skirmish' && tile && this.b.map.tiles[tile.y * this.b.map.w + tile.x]?.kind === 'block') {
+          this.cmd(() => { const r = this.b.attackTerrain(a, m.weapon, tile); if (!r.ok) throw new Error(r.reason); this.mode = { k: 'move' } })
+        }
+        return
+      }
       if (m.action === 'skirmish' || m.action === 'aux') {
         this.cmd(() => {
           const r = m.action === 'aux' ? this.b.weaponAttack(a, m.weapon, aim, m.via ?? 'skirmish', { noBonusDamage: true }) : this.b.skirmish(a, m.weapon, aim)
@@ -314,6 +320,7 @@ export class BattleScreen {
       case 'bootup': this.cmd(() => this.b.bootUp(a)); return
       case 'standup': this.cmd(() => this.b.standUp(a)); return
       case 'breakgrapple': this.cmd(() => this.b.breakGrapple(a)); return
+      case 'releasegrapple': this.cmd(() => this.b.releaseGrapple(a)); return
       case 'selfdestruct': if (confirm('Initiate self-destruct? The mech explodes at the end of its next turn.')) this.cmd(() => this.b.selfDestruct(a)); return
       case 'fulltech': this.cmd(() => this.b.fullTech(a)); return
       case 'tech': this.mode = { k: 'tech', tech: arg as any }; this.render(); return
@@ -431,6 +438,14 @@ export class BattleScreen {
         html = `move cost ${p.cost}/${a.moveLeft} · elevation ${tile.h}${tile.kind !== 'ground' ? ' · ' + tile.kind : ''}`
       }
     }
+    // terrain blocks can be shot at (house rule: 10 HP per level, Evasion 5)
+    if (!html && !t && this.hoverTile) {
+      const h = this.hoverTile, tile = this.b.map.tiles[h.y * this.b.map.w + h.x]
+      if (tile?.kind === 'block') {
+        const dmg = this.b.terrainDamage.get(`${h.x},${h.y}`) ?? 0
+        html = `<b>Terrain</b> — ${tile.h} level(s) · top section ${10 - dmg}/10 HP · Evasion 5${this.mode.k === 'attack' && this.mode.action === 'skirmish' ? '<br>Click to attack it.' : ''}`
+      }
+    }
     // fields covering the hovered tile
     if (this.hoverTile && this.showFields) {
       const h = this.hoverTile
@@ -522,7 +537,7 @@ export class BattleScreen {
         ${this.btn('stab-cool', 'Stabilize: Cool [F]', fu)}${this.btn('stab-repair', 'Stabilize: Repair [F]', and(fu, u.repairs > 0 ? true : 'No repairs'))}
         ${this.btn('disengage', 'Disengage [F]', fu)}${this.btn('hide', 'Hide [Q]', and(qa('hide'), b.canHide(u) ? true : 'Need cover / out of sight'))}${this.btn('search', 'Search [Q]', qa('search'))}
         ${this.btn('melee', 'Ram [Q]', qa('ram'), 'ram')}${this.btn('melee', 'Grapple [Q]', qa('grapple'), 'grapple')}${this.btn('melee', 'Improvised [F]', fu, 'improvised')}
-        ${b.has(u, 'grappled') ? this.btn('breakgrapple', 'Break Grapple [Q]', qa('break_grapple')) : ''}
+        ${b.grapples.some(g => g.d === u.id) ? this.btn('breakgrapple', 'Break Grapple [Q]', qa('break_grapple')) : ''}${b.grapples.some(g => g.a === u.id) ? this.btn('releasegrapple', 'Release Grapple [Free]', true) : ''}
         ${b.has(u, 'shutdown') ? this.btn('bootup', 'Boot Up [F]', u.actionsLeft >= 2 ? true : 'Needs full action') : this.btn('shutdown', 'Shut Down [Q]', qa('shut_down'))}
         ${fr ? this.btn('core', `CORE: ${esc(fr.core_system.active_name ?? fr.core_system.name)} [${actLabel((fr.core_system.activation ?? 'quick').toLowerCase())}]`, u.coreAvailable ? (fr.core_system.activation === 'Protocol' ? pr : fr.core_system.activation === 'Full' ? fu : q) : 'Core power spent', '', 'core') : ''}
         ${this.btn('selfdestruct', 'Self-Destruct', qa('self_destruct'), '', 'warn')}

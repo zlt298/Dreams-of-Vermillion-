@@ -246,11 +246,33 @@ export class BattleView {
   }
 
   // --------------------------------------------------------------- terrain
+  private tileGroups: THREE.Group[] = []
+  private gridLines: THREE.LineSegments | null = null
+
   private buildTerrain() {
-    const geo = new THREE.BoxGeometry(1, 1, 1)
+    for (let y = 0; y < this.map.h; y++) for (let x = 0; x < this.map.w; x++) this.buildTile(x, y)
+    this.buildGrid()
+  }
+
+  /** Rebuild tiles whose terrain changed (destroyed cover, raised debris). */
+  rebuildTiles(tiles: Pos[]) {
+    for (const p of tiles) {
+      const i = p.y * this.map.w + p.x
+      const old = this.tileGroups[i]
+      if (old) {
+        this.scene.remove(old)
+        old.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && m.userData.tile) (m.material as THREE.Material).dispose() })
+      }
+      this.buildTile(p.x, p.y)
+    }
+    this.buildGrid()
+  }
+
+  private buildTile(x: number, y: number) {
     const theme = this.map.theme ?? 'outskirts'
     const look = THEMES[theme]
-    for (let y = 0; y < this.map.h; y++) for (let x = 0; x < this.map.w; x++) {
+    const g = new THREE.Group()
+    {
       const t = tileAt(this.map, { x, y })!
       const height = 0.4 + t.h * LEVEL
       const mars = t.skin === 'mars' && look.mars
@@ -265,18 +287,24 @@ export class BattleView {
         color: base, roughness: theme === 'cleanroom' && !mars ? 0.55 : 0.95, metalness: t.kind === 'block' ? (theme === 'industrial' ? 0.35 : 0.15) : 0,
         emissive: t.kind === 'hazard' ? look.hazardGlow : 0x000000,
       })
-      const m = new THREE.Mesh(geo, mat)
+      const m = new THREE.Mesh(SHARED.box, mat)
       m.scale.set(1, height, 1)
       m.position.set(x + 0.5, height / 2 - 0.4, y + 0.5)
       m.receiveShadow = true
       m.castShadow = t.kind === 'block'
-      m.userData = { x, y }
-      this.scene.add(m)
-      this.tileMeshes.push(m)
+      m.userData = { x, y, tile: true }
+      g.add(m)
+      this.tileMeshes[y * this.map.w + x] = m
       const top = this.topY({ x, y })
-      this.decorate(theme, t, x, y, top, !!mars)
+      this.decorate(g, theme, t, x, y, top, !!mars)
     }
-    // grid lines
+    this.scene.add(g)
+    this.tileGroups[y * this.map.w + x] = g
+  }
+
+  private buildGrid() {
+    const look = THEMES[this.map.theme ?? 'outskirts']
+    if (this.gridLines) { this.scene.remove(this.gridLines); this.gridLines.geometry.dispose(); (this.gridLines.material as THREE.Material).dispose() }
     const pts: THREE.Vector3[] = []
     for (let y = 0; y < this.map.h; y++) for (let x = 0; x < this.map.w; x++) {
       const yy = this.topY({ x, y }) + 0.005
@@ -284,16 +312,17 @@ export class BattleView {
     }
     const lines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: look.grid, transparent: true, opacity: look.gridOpacity }))
     this.scene.add(lines)
+    this.gridLines = lines
   }
 
   /** Props on top of a tile, by theme: trees and windows outside; vents, scrap, lane paint and hazard
    *  stripes in the industrial park; glass partitions, light strips, red rock and dust in the cleanroom. */
-  private decorate(theme: MapTheme, t: { h: number; kind: string }, x: number, y: number, top: number, mars: boolean) {
+  private decorate(g: THREE.Group, theme: MapTheme, t: { h: number; kind: string }, x: number, y: number, top: number, mars: boolean) {
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, px: number, py: number, pz: number, sx = 1, sy = 1, sz = 1, ry = 0, shadow = false) => {
       const m = new THREE.Mesh(geo, mat)
       m.position.set(px, py, pz); m.scale.set(sx, sy, sz); m.rotation.y = ry
       m.castShadow = shadow
-      this.scene.add(m)
+      g.add(m)
     }
     const k = t.kind
     if (theme === 'outskirts') {
@@ -581,6 +610,9 @@ export class BattleView {
         break
       case 'area':
         this.enqueue(() => this.flashTiles(e.tiles, e.kind === 'explosion' ? 0xff7b29 : e.kind === 'soft_cover' ? 0xb0b0b0 : 0xffb347), true)
+        break
+      case 'terrain':
+        this.enqueue(async () => { this.rebuildTiles(e.tiles); this.syncUnits() }, true)
         break
       case 'spawn':
         this.enqueue(async () => { const u = this.battle.unit(e.unitId); if (u) this.addUnit(u) }, true)

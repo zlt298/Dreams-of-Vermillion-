@@ -87,11 +87,11 @@ section            scripted partial   auto  manual   done%
 Frame traits             27       2      0       0     93%
 Core systems             26       3      0       0     90%
 Weapons                  19       5     53       8     85%
-Systems                  87      33      4       0     73%
+Systems                  88      32      4       0     74%
 Mods                      2       1      3       2     63%
-Talent ranks             63      18      6       0     79%
+Talent ranks             65      16      6       0     82%
 Core bonuses              9       4     17       0     87%
-TOTAL 316/392 (81%) fully executed by the engine, 66 partially
+TOTAL 319/392 (81%) fully executed by the engine, 63 partially
 ```
 
 - **auto**: fully described by structured data (bonuses, damage, ranges, tags, on-hit statuses).
@@ -105,6 +105,8 @@ To add fidelity, register a script keyed by the item id in `game/src/rules/effec
 - Square grid with diagonals counting as 1. Range and threat include the vertical gap.
 - Rules follow the core book: hard cover must be adjacent to the target and at least as large as it (distant obstructions give soft cover); Blast cover is measured from the blast centre; armor comes off an attack's total once; one reaction per turn, each type once per round; wreckage is hard cover and difficult terrain. Being 2+ levels above cover negates it.
 - Wreckage can be crossed (as difficult terrain) but you can't end a move on it.
+- Destructible terrain is a house rule: each level of a terrain block has 10 HP and Evasion 5, and a block with no levels left becomes rubble.
+- Flight altitude is abstract (one level). Flyers land when Immobilized or Stunned, or when they fail an Agility save after Structure or Stress damage.
 - Each weapon can attack once per turn via Skirmish or Barrage. Reactions and free attacks are exempt.
 - Reactions that need a player decision (most talent and system reactions, Brace, Overwatch) fire automatically under a sensible policy.
 - Not implemented:
