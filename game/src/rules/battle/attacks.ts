@@ -131,7 +131,7 @@ export function validTarget(bt: Battle, u: Unit, w: Weapon, t: Unit, from: Pos =
   if (t.destroyed) return 'Destroyed'
   if (t === u) return 'Cannot target self'
   if (t.flags.intangible) return 'Intangible'
-  if (bt.isBlinded(u) && chebyshev(from, t.pos) > 1 && bt.distance(u, t) > 1) return 'Blinded: can only see adjacent spaces'
+  if (bt.isBlinded(u) && chebyshev(from, t.pos) > 1 && distanceBetween(bt.map, { ...u, pos: from }, t) > 1) return 'Blinded: can only see adjacent spaces'
   if (bt.has(t, 'hidden') && bt.hostile(u, t)) return 'Hidden'
   const pr = bt.profile(w)
   const tags = pr.tags
@@ -151,11 +151,13 @@ export function aoeTiles(bt: Battle, u: Unit, w: Weapon, aim: Pos): Pos[] | stri
   const burst = rs.find(r => r.type === 'Burst')
   const line = rs.find(r => r.type === 'Line')
   const cone = rs.find(r => r.type === 'Cone')
-  if (burst) return burstTiles(bt.map, bt.attackOrigin ? { ...u, pos: bt.attackOrigin, stats: { ...u.stats, size: 1 } } : u, Number(burst.val))
+  // attacks made from somewhere else (drones, Ghost/attackOrigin scripts) draw their templates from there
+  const origin = bt.attackOrigin ? { ...u, pos: bt.attackOrigin, stats: { ...u.stats, size: 1 } } : u
+  if (burst) return burstTiles(bt.map, origin, Number(burst.val))
   // weapons that can fire as either Line or Cone (Plasma Thrower): the weapon card toggle picks
   const shape = line && cone ? (w.flags?.shape === 'line' ? 'line' : 'cone') : line ? 'line' : cone ? 'cone' : null
-  if (shape === 'line') return lineTiles(bt.map, u, aim, Number(line!.val))
-  if (shape === 'cone') return coneTiles(bt.map, u, aim, Number(cone!.val))
+  if (shape === 'line') return lineTiles(bt.map, origin, aim, Number(line!.val))
+  if (shape === 'cone') return coneTiles(bt.map, origin, aim, Number(cone!.val))
   if (blast) {
     const range = rs.find(r => r.type === 'Range')
     const reach = range ? Number(range.val) : 1
@@ -292,7 +294,8 @@ export function defenseOf(bt: Battle, t: Unit, ctx: AttackCtx): number {
 
 export function buildWeaponCtx(bt: Battle, attacker: Unit, w: Weapon, target: Unit, mode: AttackCtx['mode'], consume: boolean, multi = false): AttackCtx {
   const pr = bt.profile(w)
-  const melee = bt.isMelee(w)
+  // a Thrown attack made beyond threat range is a ranged attack: cover and Engaged apply
+  const melee = bt.isMelee(w) && distanceBetween(bt.map, { ...attacker, pos: bt.attackOrigin ?? attacker.pos }, target) <= Math.max(1, bt.weaponThreat(attacker, w))
   const ctx = bt.newAttackCtx(attacker, target, { weapon: w, profile: pr, melee, ranged: !melee, mode, multiTarget: multi })
   if (w.attackBonus != null) ctx.attackBonus = w.attackBonus
   if (w.tech) { ctx.tech = true; ctx.ignoreCover = true; ctx.ranged = false; ctx.attackBonus = w.attackBonus ?? attacker.stats.techAttack }

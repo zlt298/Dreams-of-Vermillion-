@@ -367,10 +367,12 @@ export function dragGrappled(bt: Battle, u: Unit, from: Pos) {
     const want = { x: p.pos.x + dx, y: p.pos.y + dy }
     let dest: Pos | null = bt.dragSpot(p, want, u)
     if (!dest) continue
-    const prev = p.pos
-    p.pos = dest
-    bt.emit({ type: 'move', unitId: p.id, path: [prev, dest] })
     bt.say(`${u.name} drags ${p.name} along.`)
+    // involuntary movement through the normal machinery (mines, hazards, onMove scripts, hidden/zero-g updates);
+    // grapples are re-checked once every partner has been dragged
+    const outer = bt.draggingId
+    bt.draggingId = p.id
+    try { bt.followPath(p, [p.pos, dest]) } finally { bt.draggingId = outer }
   }
   bt.syncGrapples()
 }
