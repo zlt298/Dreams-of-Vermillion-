@@ -2,7 +2,7 @@
 // damage between fights, Lancer-style repairs at rest, rewards, and localStorage saves.
 import type { PilotBuild } from '../import/compcon'
 import { applyPrototypeConfig } from '../rules/effects/scripts/weapons2'
-import { buildMechUnit } from '../rules/stats'
+import { buildMechUnit, dropSystemBonuses } from '../rules/stats'
 import { Rng } from '../rules/rng'
 import type { Sitrep } from '../rules/battle'
 import type { Unit } from '../rules/types'
@@ -177,7 +177,7 @@ export function squadUnits(run: RunState): Unit[] {
       if (w.dataId && c.limited[w.dataId] != null && w.usesLeft != null) w.usesLeft = c.limited[w.dataId]
     }
     for (const s of u.systems) {
-      if (c.destroyedSystems.includes(s.dataId)) s.destroyed = true
+      if (c.destroyedSystems.includes(s.dataId)) { s.destroyed = true; dropSystemBonuses(u, s) }
       if (c.limited[s.dataId] != null && s.usesLeft != null) s.usesLeft = c.limited[s.dataId]
     }
     u.flags.pilotId = p.id

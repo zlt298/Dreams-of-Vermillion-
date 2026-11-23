@@ -315,7 +315,8 @@ registerScripts([
     id: 't_gunslinger:3', note: 'I Kill With My Heart (gunslinger die)',
     beforeAttack(b, self, ctx, role) {
       if (role === 'attacker' && self.flags.gunslingerReady && ctx.weapon?.size === 'Auxiliary' && isRangedWeapon(b, ctx.weapon)) {
-        ctx.bonusDamage.push({ type: ctx.profile?.damage[0]?.type ?? 'Kinetic', val: '2d6' }); ctx.irreducible = true; ctx.reasons.push('I Kill With My Heart')
+        // +2d6 bonus damage and AP, and the attack ignores cover (AP: armor only, Resistance still applies)
+        ctx.bonusDamage.push({ type: ctx.profile?.damage[0]?.type ?? 'Kinetic', val: '2d6' }); ctx.ap = true; ctx.ignoreCover = true; ctx.reasons.push('I Kill With My Heart')
         delete self.flags.gunslingerReady
       }
     },
@@ -514,7 +515,9 @@ registerScripts([
       for (const o of unitsOnTiles(b.alive(), burstTiles(b.map, ctx.target, 2))) {
         if (o === ctx.target || o === self) continue
         if (o.side === self.side) { b.addStatus(o, 'prone', 'until_cleared', self); continue }
-        b.applyDamage(o, [{ type: 'Explosive', amount: 5 }], { source: self })
+        // "drop Prone as a reaction, or take 2 Explosive damage and be knocked back 2 spaces from the centre"
+        b.applyDamage(o, [{ type: 'Explosive', amount: 2 }], { source: self })
+        if (!o.destroyed) b.forceMove(o, ctx.target, 2, 1)
       }
     },
   },
@@ -609,8 +612,8 @@ registerScripts([
     id: 't_vanguard:2', note: 'See-Through Seeker',
     beforeAttack(b, self, ctx, role) {
       if (role !== 'attacker' || ctx.weapon?.type !== 'CQB' || b.distance(self, ctx.target) > 3) return
-      const removed = ctx.reasons.includes('Hard cover -2') ? 2 : ctx.reasons.includes('Soft cover -1') ? 1 : 0
-      if (removed) { ctx.difficulty -= removed; ctx.reasons.push('See-Through Seeker') }
+      if (!ctx.ignoreCover && b.cover(self, ctx.target) !== 'none') ctx.reasons.push('See-Through Seeker')
+      ctx.ignoreCover = true
     },
   },
   {

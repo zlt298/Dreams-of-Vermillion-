@@ -28,6 +28,8 @@ export interface BonusData {
   weapon_sizes?: string[]
   condition?: string
   max?: number
+  /** set when the mech is built: the system that grants it, so the bonus goes when that system is destroyed */
+  sourceSystem?: string
 }
 export interface AddStatusData { id: string; duration?: string; save?: string }
 export interface OnEffect { detail?: string; add_status?: AddStatusData[]; save?: any; bonus_damage?: { val: string; hit_type?: string }; damage?: DamageData[] }

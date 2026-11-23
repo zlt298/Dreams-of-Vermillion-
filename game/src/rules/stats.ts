@@ -118,7 +118,7 @@ export function collectBonuses(p: PilotBuild): BonusData[] {
     for (const t of f.traits) out.push(...(t.bonuses ?? []))
     out.push(...(f.core_system.passive_bonuses ?? []))
   }
-  for (const s of p.mech.systems) out.push(...(Lancer.systems.get(s)?.bonuses ?? []))
+  for (const s of p.mech.systems) out.push(...(Lancer.systems.get(s)?.bonuses ?? []).map(b => ({ ...b, sourceSystem: s })))
   for (const t of p.talents) {
     const td = Lancer.talents.get(t.id)
     if (!td) continue
@@ -133,6 +133,13 @@ export function collectBonuses(p: PilotBuild): BonusData[] {
 }
 
 const num = (v: any) => (typeof v === 'number' ? v : parseInt(v) || 0)
+
+/** A destroyed system stops working: drop the passive bonuses it granted (one copy per destroyed instance). */
+export function dropSystemBonuses(u: Unit, s: SystemInst) {
+  const granted = Lancer.systems.get(s.dataId)?.bonuses?.length ?? 0
+  let left = granted
+  u.bonuses = u.bonuses.filter(b => { if (left > 0 && b.sourceSystem === s.dataId) { left--; return false } return true })
+}
 
 export function deriveMechStats(p: PilotBuild, bonuses: BonusData[]): Stats {
   const f = Lancer.frames.get(p.mech.frameId)

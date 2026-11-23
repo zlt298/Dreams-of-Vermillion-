@@ -317,15 +317,16 @@ export function buildWeaponCtx(bt: Battle, attacker: Unit, w: Weapon, target: Un
     if (b.id === 'tech_attack' && b.accuracy && ctx.tech) ctx.accuracy += b.accuracy
   }
   for (const b of w.bonuses) if (b.id === 'mount_accuracy') { ctx.accuracy += Number(b.val) || 1; ctx.reasons.push('Hardpoints +1') }
+  for (const s of scriptsFor(attacker)) s.beforeAttack?.(bt, attacker, ctx, 'attacker')
+  for (const s of scriptsFor(target)) s.beforeAttack?.(bt, target, ctx, 'target')
+  for (const o of bt.alive()) for (const s of scriptsFor(o)) s.beforeAnyAttack?.(bt, o, ctx)
+  // cover last, so any script can set ctx.ignoreCover (Seeking Payload, Gunslinger 3, ATHENA, See-Through Seeker…)
   if (!ctx.ignoreCover && !melee) {
     // BLAST attacks calculate cover from the centre of the blast rather than the attacker
     const c = bt.cover(attacker, target, bt.blastCentre ?? bt.attackOrigin ?? undefined)
     if (c === 'hard') { ctx.difficulty += 2; ctx.reasons.push('Hard cover -2') }
     else if (c === 'soft') { ctx.difficulty += 1; ctx.reasons.push('Soft cover -1') }
   }
-  for (const s of scriptsFor(attacker)) s.beforeAttack?.(bt, attacker, ctx, 'attacker')
-  for (const s of scriptsFor(target)) s.beforeAttack?.(bt, target, ctx, 'target')
-  for (const o of bt.alive()) for (const s of scriptsFor(o)) s.beforeAnyAttack?.(bt, o, ctx)
   return ctx
 }
 
@@ -429,7 +430,7 @@ export function weaponAttack(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, mod
       if (!ctx.cancelDamage && !resistAll && bt.braceWanted(t, u, base, ctx)) resistAll = bt.brace(t)
       if (t.flags.flashAegis && resistAll && !ctx.resistAll) for (const p of base) p.amount = Math.min(p.amount, 1)
       if (!ctx.cancelDamage) ctx.damageDealt = bt.applyDamage(t, base, {
-        source: u, attack: ctx, ap: hasTag(pr.tags, 'tg_ap'), irreducible: hasTag(pr.tags, 'tg_irreducible') || ctx.irreducible, resistAll,
+        source: u, attack: ctx, ap: hasTag(pr.tags, 'tg_ap') || !!ctx.ap, irreducible: hasTag(pr.tags, 'tg_irreducible') || ctx.irreducible, resistAll,
       })
       const kb = (tagVal(pr.tags, 'tg_knockback') ?? 0) + u.bonuses.filter(b => b.id === 'knockback' && bt.bonusApplies(b, w)).reduce((a, b) => a + Number(b.val), 0)
       if (kb && !t.destroyed) bt.forceMove(t, u, kb, 1)

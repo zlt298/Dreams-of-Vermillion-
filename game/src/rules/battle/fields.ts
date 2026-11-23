@@ -201,11 +201,24 @@ export function addArea(bt: Battle, a: Omit<AreaEffect, 'id'>) {
 
 export function customActions(bt: Battle, u: Unit): CustomAction[] {
   const out: CustomAction[] = []
-  for (const s of scriptsFor(u)) if (s.actions) out.push(...s.actions(bt, u))
+  for (const s of scriptsFor(u)) if (s.actions) out.push(...s.actions(bt, u).map(a => (a.scriptId ? a : { ...a, scriptId: s.id })))
   // actions other units' systems make available to this one (e.g. activating an ally's restock drone)
   if (u.kind === 'mech' || u.kind === 'npc') for (const o of bt.alive()) if (o !== u) for (const s of scriptsFor(o)) if (s.grantActions) out.push(...s.grantActions(bt, o, u))
   out.push(...genericActionsFor(bt, u))
   return out
+}
+
+/**
+ * Heat (Self) for activating a system's action, from the system's tg_heat_self tag (rolled when it is dice, e.g.
+ * LUCIFER's 1d3+3). Actions that set `heat` themselves keep it; switching a system off costs nothing.
+ */
+function heatSelfOf(bt: Battle, u: Unit, a: CustomAction): number {
+  if (/^(Deactivate|Drop|Disable)\b/i.test(a.name) || /_off$/.test(a.key)) return 0
+  const sys = u.systems.find(s => s.uid === a.sourceUid) ?? (a.scriptId ? u.systems.find(s => s.dataId === a.scriptId) : undefined)
+  if (!sys || sys.destroyed) return 0
+  const tag = Lancer.systems.get(sys.dataId)?.tags?.find(t => t.id === 'tg_heat_self')
+  if (!tag || tag.val == null) return 0
+  return rollDice(bt.rng, tag.val as any).total
 }
 
 export function useCustom(bt: Battle, u: Unit, a: CustomAction, target?: Unit | Pos) {
@@ -229,7 +242,8 @@ export function useCustom(bt: Battle, u: Unit, a: CustomAction, target?: Unit | 
   }
   // ACTIVATE: any number per turn, but not the same SYSTEM more than once (unless free)
   else bt.spend(u, cost as any, cost === 'quick' || cost === 'full' ? `activate:${a.sourceUid ?? a.key}` : undefined)
-  if (a.heat) bt.addHeat(u, a.heat)
+  const heat = a.heat ?? heatSelfOf(bt, u, a)
+  if (heat) bt.addHeat(u, heat)
   bt.say(`${u.name} uses ${a.name}.`, 'attack')
   a.run(bt, u, target)
 }

@@ -8,7 +8,7 @@ import {
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from '../grid'
 import { parseDice, Rng, rollDice, rollAccuracy, averageDice } from '../rng'
-import { hasTag, tagVal, nextUid, isWeaponType } from '../stats'
+import { hasTag, tagVal, nextUid, isWeaponType, dropSystemBonuses } from '../stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
@@ -125,6 +125,7 @@ export function systemTrauma(bt: Battle, u: Unit) {
   } else {
     const s = bt.rng.pick(validSystems)
     s.destroyed = true
+    dropSystemBonuses(u, s)
     bt.say(`System Trauma: ${s.name} destroyed!`, 'damage')
   }
 }
@@ -234,7 +235,7 @@ export function applyDamage(bt: Battle, t: Unit, parts: { type: string; amount: 
     if (p.type === 'Burn') burn += resists('Burn') ? Math.ceil(p.amount / 2) : p.amount
     if (p.type === 'Burn-tick') hpDmg += p.amount
   }
-  const dctx: DamageCtx = { source: opts.source, attack: opts.attack, amount: hpDmg, kind: 'hp' }
+  const dctx: DamageCtx = { source: opts.source, attack: opts.attack, amount: hpDmg, kind: 'hp', types: parts.filter(p => p.amount > 0).map(p => p.type) }
   for (const s of scriptsFor(t)) s.modifyIncoming?.(bt, t, dctx)
   for (const o of bt.alive()) if (o !== t) for (const s of scriptsFor(o)) s.modifyAnyIncoming?.(bt, o, t, dctx)
   hpDmg = Math.max(0, dctx.amount)

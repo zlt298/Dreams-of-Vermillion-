@@ -35,6 +35,23 @@ function fortressShelters(b: Battle, drake: Unit, t: Unit): boolean {
   const fp = footprint(t)
   return b.map.tiles.some((tile, i) => tile.owner === drake.id && tile.kind === 'block' && fp.some(p => Math.max(Math.abs(p.x - i % b.map.w), Math.abs(p.y - Math.floor(i / b.map.w))) === 1))
 }
+/** Destruction of the Temple: +1 to the Charge Die; at 6 it discharges as a Burst 2 inferno and the effect ends. */
+function manticoreCharge(b: Battle, u: Unit) {
+  if (!u.flags.chargeDie || u.destroyed) return
+  u.flags.chargeDie++
+  b.say(`${u.name} charge die: ${Math.min(6, u.flags.chargeDie)}`)
+  if (u.flags.chargeDie < 6) return
+  delete u.flags.chargeDie // "Once discharged, this effect ends" (the heat Resistance lasts the scene)
+  const tiles = burstTiles(b.map, u, 2)
+  b.emit({ type: 'area', tiles, kind: 'explosion' })
+  for (const t of unitsOnTiles(b.alive(), tiles)) if (t !== u) {
+    const dmg = rollDice(b.rng, '6d6').total
+    const ok = b.save(t, 'eng', u.stats.save, 0, u)
+    if (ok && t.isGrunt) continue
+    b.applyDamage(t, [{ type: 'Energy', amount: ok ? b.halfOnSave(t, dmg) : dmg }], { source: u, ap: true })
+  }
+}
+
 const isAoEAttack = (b: Battle, d: { attack?: { profile?: { range: { type: string }[] } } }) =>
   !!d.attack?.profile && d.attack.profile.range.some(r => ['Blast', 'Burst', 'Line', 'Cone'].includes(r.type))
 
@@ -293,7 +310,9 @@ registerScripts([
       ctx.reasons.push(`Marked (crit +${die})`)
     },
     afterAttack(b, self, ctx, role) {
-      if (role === 'attacker' && ctx.crit && self.flags.markTarget === ctx.target.id && ctx.weapon && !ctx.target.destroyed) {
+      // "on ranged critical hits against them, as long as they aren't in cover or within range 5"
+      if (role === 'attacker' && ctx.crit && ctx.ranged && self.flags.markTarget === ctx.target.id && ctx.weapon && !ctx.target.destroyed &&
+        b.distance(self, ctx.target) > 5 && b.cover(self, ctx.target) === 'none') {
         const die = ctx.weapon.size === 'Auxiliary' ? '1d6' : ctx.weapon.size === 'Main' ? '2d6' : '3d6'
         b.applyDamage(ctx.target, [{ type: ctx.profile?.damage[0]?.type ?? 'Kinetic', amount: rollDice(b.rng, die, { crit: true }).total }], { source: self })
       }
@@ -325,7 +344,6 @@ registerScripts([
       if (role === 'attacker' && isWeaponType(ctx.weapon, 'Launcher') && b.has(ctx.target, 'lockon')) {
         ctx.ignoreCover = true
         ctx.irreducible = true
-        ctx.difficulty = Math.max(0, ctx.difficulty - (ctx.reasons.includes('Hard cover -2') ? 2 : ctx.reasons.includes('Soft cover -1') ? 1 : 0))
         ctx.reasons.push('Seeking Payload')
         b.removeStatus(ctx.target, 'lockon')
       }
@@ -355,8 +373,10 @@ registerScripts([
     beforeAttack(b, self, ctx, role) {
       if (role !== 'attacker' || !ctx.melee) return
       const others = b.alive().filter(o => o !== ctx.target && o !== self && b.adjacent(o, ctx.target) && o.kind !== 'deployable')
-      if (!others.length && once(self, 'hunter')) { ctx.bonusDamage.push({ type: 'Kinetic', val: '1d6' }); ctx.reasons.push('Hunter +1d6') }
+      // 1/round "on hit": offered while unused this round, and only spent by a hit (afterAttack)
+      if (!others.length && !self.flags['round:hunter']) { ctx.bonusDamage.push({ type: 'Kinetic', val: '1d6' }); ctx.reasons.push('Hunter +1d6') }
     },
+    afterAttack(b, self, ctx, role) { if (role === 'attacker' && ctx.hit && ctx.reasons.includes('Hunter +1d6')) once(self, 'hunter') },
   },
   {
     id: 'core:mf_mourning_cloak',
@@ -501,22 +521,10 @@ registerScripts([
         const t = hostilesWithin(b, u, 3)[0]
         if (t) { b.say(`${u.name}'s Charged Exoskeleton arcs.`); b.applyDamage(t, [{ type: 'Energy', amount: 2 }], { source: u, ap: true }) }
       }
-      if (u.flags.chargeDie) {
-        u.flags.chargeDie++
-        b.say(`${u.name} charge die: ${Math.min(6, u.flags.chargeDie)}`)
-        if (u.flags.chargeDie >= 6) {
-          u.flags.chargeDie = 1
-          const tiles = burstTiles(b.map, u, 2)
-          b.emit({ type: 'area', tiles, kind: 'explosion' })
-          for (const t of unitsOnTiles(b.alive(), tiles)) if (t !== u) {
-            const dmg = rollDice(b.rng, '6d6').total
-            const ok = b.save(t, 'eng', u.stats.save, 0, u)
-            if (ok && t.isGrunt) continue
-            b.applyDamage(t, [{ type: 'Energy', amount: ok ? b.halfOnSave(t, dmg) : dmg }], { source: u, ap: true })
-          }
-        }
-      }
+      manticoreCharge(b, u)
     },
+    // "Whenever you take heat or energy": energy damage charges too (a hit with heat already counted in onHeat)
+    onDamaged(b, u, d) { if (d.types?.includes('Energy') && !d.types.includes('Heat')) manticoreCharge(b, u) },
     onCoreActivate(b, u) { u.resist.push('Heat'); u.flags.chargeDie = 1 },
   },
   // ---------------- HORUS Minotaur

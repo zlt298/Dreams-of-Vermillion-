@@ -48,6 +48,8 @@ export interface AttackCtx {
   /** treat target as Invisible for this attack */
   forceInvisible?: boolean
   irreducible?: boolean
+  /** set by scripts: the attack is AP (ignores Armor) like the tg_ap tag */
+  ap?: boolean
   /** target gains resistance to all damage from this attack */
   resistAll?: boolean
   /** attack is prevented before the roll (counts as a miss) */
@@ -69,6 +71,8 @@ export interface CustomAction {
   area?: { shape: 'blast' | 'burst' | 'line' | 'cone'; size: number }
   heat?: number
   sourceUid?: string
+  /** id of the script that offered the action (set by customActions); for scripts keyed by a system id, that system */
+  scriptId?: string
   /** Quick Tech option this belongs to ('invade' for invasion options); different options may repeat in a turn */
   techOption?: string
   /** return true if usable, or a reason string */
@@ -93,6 +97,8 @@ export interface DamageCtx {
   attack?: AttackCtx
   amount: number
   kind: 'hp' | 'heat' | 'burn'
+  /** damage types of the parts dealt (applyDamage), e.g. ['Energy', 'Heat'] */
+  types?: string[]
 }
 
 export interface ItemScript {

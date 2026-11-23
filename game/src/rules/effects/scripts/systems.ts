@@ -1,6 +1,7 @@
 // Mech systems whose rules aren't fully structured in lancer-data.
 import { blastTiles, burstTiles, footprint, unitsOnTiles, chebyshev } from '../../grid'
 import { rollDice } from '../../rng'
+import { dropSystemBonuses } from '../../stats'
 import type { Effect, Pos, SystemInst, Unit } from '../../types'
 import type { Battle } from '../../battle'
 import { deployableUnit } from '../generic'
@@ -165,7 +166,7 @@ registerScripts([
     init: u => { u.bonuses.push({ id: 'hull', accuracy: 1 }) },
   },
   {
-    id: 'ms_turret_drones', note: 'Turret drones + Turret Attack reaction (1d6 kinetic, range 10, 1/round each)',
+    id: 'ms_turret_drones', note: 'Turret drones + Turret Attack reaction (3 kinetic, no roll, ally within 10, needs line of sight; 1/round each)',
     actions: (b, u) => {
       const s = sys(u, 'ms_turret_drones')
       return [action({
@@ -182,11 +183,10 @@ registerScripts([
     afterAnyAttack(b, self, ctx) {
       if (!ctx.hit || b.hostile(self, ctx.attacker) || ctx.target.destroyed || ctx.mode === 'secondary') return
       for (const d of b.alive().filter(d => d.ownerId === self.id && d.flags.dataName === 'Turret Drone')) {
-        if (b.distance(d, ctx.attacker) > 10 || b.distance(d, ctx.target) > 10 || !once(d, 'turret')) continue
-        const c = b.newAttackCtx(d, ctx.target, { mode: 'secondary', attackBonus: self.stats.grit })
+        // "deals 3 Kinetic damage to their target, as long as it has line of sight": no attack roll
+        if (b.distance(d, ctx.attacker) > 10 || !b.los(d, ctx.target) || !once(d, 'turret')) continue
         b.say(`${self.name}'s turret drone fires.`)
-        b.rollToHit(c)
-        if (c.hit) b.applyDamage(ctx.target, [{ type: 'Kinetic', amount: rollDice(b.rng, '1d6').total }], { source: self })
+        b.applyDamage(ctx.target, [{ type: 'Kinetic', amount: 3 }], { source: self })
         if (ctx.target.destroyed) break
       }
     },
@@ -682,9 +682,9 @@ registerScripts([
     },
   },
   {
-    id: 'ms___scorpion_v70.1', note: '//SCORPION: when a tech attack hits you, the attacker is Impaired and takes 2 heat',
+    id: 'ms___scorpion_v70.1', note: '//SCORPION: when a hostile tech attack misses you, the attacker is Impaired and takes 2 heat',
     afterAttack(b, self, ctx, role) {
-      if (role === 'target' && ctx.tech && b.canSpend(self, 'reaction') === true && once(self, 'scorpion')) {
+      if (role === 'target' && ctx.tech && !ctx.hit && b.hostile(self, ctx.attacker) && !ctx.attacker.destroyed && b.canSpend(self, 'reaction') === true && once(self, 'scorpion')) {
         b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
         b.addStatus(ctx.attacker, 'impaired', 'next_turn_end_target', self)
         b.applyDamage(ctx.attacker, [{ type: 'Heat', amount: 2 }], { source: self })
@@ -813,8 +813,8 @@ registerScripts([
   {
     id: 'ms_lightning_generator', note: 'Protocol: 1 heat, 2 energy to adjacent; auto 4 AP in danger zone',
     actions: (b, u) => [action({
-      key: 'lightning', name: 'Lightning Generator', activation: 'protocol', target: 'none', text: 'Take 1 heat; deal 2 energy to all adjacent characters and objects.',
-      run: (bt, self) => { bt.addHeat(self, 1); for (const o of bt.alive()) if (o !== self && bt.adjacent(self, o)) bt.applyDamage(o, [{ type: 'Energy', amount: 2 }], { source: self }) },
+      key: 'lightning', name: 'Lightning Generator', activation: 'protocol', heat: 1, target: 'none', text: 'Take 1 heat; deal 2 energy to all adjacent characters and objects.',
+      run: (bt, self) => { for (const o of bt.alive()) if (o !== self && bt.adjacent(self, o)) bt.applyDamage(o, [{ type: 'Energy', amount: 2 }], { source: self }) },
       aiScore: (bt, self) => bt.alive().filter(o => bt.hostile(self, o) && bt.adjacent(self, o)).length * 2,
     })],
     onTurnStart(b, u) {
@@ -1075,6 +1075,7 @@ registerScripts([
       const s = sys(u, 'ms_external_batteries')
       if (!s) return
       s.destroyed = true
+      dropSystemBonuses(u, s)
       b.say(`${u.name}'s external batteries explode!`)
       b.applyDamage(u, [{ type: 'Explosive', amount: rollDice(b.rng, '1d6').total }], { irreducible: true, ap: true })
     },

@@ -168,7 +168,7 @@ registerScripts([
     fields: (b, u) => (u.flags.pinakaDelayed ? u.flags.pinakaDelayed.centres.map((c: Pos) => ({ tiles: blastTiles(b.map, c, 1), effect: 'harm' as const, label: `${u.name}'s Pinaka strike lands here at the end of round ${u.flags.pinakaDelayed.lands - 1} (3d6 explosive)` })) : []),
   },
   {
-    id: 'mw_fold_knife', note: 'Teleport 2 after attacking',
+    id: 'mw_fold_knife', note: 'On crit: teleport 2 after the attack resolves',
     actions: (b, u) => (u.flags['turn:foldknife'] ? [action({
       key: 'foldknife', name: 'Fold Knife Teleport', activation: 'free', target: 'tile', range: 2, text: 'Teleport 2 spaces in any direction.',
       run: (bt, self, t) => {
@@ -181,7 +181,7 @@ registerScripts([
         bt.emit({ type: 'move', unitId: self.id, path: [p] })
       },
     })] : []),
-    afterAttack(b, self, ctx, role) { if (role === 'attacker' && is(ctx, 'mw_fold_knife')) self.flags['turn:foldknife'] = true },
+    afterAttack(b, self, ctx, role) { if (role === 'attacker' && ctx.crit && is(ctx, 'mw_fold_knife')) self.flags['turn:foldknife'] = true },
   },
   {
     id: 'mw_nanobot_whip', note: 'On crit: pull target adjacent',
@@ -345,7 +345,6 @@ registerScripts([
       if (role === 'attacker' && ctx.weapon?.modId === 'wm_phase_ready_mod') {
         ctx.ignoreCover = true
         ctx.forceInvisible = true
-        ctx.difficulty -= ctx.reasons.includes('Hard cover -2') ? 2 : ctx.reasons.includes('Soft cover -1') ? 1 : 0
       }
     },
   },

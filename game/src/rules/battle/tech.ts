@@ -126,6 +126,14 @@ export function techAttackRoll(bt: Battle, u: Unit, t: Unit, label: string): Att
   bt.say(`${u.name} — ${label} → ${t.name}.`, 'attack')
   if (bt.has(u, 'hidden')) bt.removeStatus(u, 'hidden')
   bt.rollToHit(ctx)
+  // every tech attack (Invade and scripted ones like Markerlight) runs the after-attack hooks, as weapon attacks do:
+  // SNOW_CRASH heat, //SCORPION on a miss, Thinking-Tomorrow's Thought on a hit…
+  for (const s of scriptsFor(u)) s.afterAttack?.(bt, u, ctx, 'attacker')
+  if (!t.destroyed) for (const s of scriptsFor(t)) s.afterAttack?.(bt, t, ctx, 'target')
+  if (bt.reactionDepth < 2) {
+    bt.reactionDepth++
+    try { for (const o of bt.alive()) for (const s of scriptsFor(o)) s.afterAnyAttack?.(bt, o, ctx) } finally { bt.reactionDepth-- }
+  }
   return ctx
 }
 
@@ -144,7 +152,6 @@ export function invade(bt: Battle, u: Unit, t: Unit, option: 'fragment' | { name
       bt.addStatus(t, 'slowed', 'next_turn_end_target', u)
     } else bt.runEffects(u, t, option.effects, ctx)
   }
-  for (const s of scriptsFor(u)) s.afterAttack?.(bt, u, ctx, 'attacker')
   return ctx
 }
 
