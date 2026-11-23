@@ -2422,6 +2422,17 @@ export class Battle {
     u.flags.fullTechLeft = 2
     this.say(`${u.name} begins a FULL TECH action (2 quick techs).`)
   }
+  /**
+   * The roll for an INVADE: a tech attack against hostiles; a willing ally is invaded automatically
+   * (no roll, it isn't an attack, and the caller deals no heat).
+   */
+  invadeRoll(u: Unit, t: Unit, label: string): AttackCtx {
+    if (this.hostile(u, t)) return this.techAttackRoll(u, t, label)
+    const ctx = this.newAttackCtx(u, t, { tech: true, ranged: false, mode: 'tech', attackBonus: u.stats.techAttack })
+    ctx.hit = true
+    this.say(`${u.name} — ${label} → ${t.name} (willing ally: automatic).`, 'attack')
+    return ctx
+  }
   techAttackRoll(u: Unit, t: Unit, label: string): AttackCtx {
     const ctx = this.newAttackCtx(u, t, { tech: true, ranged: false, mode: 'tech', attackBonus: u.stats.techAttack })
     if (this.has(u, 'impaired')) ctx.difficulty++
@@ -2439,11 +2450,11 @@ export class Battle {
     if (c !== true) throw new Error(c)
     const v = this.techTargetValid(u, t)
     if (v !== true) throw new Error(v)
-    if (!this.hostile(u, t)) throw new Error('Invade targets hostiles')
+    if (t === u) throw new Error('Cannot invade yourself')
     this.spendTech(u, 'invade')
-    const ctx = this.techAttackRoll(u, t, option === 'fragment' ? 'INVADE: Fragment Signal' : `INVADE: ${option.name}`)
+    const ctx = this.invadeRoll(u, t, option === 'fragment' ? 'INVADE: Fragment Signal' : `INVADE: ${option.name}`)
     if (ctx.hit) {
-      this.applyDamage(t, [{ type: 'Heat', amount: 2 }], { source: u, attack: ctx })
+      if (this.hostile(u, t)) this.applyDamage(t, [{ type: 'Heat', amount: 2 }], { source: u, attack: ctx })
       if (option === 'fragment') {
         this.addStatus(t, 'impaired', 'next_turn_end_target', u)
         this.addStatus(t, 'slowed', 'next_turn_end_target', u)

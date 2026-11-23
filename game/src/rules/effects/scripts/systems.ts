@@ -23,13 +23,13 @@ const hostile = (b: Battle, u: Unit) => b.alive().filter(o => b.hostile(u, o) &&
 /** An Invade option: tech attack; on hit 2 heat + effect. */
 function invade(id: string, name: string, text: string, onHit: (b: Battle, self: Unit, t: Unit) => void, extra: Partial<CustomAction> = {}): (b: Battle, u: Unit) => CustomAction {
   return (b, u) => action({
-    key: `${id}:${name}`, name: `Invade: ${name}`, activation: 'quick_tech', techOption: 'invade', target: 'enemy', range: u.stats.sensors, text,
+    key: `${id}:${name}`, name: `Invade: ${name}`, activation: 'quick_tech', techOption: 'invade', target: 'unit', range: u.stats.sensors, text,
     run: (bt, self, t) => {
       const target = t as Unit
       const v = bt.techTargetValid(self, target)
       if (v !== true) throw new Error(v)
-      const ctx = bt.techAttackRoll(self, target, name)
-      if (ctx.hit) { bt.applyDamage(target, [{ type: 'Heat', amount: 2 }], { source: self }); if (!target.destroyed) onHit(bt, self, target) }
+      const ctx = bt.invadeRoll(self, target, name)
+      if (ctx.hit) { if (bt.hostile(self, target)) bt.applyDamage(target, [{ type: 'Heat', amount: 2 }], { source: self }); if (!target.destroyed) onHit(bt, self, target) }
     },
     aiScore: () => 4,
     ...extra,

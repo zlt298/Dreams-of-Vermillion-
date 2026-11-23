@@ -327,6 +327,7 @@ One full pass once §1–§2 are in. Includes:
 ### Later or optional
 - Official NPC optional features (173 left).
 - Official NPC deployables and the partial NPC scripts.
+- NPC Line/Cone/Burst attacks that list a Range (the origin may be any point in range; no player weapon uses this).
 - Level-aware encounter warnings.
 
 ### Out of scope

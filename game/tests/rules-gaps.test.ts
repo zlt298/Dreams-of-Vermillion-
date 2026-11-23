@@ -112,3 +112,16 @@ describe('destructible terrain', () => {
     expect(b.cover(a, e)).toBe('hard')
   })
 })
+
+describe('invading a willing ally', () => {
+  it('succeeds automatically, deals no heat and is not an attack', () => {
+    const { a, b } = setup()
+    const ally = pregenUnit('Hacker'); ally.pos = { x: 6, y: 5 }; b.units.push(ally)
+    const heat = ally.heat
+    const ctx = b.invadeRoll(a, ally, 'test')
+    expect(ctx.hit).toBe(true)
+    b.invade(a, ally)
+    expect(ally.heat).toBe(heat)
+    expect(b.events.filter(e => e.type === 'attack' && e.targetId === ally.id)).toHaveLength(0)
+  })
+})

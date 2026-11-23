@@ -1009,13 +1009,13 @@ function dismount(b: Battle, mule: Unit, r: Unit, prone: boolean) {
 /** An Invade option (tech attack; on a hit 2 heat plus the effect). */
 function invadeOpt(u: Unit, key: string, name: string, text: string, onHit: (b: Battle, self: Unit, t: Unit) => void): CustomAction {
   return action({
-    key: `invade:${key}`, name: `Invade: ${name}`, activation: 'quick_tech', techOption: 'invade', target: 'enemy', range: u.stats.sensors, text,
+    key: `invade:${key}`, name: `Invade: ${name}`, activation: 'quick_tech', techOption: 'invade', target: 'unit', range: u.stats.sensors, text,
     run: (bt, me, t) => {
       const target = t as Unit
       const v = bt.techTargetValid(me, target, 'invade')
       if (v !== true) throw new Error(v)
-      const ctx = bt.techAttackRoll(me, target, name)
-      if (ctx.hit) { bt.applyDamage(target, [{ type: 'Heat', amount: 2 }], { source: me }); if (!target.destroyed) onHit(bt, me, target) }
+      const ctx = bt.invadeRoll(me, target, name)
+      if (ctx.hit) { if (bt.hostile(me, target)) bt.applyDamage(target, [{ type: 'Heat', amount: 2 }], { source: me }); if (!target.destroyed) onHit(bt, me, target) }
     },
     aiScore: () => 3,
   })
