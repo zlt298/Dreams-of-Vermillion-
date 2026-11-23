@@ -39,18 +39,31 @@ describe('recording a battle', () => {
     expect(run.battlesWon).toBe(1)
   })
 
-  it('a destroyed mech sits out until reprinted', () => {
+  it('a destroyed mech\'s pilot flies a stock Everest stand-in until the mech is reprinted', () => {
     const run = newRun(squad(), 3)
     const units = squadUnits(run)
     units[0].destroyed = true
     recordBattle(run, combatNode(run), units, true)
-    expect(run.condition[run.squad[0].id].destroyed).toBe(true)
-    expect(squadUnits(run)).toHaveLength(3)
-    applyReward(run, 'reprint', run.squad[0].id)
-    expect(squadUnits(run)).toHaveLength(4)
+    const pid = run.squad[0].id
+    expect(run.condition[pid].destroyed).toBe(true)
+    const next = squadUnits(run)
+    expect(next).toHaveLength(4)
+    const standIn = next.find(u => u.flags.pilotId === pid)!
+    expect(standIn.flags.standIn).toBe(true)
+    expect(standIn.name).toBe(`${run.squad[0].callsign} (stand-in)`)
+    expect(standIn.frameId).toBe('mf_standard_pattern_i_everest')
+    expect(standIn.hp).toBe(standIn.stats.hp)
+    // the stand-in's damage doesn't carry over, and the real mech stays destroyed
+    standIn.hp = 1; standIn.structure = 1
+    recordBattle(run, combatNode(run), next, true)
+    expect(run.condition[pid].destroyed).toBe(true)
+    expect(squadUnits(run).find(u => u.flags.pilotId === pid)!.hp).toBe(standIn.stats.hp)
+    applyReward(run, 'reprint', pid)
+    const back = squadUnits(run).find(u => u.flags.pilotId === pid)!
+    expect(back.flags.standIn).toBeUndefined()
   })
 
-  it('a loss ends the run; losing every mech also ends it', () => {
+  it('a loss ends the run; a win in stand-ins does not', () => {
     const run = newRun(squad(), 3)
     recordBattle(run, combatNode(run), squadUnits(run), false)
     expect(run.over).toBe('defeat')
@@ -58,7 +71,8 @@ describe('recording a battle', () => {
     const units = squadUnits(run2)
     units.forEach(u => (u.destroyed = true))
     recordBattle(run2, combatNode(run2), units, true)
-    expect(run2.over).toBe('defeat')
+    expect(run2.over).toBeUndefined()
+    expect(squadUnits(run2).every(u => u.flags.standIn)).toBe(true)
   })
 
   it('beating an act boss advances the act, fully repairs and asks for a level-up', () => {

@@ -1,6 +1,7 @@
 // Roguelike campaign layer: a branching node map over three acts (tiers 1-3), persistent mech
 // damage between fights, Lancer-style repairs at rest, rewards, and localStorage saves.
-import type { PilotBuild } from '../import/compcon'
+import { importPilots, type PilotBuild } from '../import/compcon'
+import pregens from '../data/pregens/pregens.json'
 import { applyPrototypeConfig } from '../rules/effects/scripts/weapons2'
 import { buildMechUnit, dropSystemBonuses } from '../rules/stats'
 import { Rng } from '../rules/rng'
@@ -164,7 +165,7 @@ export function squadUnits(run: RunState): Unit[] {
   const out: Unit[] = []
   for (const p of run.squad) {
     const c = run.condition[p.id] ?? freshCondition(p)
-    if (c.destroyed) continue
+    if (c.destroyed) { out.push(standInUnit(p)); continue }
     const u = buildMechUnit(p)
     u.hp = Math.min(u.stats.hp, c.hp)
     u.structure = c.structure
@@ -187,6 +188,21 @@ export function squadUnits(run: RunState): Unit[] {
     out.push(u)
   }
   return out
+}
+
+/** The stock LL0 Everest a pilot flies while their own mech waits to be reprinted (COMP/CON's Assault pregen). */
+const STAND_IN = (pregens as any[]).find(x => x.name === 'Assault')
+/**
+ * A destroyed mech's pilot fights in a fresh stock Everest until the next rest reprints their own. Losing a mech
+ * otherwise snowballs: a squad down one mech loses about three times as many in its next fight.
+ */
+export function standInUnit(p: PilotBuild): Unit {
+  const build = importPilots(structuredClone(STAND_IN))[0]
+  const u = buildMechUnit(build)
+  u.name = `${p.callsign} (stand-in)`
+  u.flags.pilotId = p.id
+  u.flags.standIn = true
+  return u
 }
 
 function applyBoon(u: Unit, id: string) {
@@ -213,7 +229,8 @@ export const ONE_BATTLE_BOONS = ['plating', 'plating_one', 'intel', 'intel2', 't
 export function recordBattle(run: RunState, node: RunNode, units: Unit[], won: boolean) {
   for (const u of units) {
     const pid = u.flags.pilotId as string | undefined
-    if (!pid || u.kind !== 'mech') continue
+    // a stand-in's damage doesn't carry over: the pilot's own mech stays destroyed until the next rest
+    if (!pid || u.kind !== 'mech' || u.flags.standIn) continue
     const c = run.condition[pid]
     // lost in blinkspace (Mourning Cloak): gone for the scene, back after the rest
     const v = u.flags.vanished as { hp: number; structure: number; stress: number } | undefined
@@ -248,7 +265,7 @@ export function recordBattle(run: RunState, node: RunNode, units: Unit[], won: b
     run.over = 'defeat'
     run.log.push(`Act ${node.act}: the squad was defeated.`)
   }
-  if (Object.values(run.condition).every(c => c.destroyed)) run.over = 'defeat'
+  // a squad whose own mechs are all destroyed still fights on in stand-ins: only a lost battle ends the run
 }
 
 /** Rest node / between acts: Lancer full repair (restores everything, reprints destroyed mechs). */
