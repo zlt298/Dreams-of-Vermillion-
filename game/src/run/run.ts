@@ -115,6 +115,22 @@ export function freshCondition(p: PilotBuild): MechCondition {
   }
 }
 
+/** A fresh condition that keeps what lasts the whole run (the Bonded talent's Bondmate). */
+function resetCondition(run: RunState, p: PilotBuild): MechCondition {
+  const c = freshCondition(p)
+  const mate = run.condition[p.id]?.bondmate
+  if (mate) c.bondmate = mate
+  return c
+}
+
+/**
+ * Extra max HP from permanent boons. MechCondition.hp is kept relative to the mech's own max HP
+ * (what freshCondition and the repairs use), so the boon is added in battle and taken off again after.
+ */
+export function permHpBonus(run: RunState, pilotId: string): number {
+  return run.boons.filter(b => b.reward === 'perm_hp2' && (!b.pilotId || b.pilotId === pilotId)).length * 2
+}
+
 export function availableNodes(run: RunState): RunNode[] {
   if (!run.current) return run.nodes.filter(n => n.act === 1 && n.layer === 0)
   const cur = run.nodes.find(n => n.id === run.current)!
@@ -196,7 +212,7 @@ export function recordBattle(run: RunState, node: RunNode, units: Unit[], won: b
     const v = u.flags.vanished as { hp: number; structure: number; stress: number } | undefined
     const gone = u.destroyed && !v
     c.destroyed = gone
-    c.hp = gone ? 0 : v ? v.hp : u.hp
+    c.hp = gone ? 0 : (v ? v.hp : u.hp) - permHpBonus(run, pid)
     c.structure = gone ? 0 : v ? v.structure : u.structure
     c.stress = gone ? 0 : v ? v.stress : u.stress
     c.repairs = u.repairs
@@ -232,7 +248,7 @@ export function fullRepair(run: RunState, reprint = true) {
   for (const p of run.squad) {
     const c = run.condition[p.id]
     if (c.destroyed && !reprint) continue
-    run.condition[p.id] = freshCondition(p)
+    run.condition[p.id] = resetCondition(run, p)
   }
 }
 
@@ -298,7 +314,7 @@ export const LL_PER_ACT = 5
 /** Level the squad up after an act boss: +5 LL (grit/HP). Talents/licenses come from re-importing. */
 export function levelUp(run: RunState) {
   for (const p of run.squad) p.level = Math.min(12, p.level + LL_PER_ACT)
-  for (const p of run.squad) run.condition[p.id] = freshCondition(p)
+  for (const p of run.squad) run.condition[p.id] = resetCondition(run, p)
   run.pendingLevelUp = false
 }
 
@@ -324,7 +340,7 @@ export function replacePilots(run: RunState, builds: PilotBuild[]): ReplaceRepor
     taken.add(i)
     const old = run.squad[i]
     run.squad[i] = { ...b, id: old.id }
-    run.condition[old.id] = freshCondition(run.squad[i])
+    run.condition[old.id] = resetCondition(run, run.squad[i])
   }
   return report
 }
@@ -354,6 +370,7 @@ export function refitPilot(run: RunState, build: PilotBuild): boolean {
     destroyedWeapons: [...c.destroyedWeapons],
     destroyedSystems: [...c.destroyedSystems],
     limited: { ...c.limited },
+    ...(c.bondmate ? { bondmate: c.bondmate } : {}),
   }
   return true
 }
@@ -416,7 +433,11 @@ export function loadRun(): RunState | null {
   try { raw = localStorage.getItem(SAVE_KEY) } catch { return null }
   if (!raw) return null
   let parsed: unknown
-  try { parsed = JSON.parse(raw) } catch { lastLoadProblem = 'Your saved run could not be read and was discarded.'; return null }
+  try { parsed = JSON.parse(raw) } catch {
+    lastLoadProblem = 'Your saved run could not be read and was discarded.'
+    try { localStorage.removeItem(SAVE_KEY) } catch { /* ignore */ }
+    return null
+  }
   let run: RunState | null = null
   try { run = migrateRun(parsed) } catch (e) { lastLoadProblem = `Your saved run could not be loaded (${(e as Error).message}).` }
   if (!run) { try { localStorage.removeItem(SAVE_KEY) } catch { /* ignore */ } }

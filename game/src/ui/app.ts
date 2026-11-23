@@ -10,7 +10,7 @@ import { catalog, teamsFor, validTeams } from '../enemies/catalog'
 import { generateMap, themeForAct } from '../run/mapgen'
 import {
   type RunState, type RunNode, newRun, availableNodes, nodeTier, sitrepFor, squadUnits, recordBattle, fullRepair,
-  repairOptions, applyRepair, rollRewards, applyReward, levelUp, replacePilots, refitPilot, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
+  repairOptions, applyRepair, permHpBonus, rollRewards, applyReward, levelUp, replacePilots, refitPilot, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
 } from '../run/run'
 import { BattleScreen } from './battle-ui'
 import { rangeChip, tagChip } from './tags'
@@ -274,7 +274,7 @@ export class App {
       const c = run.condition[p.id]
       const u = buildMechUnit(p)
       const unspent = validateBuild(p).warnings.some(w => /unspent|unchosen/.test(w))
-      return `<div class="sq ${c.destroyed ? 'dead' : ''}"><b>${esc(p.callsign)}</b> <span class="muted">LL${p.level} ${esc(Lancer.frames.get(p.mech.frameId)?.name ?? '')}</span> <button class="small ${unspent ? 'primary' : ''}" data-refit="${esc(p.id)}" title="Spend points and change the loadout. Damage and spent Repairs carry over.">${unspent ? 'Level up' : 'Edit build'}</button><br>${c.destroyed ? '<span class="bad">DESTROYED — reprint at a rest</span>' : `HP ${c.hp}/${u.stats.hp} · S ${c.structure}/${u.stats.structure} · R ${c.stress}/${u.stats.stress} · Repairs ${c.repairs}${c.coreAvailable ? ' · CORE ready' : ''}`}</div>`
+      return `<div class="sq ${c.destroyed ? 'dead' : ''}"><b>${esc(p.callsign)}</b> <span class="muted">LL${p.level} ${esc(Lancer.frames.get(p.mech.frameId)?.name ?? '')}</span> <button class="small ${unspent ? 'primary' : ''}" data-refit="${esc(p.id)}" title="Spend points and change the loadout. Damage and spent Repairs carry over.">${unspent ? 'Level up' : 'Edit build'}</button><br>${c.destroyed ? '<span class="bad">DESTROYED — reprint at a rest</span>' : `HP ${c.hp + permHpBonus(run, p.id)}/${u.stats.hp + permHpBonus(run, p.id)} · S ${c.structure}/${u.stats.structure} · R ${c.stress}/${u.stats.stress} · Repairs ${c.repairs}${c.coreAvailable ? ' · CORE ready' : ''}`}</div>`
     }).join('')
     this.root.innerHTML = `<div class="screen runmap"><div class="hhead"><h2>Campaign — Act ${run.act}</h2><div><button data-go="repairs">Field repairs</button><button data-go="reimport">Re-import pilots</button><button data-go="abandon" class="warn">Abandon run</button><button data-go="title">Title</button></div></div>
       <div class="squad">${squad}</div>${acts}

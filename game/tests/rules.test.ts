@@ -118,7 +118,9 @@ describe('combat', () => {
     e.hp = 3
     b.applyDamage(e, [{ type: 'Kinetic', amount: 5 }])
     expect(e.structure).toBe(3)
-    if (!e.destroyed) expect(e.hp).toBe(e.stats.hp - 2)
+    // with 3 Structure left no structure-check result destroys the mech, so this always applies
+    expect(e.destroyed).toBe(false)
+    expect(e.hp).toBe(e.stats.hp - 2)
   })
   it('heat beyond cap causes stress', () => {
     const { e, b } = duel()
@@ -316,7 +318,7 @@ describe('reaction policies', () => {
     expect(asked).toContain('brace')
     expect(b.has(e, 'braced')).toBe(true)
   })
-  it("'off' overwatch never triggers; 'ask' declines when decide says no", () => {
+  it("'off' overwatch never triggers", () => {
     const { a, e, b } = duel()
     e.pos = { x: 3, y: 5 } // Sniper is hostile; Assault starts adjacent-ish
     a.pos = { x: 1, y: 5 }
@@ -420,7 +422,7 @@ describe('core book rulings', () => {
     b.spend(a, 'reaction', 'overwatch')
     expect(b.canSpend(a, 'reaction', 'brace')).not.toBe(true)
     b.endTurn(a)
-    b.beginTurn(e) // another character's turn: reaction refreshes, overwatch stays used this round character's turn: reaction refreshes, overwatch stays used this round
+    b.beginTurn(e) // another character's turn: reaction refreshes, overwatch stays used this round
     expect(b.canSpend(a, 'reaction', 'brace')).toBe(true)
     expect(b.canSpend(a, 'reaction', 'overwatch')).not.toBe(true)
   })
@@ -519,10 +521,13 @@ describe('core book rulings', () => {
     b.beginTurn(a)
     const main = a.weapons.filter(w => w.size !== 'Auxiliary' && !b.isAoE(b.profile(w)))
     const aux = a.weapons.find(w => w.size === 'Auxiliary')
-    if (!aux || main.length < 1) return
+    expect(aux).toBeDefined()
+    expect(main.length).toBeGreaterThanOrEqual(1)
+    if (!aux) return
     aux.mountIndex = main[0].mountIndex
     const r = b.barrage(a, { weapon: main[0], aim: { targetId: e.id } }, main[1] ? { weapon: main[1], aim: { targetId: e.id } } : undefined, [{ weapon: aux, aim: { targetId: e.id } }])
     expect(r.ok).toBe(true)
-    if (b.validTarget(a, aux, e) === true) expect(b.firedThisTurn(a, aux)).toBe(true)
+    expect(b.validTarget(a, aux, e)).toBe(true)
+    expect(b.firedThisTurn(a, aux)).toBe(true)
   })
 })
