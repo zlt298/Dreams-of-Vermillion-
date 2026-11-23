@@ -22,10 +22,13 @@ During a run, each pilot on the campaign map has an **Edit build** button. Build
 - **Starting a run.** A chosen pilot at another level gets a run-only copy fitted to LL0. The copy keeps what LL0 allows; gear its licenses no longer cover is removed. The **Squad preparation** screen then asks you to finish each fitted build in the builder. The run starts once every pilot is legal, has all points spent and has at least one weapon.
 - **After each act boss.** The squad moves to the new level, and the level-up screen holds the run until every pilot is ready again. Use **Level up** for each pilot, or re-import a COMP/CON pilot (or a pre-built squad) at the right level; these match by id or callsign.
 
-**Pre-built squads.** The hangar's squad picker adds a ready-made squad to the roster and picks it. There are three themed squads at LL0, LL5 and LL10, each with four legal pilots that have every point spent and one Striker, Defender, Controller and Artillery frame. Each is labelled by how hard it plays (AI-vs-AI sims against every enemy team at its act level):
-- **Brawlers (Easy):** melee and armour.
-- **Long Guns (Medium):** rifles, cannons and missiles.
-- **Drone Wing (Hard):** drones and deployables.
+**Pre-built squads.** The hangar's squad picker adds a ready-made squad to the roster and picks it. There are three themed squads at LL0, LL5 and LL10, each with four legal pilots that have every point spent and one Striker, Defender, Controller and Artillery frame. Each act's picker labels them Easy, Medium or Hard by how many mechs they tend to lose against that act's enemies (AI-vs-AI sims), and the order changes by act:
+
+| squad | act 1 (LL0) | act 2 (LL5) | act 3 (LL10) |
+|---|---|---|---|
+| **Brawlers:** melee and armour | Medium | Medium | Easy |
+| **Long Guns:** rifles, cannons and missiles | Easy | Hard | Hard |
+| **Drone Wing:** drones and deployables | Hard | Easy | Medium |
 
 The picker also has the COMP/CON pregens and the LL5/LL10 sample squads. The themed squads are generated and checked by `npx tsx scripts/make-squads.ts`.
 
@@ -70,6 +73,7 @@ It uses the pilot's favourite mech and its active loadout: frame, weapons, mods,
   - There are six of each kind, in `game/src/run/events.ts`.
 - **Persistent damage.** HP, structure, stress, repairs, destroyed gear, Limited uses and CORE power carry between fights.
 - **Recovery.** Spend Repairs at LANCER costs in field repairs. A rest is a full repair that reprints destroyed mechs.
+- **Stand-ins.** Until then, a pilot whose mech was destroyed flies a stock LL0 Everest stand-in. Its damage doesn't carry over.
 - **Progression.** Each act is fought at a fixed License Level: act 1 LL0, act 2 LL5, act 3 LL10, matching the core book NPC tiers. After an act boss the squad goes up to the next level, and the run continues only once every build is legal with all points spent. Spend them with **Level up** on the level-up screen, or re-import updated COMP/CON builds.
 - **Battles:**
   - Initiative alternates between sides: pick any ready lancer to activate.
