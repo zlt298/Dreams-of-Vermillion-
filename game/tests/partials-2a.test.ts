@@ -36,8 +36,8 @@ const W = (u: Unit, id: string) => u.weapons.find(w => w.dataId === id)!
 const nextRound = (b: Battle, a: Unit, e: Unit) => { if (b.activeId) b.endTurn(b.active!); if (!e.destroyed && e.activationsLeft > 0) { b.beginTurn(e); b.endTurn(e) } }
 
 describe('2a: no longer partial', () => {
-  it('these scripts are complete (only Goblin INSTINCT Rig keeps a documented deviation)', () => {
-    for (const id of ['frame:mf_goblin', 'frame:mf_napoleon', 'core:mf_drake', 'core:mf_mourning_cloak', 'mw_combat_drill', 'mw_pinaka_missiles', 'mw_ghast_nexus', 'mw_annihilation_nexus', 'mw_plasma_thrower', 'wm_shock_wreath', 'cb_overpower_caliber', 'cb_briareos_frame', 'cb_ghostweave', 'cb_the_lesson_of_the_open_door'])
+  it('these scripts are complete', () => {
+    for (const id of ['frame:mf_goblin', 'core:mf_goblin', 'frame:mf_napoleon', 'core:mf_drake', 'core:mf_mourning_cloak', 'mw_combat_drill', 'mw_pinaka_missiles', 'mw_ghast_nexus', 'mw_annihilation_nexus', 'mw_plasma_thrower', 'wm_shock_wreath', 'cb_overpower_caliber', 'cb_briareos_frame', 'cb_ghostweave', 'cb_the_lesson_of_the_open_door'])
       expect(getScript(id)?.partial, id).toBeFalsy()
   })
 })
@@ -118,22 +118,45 @@ describe('frames and cores', () => {
     expect(b.has(g, 'impaired')).toBe(true)
     b.addHeat(host, 3)
     expect(g.heat).toBeGreaterThanOrEqual(3)
-    // next round: no own turn; acts right after the host
+    // next round: no own turn; acts inside the host's turn, then hands control back
     b.endTurn(g)
     b.beginTurn(e); b.endTurn(e)
     if (host.activationsLeft) { b.beginTurn(host); b.endTurn(host) }
-    if (b.round === 1) { /* finish round 1 */ }
     while (b.round === 1) { const u = b.combatants(b.currentSide).find(x => x.activationsLeft > 0); if (!u) break; b.beginTurn(u); b.endTurn(u) }
     expect(b.round).toBe(2)
     expect(g.activationsLeft).toBe(0)
     if (b.currentSide !== 'player') { b.beginTurn(e); b.endTurn(e) }
     b.beginTurn(host)
-    b.endTurn(host)
-    expect(b.chainTurn).toBe(g.id)
-    expect(b.canActivate(g)).toBe(true)
-    b.beginTurn(g)
+    b.move(host, { x: 6, y: 2 }) // part of the host's turn first
+    const acts = b.customActions(host).find(c => /Gob acts/.test(c.name))!
+    expect(acts).toBeTruthy()
+    b.useCustom(host, acts)
+    expect(b.activeId).toBe(g.id)
     expect(g.moveLeft).toBe(0)
     expect(() => b.overcharge(g)).toThrow()
+    b.endTurn(g)
+    expect(b.activeId).toBe(host.id) // back to the host, who can keep acting
+    expect(b.customActions(host).some(c => /Gob acts/.test(c.name))).toBe(false) // once per host turn
+    expect(getScript('core:mf_goblin')?.partial).toBeFalsy()
+  })
+  it('Goblin INSTINCT Rig: an AI-run Goblin acts before its host ends its turn', () => {
+    const g = mech({ frame: 'mf_goblin', name: 'Gob', side: 'enemy' })
+    const host = mech({ name: 'Host', side: 'enemy' })
+    const p = pregenUnit('Assault')
+    g.pos = { x: 5, y: 4 }; host.pos = { x: 6, y: 3 }; host.stats.size = 2; p.pos = { x: 5, y: 12 }
+    const b = new Battle({ map: flatMap(16, 16), units: [p, g, host], seed: 3 })
+    b.start()
+    b.currentSide = 'enemy'
+    b.beginTurn(g)
+    g.coreAvailable = true
+    b.useCustom(g, act(b, g, /Symbiosis/), host)
+    g.flags.symbiosisTurns = true
+    b.endTurn(g)
+    b.currentSide = 'enemy'
+    b.beginTurn(host)
+    b.endTurn(host)
+    expect(g.flags.hostTurnActed).toBe(true)
+    expect(b.log.some(l => /Gob acts on Host's turn/.test(l.text))).toBe(true)
   })
   it('Napoleon Heavy Shielding: half damage on a successful save becomes 1', () => {
     const a = mech({ frame: 'mf_napoleon' })

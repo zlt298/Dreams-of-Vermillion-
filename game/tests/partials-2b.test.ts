@@ -38,10 +38,10 @@ const toEnemyTurn = (b: Battle, a: Unit, e: Unit) => { b.endTurn(a); b.beginTurn
 const rifle = (u: Unit) => u.weapons.find(w => !w.destroyed && !w.tech)!
 
 describe('2b: systems are complete', () => {
-  it('only PUPPETMASTER keeps a documented deviation', () => {
+  it('every former partial system is complete', () => {
     for (const id of ['ms_reinforced_cabling', 'ms_sekhmet_class_nhp', 'ms_argonaut_shield', 'ms_cable_winch_system', 'ms_armor_lock_plating', 'ms_ramjet', 'ms_perimeter_command_plate', 'ms_magnetic_shield', 'ms_oasis_wall', 'ms_flash_charges', 'ms_tlaloc_class_nhp', 'ms_fade_cloak', 'ms_markerlight', 'ms_athena_class_nhp', 'ms_lb_oc_cloaking_field', 'ms_metahook', 'ms_h0r_os_system_upgrade_ii', 'ms_osiris_class_nhp', 'ms_mimic_mesh', 'ms_scylla_class_nhp', 'ms_assassin_drone', 'ms_beckoner', 'ms_aggressive_system_sync', 'ms_metafold_carver', 'ms_interdiction_field', 'ms_law_of_blades', 'ms_roller_directed_payload_charges', 'ms_blinkshield', 'ms_enclave_pattern_support_shield', 'ms_hardlight_defense_system', 'ms_reactor_stabilizer'])
       expect(getScript(id)?.partial, id).toBeFalsy()
-    expect(getScript('ms_puppetmaster')?.partial).toBe(true)
+    expect(getScript('ms_puppetmaster')?.partial).toBeFalsy()
   })
 })
 
@@ -147,6 +147,19 @@ describe('IPS-N and SSC', () => {
 })
 
 describe('HORUS', () => {
+  it('PUPPETMASTER Guide the Flock: each drone moves to its own space, up to 4', () => {
+    const { a, b } = setup(['ms_puppetmaster'])
+    // two drones (one hostile) next to the mech
+    const mk = (side: 'player' | 'enemy', x: number, y: number) => { const u = pregenUnit('Assault', side); u.kind = 'drone'; u.stats.size = 0.5; u.pos = { x, y }; u.name = `Drone ${x}`; b.units.push(u); return u }
+    const own = mk('player', 6, 4), foe = mk('enemy', 4, 6)
+    a.stats.techAttack = 30
+    b.useCustom(a, act(b, a, /Guide the Flock/))
+    b.useCustom(a, act(b, a, new RegExp(`Guide ${own.name}`)), { x: 9, y: 4 })
+    b.useCustom(a, act(b, a, new RegExp(`Guide ${foe.name}`)), { x: 4, y: 10 })
+    expect(own.pos).toEqual({ x: 9, y: 4 })
+    expect(foe.pos).toEqual({ x: 4, y: 10 })
+    expect(() => b.useCustom(a, act(b, a, /Guide the Flock/))).toThrow()
+  })
   it('Metahook: shared heat and conditions; the ally uses your Systems', () => {
     const { a, e, b } = setup(['ms_metahook'])
     const al = ally(b, { x: 7, y: 4 })

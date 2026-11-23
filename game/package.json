@@ -15,7 +15,8 @@
     "validate-enemies": "tsx scripts/validate-enemies.ts",
     "e2e": "node e2e/campaign.mjs",
     "bench": "tsx scripts/bench-ai.ts",
-    "replay": "tsx scripts/replay.ts"
+    "replay": "tsx scripts/replay.ts",
+    "golden": "tsx scripts/golden.ts"
   },
   "dependencies": {
     "@massif/lancer-data": "4.0.12",

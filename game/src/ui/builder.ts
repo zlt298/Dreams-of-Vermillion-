@@ -3,8 +3,9 @@
 import { Lancer, type WeaponData, type SystemData, type FrameData, type ModData, type CoreBonusData } from '../data/lancer'
 import type { MountBuild, PilotBuild } from '../import/compcon'
 import {
-  SLOT_SIZES, coreBonusAllowed, effectiveLicenses, expectedMounts, licensed, modFits, requiredLicenses, slotSizes, MAX_LICENSE_RANK,
+  SLOT_SIZES, coreBonusAllowed, effectiveLicenses, expectedMounts, licensed, modFits, requiredLicenses, slotSizes, MAX_LICENSE_RANK, validateBuild,
 } from '../rules/legality'
+import { mechSP } from '../rules/stats'
 
 export const EVEREST = 'mf_standard_pattern_i_everest'
 /** Core bonuses that are attached to one chosen mount. */
@@ -175,4 +176,54 @@ export function setWeapon(p: PilotBuild, mi: number, slot: number, weaponId: str
   if (!weaponId) s.modId = null
   // a Main weapon in a Flex mount uses the whole mount
   if (m.type === 'Flex' && slot === 0 && weaponId && Lancer.weapons.get(weaponId)?.mount !== 'Auxiliary' && m.slots[1]) m.slots[1] = { ...m.slots[1], weaponId: null, modId: null }
+}
+
+// ------------------------------------------------------------------ fitting a pilot to a License Level
+/** Problems that stop a pilot from deploying at `level`: wrong LL, illegal build, points left unspent, or no weapons. */
+export function readyProblems(p: PilotBuild, level: number): string[] {
+  if (p.level !== level) return [`Needs License Level ${level} (is LL${p.level})`]
+  const v = validateBuild(p)
+  const out = [...v.errors, ...v.warnings.filter(w => /unspent|unchosen/.test(w))]
+  if (!p.mech.mounts.some(m => m.slots.some(x => x.weaponId))) out.push('No weapons fitted')
+  return out
+}
+
+/**
+ * A copy of the pilot re-fitted to `level`, keeping as much of the build as that level allows: mech skills,
+ * talents, licenses and core bonuses are trimmed to the new budgets, and gear the remaining licenses don't
+ * cover is removed (the frame falls back to the Everest if its license is gone). Raising the level keeps
+ * everything; the new points are left to spend in the builder.
+ */
+export function fitToLevel(src: PilotBuild, level: number): PilotBuild {
+  const p = editable(src)
+  p.level = level
+  // mech skills: take points off the highest skill first
+  let over = p.mechSkills.reduce((a, b) => a + b, 0) - (2 + level)
+  while (over-- > 0) { const i = p.mechSkills.indexOf(Math.max(...p.mechSkills)); p.mechSkills[i]-- }
+  // talents: drop ranks from the most recently listed talent
+  let tOver = p.talents.reduce((a, t) => a + t.rank, 0) - (3 + level)
+  while (tOver-- > 0) { const t = p.talents[p.talents.length - 1]; if (--t.rank <= 0) p.talents.pop() }
+  // licenses: start from what the gear implies, keep the frame's license first, then the highest ranks
+  const frameLic = Lancer.frames.get(p.mech.frameId)?.source === 'GMS' ? null : p.mech.frameId
+  const have = [...effectiveLicenses(p)].sort((a, b) => (b[0] === frameLic ? 1 : 0) - (a[0] === frameLic ? 1 : 0) || b[1] - a[1])
+  let budget = level
+  p.licenses = []
+  for (const [id, r] of have) { const take = Math.min(r, budget); if (take > 0) { p.licenses.push({ id, rank: take }); budget -= take } }
+  const lic = new Map(p.licenses.map(l => [l.id, l.rank]))
+  // gear the kept licenses don't cover
+  const f = Lancer.frames.get(p.mech.frameId)
+  if (f && f.source !== 'GMS' && (lic.get(f.id) ?? 0) < f.license_level) setFrame(p, EVEREST)
+  p.mech.mounts.forEach(m => m.slots.forEach(s => {
+    if (s.weaponId && !licensed(Lancer.weapons.get(s.weaponId), lic)) { s.weaponId = null; s.modId = null }
+    if (s.modId && !licensed(Lancer.mods.get(s.modId), lic)) s.modId = null
+  }))
+  p.mech.systems = p.mech.systems.filter(id => licensed(Lancer.systems.get(id), lic))
+  // core bonuses: those still allowed, up to the new count
+  const keep: string[] = []
+  for (const c of p.coreBonuses) if (keep.length < Math.floor(level / 3) && coreBonusAllowed(c, keep, lic)) keep.push(c)
+  p.coreBonuses = keep
+  syncMounts(p)
+  // SP: drop systems from the end until it fits
+  while (p.mech.systems.length && mechSP(p).used > mechSP(p).max) p.mech.systems.pop()
+  return p
 }

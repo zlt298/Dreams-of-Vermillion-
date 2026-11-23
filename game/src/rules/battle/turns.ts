@@ -33,7 +33,9 @@ export function startRound(bt: Battle) {
     if (u.expiresRound != null && u.expiresRound < bt.round) bt.destroy(u, 'expired')
   }
   for (const u of bt.alive()) for (const s of scriptsFor(u)) s.onRoundStart?.(bt, u)
-  bt.currentSide = bt.combatants('player').length ? 'player' : 'enemy'
+  // players open the battle; after that the turn order keeps alternating across rounds, so the side
+  // that didn't take the last turn of the previous round goes first (core book: Turns and Rounds)
+  bt.currentSide = bt.lastSide ? other(bt.lastSide) : bt.combatants('player').length ? 'player' : 'enemy'
   if (!bt.hasActivations(bt.currentSide)) bt.currentSide = other(bt.currentSide)
   bt.checkVictory()
 }
@@ -92,6 +94,10 @@ export function beginTurn(bt: Battle, u: Unit) {
 
 export function endTurn(bt: Battle, u: Unit = bt.active!) {
   if (!u || u.id !== bt.activeId) throw new Error('Not the active unit')
+  // a character acting inside another's turn (Goblin INSTINCT Rig) hands the turn back
+  if (bt.interjection?.unit === u.id) return endInterjection(bt, u)
+  for (const o of bt.alive()) for (const s of scriptsFor(o)) s.beforeAnyTurnEnd?.(bt, o, u)
+  if (u.id !== bt.activeId) return
   bt.endingTurnOf = u.id
   try { bt.endTurnInner(u) } finally { bt.endingTurnOf = null }
 }
@@ -139,6 +145,7 @@ export function endTurnInner(bt: Battle, u: Unit) {
   const chain = bt.chainTurn ? bt.unit(bt.chainTurn) : undefined
   if (chain && !chain.destroyed && chain.activationsLeft > 0) { bt.currentSide = chain.side; return }
   bt.chainTurn = null
+  bt.lastSide = u.side
   const opp = other(u.side)
   if (bt.hasActivations(opp)) bt.currentSide = opp
   else if (bt.hasActivations(u.side)) bt.currentSide = u.side
@@ -245,4 +252,35 @@ export function spend(bt: Battle, u: Unit, cost: 'quick' | 'full' | 'protocol' |
     delete u.flags.payWithBonus
     if (action) u.flags['turn:quickUsed'] = [...(u.flags['turn:quickUsed'] ?? []), action]
   } else if (cost === 'full') u.actionsLeft = Math.max(0, u.actionsLeft - 2)
+}
+
+/**
+ * `u` acts in the middle of `host`'s turn (Goblin INSTINCT Rig): two quick actions or one full action, no
+ * movement or Overcharge. Ending its turn hands control back to the host, whose turn carries on.
+ */
+export function interject(bt: Battle, u: Unit, host: Unit) {
+  if (bt.activeId !== host.id) throw new Error(`${host.name} is not acting`)
+  if (bt.interjection) throw new Error('Someone is already acting inside this turn')
+  bt.interjection = { unit: u.id, host: host.id }
+  host.activeTurn = false
+  bt.activeId = u.id
+  u.activeTurn = true
+  u.actionsLeft = u.statuses.some(x => x.id === 'stunned') ? 0 : 2
+  u.flags.bonusQuick = 0
+  u.overchargedThisTurn = false
+  u.actedThisTurn = false
+  u.boostedThisTurn = false
+  u.flags.fullTechLeft = 0
+  u.flags.noOvercharge = true
+  u.moveLeft = 0
+  bt.emit({ type: 'turn', unitId: u.id })
+  bt.say(`${u.name} acts on ${host.name}'s turn.`, 'turn')
+}
+export function endInterjection(bt: Battle, u: Unit) {
+  const host = bt.unit(bt.interjection?.host)
+  bt.interjection = null
+  u.activeTurn = false
+  bt.say(`${u.name} hands control back${host ? ` to ${host.name}` : ''}.`, 'turn')
+  if (host && !host.destroyed) { bt.activeId = host.id; host.activeTurn = true; bt.emit({ type: 'turn', unitId: host.id }) }
+  else { bt.activeId = null; bt.checkVictory() }
 }

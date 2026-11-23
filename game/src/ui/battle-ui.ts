@@ -4,7 +4,8 @@ import { Lancer } from '../data/lancer'
 import { pickNextUnit, runAiTurn } from '../ai/ai'
 import { annotateTags, rangeChip, tagChip, tagInfo } from './tags'
 import { type Battle, type ChoiceQuestion, stripHtml } from '../rules/battle'
-import { exportBattle, type BattleExport } from '../replay/replay'
+import { exportBattle, isAction, type BattleExport } from '../replay/replay'
+export { isAction }
 import { portraitImg } from '../render/portrait'
 import { blastTiles, burstTiles, coneTiles, key, lineTiles, footprint } from '../rules/grid'
 import type { CustomAction } from '../rules/effects/registry'
@@ -28,6 +29,19 @@ const TAG_NAMES: Record<string, string> = {
   tg_limited: 'Limited', tg_unique: 'Unique', tg_ordnance: 'Ordnance', tg_burn: 'Burn', tg_thrown: 'Thrown', tg_irreducible: 'Irreducible',
 }
 
+/** A snapshot to return to (taken before a player action) and the command count at that point. */
+export interface UndoEntry { restore: () => void; commands: number }
+export interface BattleScreenOpts {
+  onEnd: (w: 'player' | 'enemy') => void
+  title?: string
+  /** called after every recorded command (player action or AI turn): persist the battle */
+  onSaved?: (b: Battle) => void
+  /** rebuild the screen on the same (restored) battle, keeping the undo history */
+  onRemount?: (b: Battle, undo: UndoEntry[]) => void
+  /** no snapshot left (e.g. after a reload): rebuild the battle by replay without its last action */
+  onUndoReplay?: (b: Battle) => void
+  undoStack?: UndoEntry[]
+}
 export class BattleScreen {
   root: HTMLElement
   b: Battle
@@ -42,9 +56,15 @@ export class BattleScreen {
   private ended = false
   title: string
 
-  constructor(root: HTMLElement, b: Battle, opts: { onEnd: (w: 'player' | 'enemy') => void; title?: string }) {
+  /** in-session undo: a snapshot before each player action (restored in place) */
+  private undoStack: UndoEntry[]
+  private opts: BattleScreenOpts
+
+  constructor(root: HTMLElement, b: Battle, opts: BattleScreenOpts) {
     this.root = root
     this.b = b
+    this.opts = opts
+    this.undoStack = opts.undoStack ?? []
     this.onEnd = opts.onEnd
     this.title = opts.title ?? 'Engagement'
     root.innerHTML = `<div class="battle"><div class="viewport"></div><div class="hud"></div><div class="tooltip"></div><div class="banner" aria-live="polite"></div><div class="stamp-layer"></div></div>`
@@ -103,7 +123,7 @@ export class BattleScreen {
     }
     if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey) { this.showFields = !this.showFields; this.toast(this.showFields ? 'Field overlays on [V]' : 'Field overlays off [V]'); this.updateHighlights() }
     if (e.key === 'Enter' && this.b.active?.side === 'player') this.cmd(() => this.b.endTurn(this.b.active!), true)
-    if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && this.b.active?.side === 'player' && this.b.canUndoMove(this.b.active)) { e.preventDefault(); this.cmd(() => this.b.undoMove(this.b.active!)) }
+    if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && this.canUndo()) { e.preventDefault(); this.undo() }
   }
 
   // ------------------------------------------------------------------ flow
@@ -126,6 +146,7 @@ export class BattleScreen {
           if (r.error) console.error(r.error)
           break
         }
+        this.opts.onSaved?.(this.b)
         this.render()
         await this.view.idle()
         await sleep(200)
@@ -152,6 +173,8 @@ export class BattleScreen {
   }
 
   private cmd(f: () => void, thenAdvance = false, answers: number[] = []) {
+    const before = this.b.commands.length
+    const snapshot = this.b.checkpoint()
     const r = this.b.transaction(f, answers, { rollbackOnError: true })
     if ('pending' in r) {
       this.render()
@@ -159,11 +182,35 @@ export class BattleScreen {
       return
     }
     if (r.error) this.toast(r.error.message)
+    // a real player action was recorded: it can be undone, and the battle is saved
+    if (this.b.commands.slice(before).some(c => isAction(c, this.b))) {
+      this.undoStack.push({ restore: snapshot, commands: before })
+      if (this.undoStack.length > 60) this.undoStack.shift()
+    }
+    if (this.b.commands.length !== before) this.opts.onSaved?.(this.b)
     this.view.syncUnits()
     if (this.b.active?.side === 'player' && this.mode.k === 'idle') this.mode = { k: 'move' }
     this.render()
     if (thenAdvance || !this.b.activeId || this.b.winner) void this.advance()
     if (this.b.winner) setTimeout(() => { if (!this.ended) void this.advance() }, 1500)
+  }
+
+  /** Can the last player action be undone? (Not while the enemy is acting or once the battle is over.) */
+  canUndo(): boolean {
+    return !this.busy && !this.b.winner && !this.picker && (this.undoStack.length > 0 || !!this.opts.onUndoReplay && this.b.commands.some(c => isAction(c, this.b)))
+  }
+  /** Undo the last player action: restore the snapshot taken before it, or rebuild the battle without it. */
+  undo() {
+    if (!this.canUndo()) return
+    const top = this.undoStack.pop()
+    if (top) {
+      top.restore()
+      this.b.say('↶ Undone.')
+      this.opts.onSaved?.(this.b)
+      this.opts.onRemount?.(this.b, this.undoStack)
+      return
+    }
+    this.opts.onUndoReplay?.(this.b)
   }
 
   /** Prompt the optional auxiliary follow-up attacks (no bonus damage); Esc skips. */
@@ -324,7 +371,7 @@ export class BattleScreen {
         if (sel) this.cmd(() => { this.b.beginTurn(sel); this.mode = { k: 'move' } })
         return
       case 'end': if (a) this.cmd(() => { this.b.endTurn(a); this.mode = { k: 'idle' } }, true); return
-      case 'undo': if (a) this.cmd(() => this.b.undoMove(a)); return
+      case 'undo': this.undo(); return
       case 'auto':
         if (a && a.side === 'player') this.cmd(() => { runAiTurn(this.b, a); this.mode = { k: 'idle' } }, true)
         else if (sel && sel.side === 'player' && !this.b.activeId && sel.activationsLeft > 0 && this.b.currentSide === 'player') this.cmd(() => { runAiTurn(this.b, sel); this.mode = { k: 'idle' } }, true)
@@ -619,7 +666,7 @@ export class BattleScreen {
         ${b.has(u, 'shutdown') ? this.btn('bootup', 'Boot Up [F]', u.actionsLeft >= 2 ? true : 'Needs full action') : this.btn('shutdown', 'Shut Down [Q]', qa('shut_down'))}
         ${fr ? this.btn('core', `CORE: ${esc(fr.core_system.active_name ?? fr.core_system.name)} [${actLabel((fr.core_system.activation ?? 'quick').toLowerCase())}]`, u.coreAvailable ? (fr.core_system.activation === 'Protocol' ? pr : fr.core_system.activation === 'Full' ? fu : q) : 'Core power spent', '', 'core') : ''}
         ${this.btn('selfdestruct', 'Self-Destruct', qa('self_destruct'), '', 'warn')}
-        ${this.b.canUndoMove(u) ? this.btn('undo', '↶ Undo move', true) : ''}${this.btn('auto', 'Auto (AI)', true)}${this.btn('end', 'End Turn ⏎', true, '', 'primary')}
+        ${this.canUndo() ? this.btn('undo', '↶ Undo (Ctrl+Z)', true) : ''}${this.btn('auto', 'Auto (AI)', true)}${this.btn('end', 'End Turn ⏎', true, '', 'primary')}
       </div>
       ${custom.length ? `<div class="actions systems"><span class="eco">Systems & traits</span>${custom.map(c => `<button class="${c.usable(b, u) === true ? '' : 'disabled'}" data-act="custom" data-arg="${esc(c.key)}" title="${esc(c.text)}${c.usable(b, u) !== true ? ' — ' + esc(c.usable(b, u) as string) : ''}">${esc(c.name)} [${actLabel(c.activation)}]${c.text.startsWith('[manual]') ? '*' : ''}</button>`).join('')}</div>` : ''}`
       if (this.mode.k === 'barrage-pick') actions = `<div class="hint">Barrage: choose the second weapon below.</div>` + actions

@@ -722,34 +722,35 @@ registerScripts([
     },
   },
   {
-    id: 'ms_puppetmaster', partial: true,
-    note: 'Guide the Flock (quick tech): drones within Sensors move up to 4 toward a chosen space — as a group (yours, hostile or all) rather than each to its own space; Electropulse (quick tech): characters you choose within Sensors that are adjacent to any drone or deployable take 2 energy',
+    id: 'ms_puppetmaster',
+    note: 'Guide the Flock (quick tech): move any number of drones within Sensors — anyone\'s — each up to 4 spaces to a space you choose (one "Guide" action per drone, until the end of your turn); Electropulse (quick tech): characters you choose within Sensors that are adjacent to any drone or deployable take 2 energy',
+    onTurnEnd: (_b, u) => { delete u.flags.flock },
     actions: (b, u) => [
       action({
-        key: 'guideflock', name: 'Guide the Flock', activation: 'quick_tech', target: 'tile', range: u.stats.sensors, text: 'Move drones within Sensors (any owner) up to 4 spaces toward the chosen space.',
-        run: (bt, self, t) => {
-          const p = t && 'x' in t ? t : (t as Unit).pos
-          const drones = bt.alive().filter(d => d.kind === 'drone' && bt.distance(self, d) <= self.stats.sensors)
-          const groups = [
-            { label: 'My and allied drones', list: drones.filter(d => !bt.hostile(self, d)) },
-            { label: 'Hostile drones', list: drones.filter(d => bt.hostile(self, d)) },
-            { label: 'All drones', list: drones },
-          ]
-          const i = bt.choose({ kind: 'guideflock', unit: self, title: 'Guide the Flock: which drones?', options: groups.map(g => ({ label: g.label, hint: `${g.list.length} drone(s)` })), defaultIndex: groups[1].list.length ? 1 : 0 })
-          for (const d of groups[i].list) {
-            let best = d.pos, bd = chebyshev(d.pos, p)
-            for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
-              const q = { x: d.pos.x + dx, y: d.pos.y + dy }
-              if (!bt.map.tiles[q.y * bt.map.w + q.x] || q.x < 0 || q.y < 0 || q.x >= bt.map.w || q.y >= bt.map.h) continue
-              if (bt.alive().some(o => o !== d && !o.flags.flat && footprint(o).some(r => r.x === q.x && r.y === q.y))) continue
-              if (chebyshev(q, p) < bd) { best = q; bd = chebyshev(q, p) }
-            }
-            if (best !== d.pos) { const from = d.pos; d.pos = best; bt.emit({ type: 'move', unitId: d.id, path: [from, best] }) }
-          }
-          bt.invalidateTerrain()
+        key: 'guideflock', name: 'Guide the Flock', activation: 'quick_tech', target: 'none', text: 'Choose drones within Sensors (any owner) and move each up to 4 spaces, one at a time.',
+        run: (bt, self) => {
+          const ids = bt.alive().filter(d => d.kind === 'drone' && bt.distance(self, d) <= self.stats.sensors).map(d => d.id)
+          if (!ids.length) throw new Error('No drones within Sensors')
+          self.flags.flock = ids
+          bt.say(`${self.name} takes control of ${ids.length} drone${ids.length > 1 ? 's' : ''}.`)
         },
         aiScore: () => -1,
       }),
+      ...((u.flags.flock ?? []) as string[]).map(id => b.unit(id)).filter((d): d is Unit => !!d && !d.destroyed).map(d => action({
+        key: `flock:${d.id}`, name: `Guide ${d.name} (${d.pos.x},${d.pos.y})`, activation: 'free', target: 'tile', range: u.stats.sensors + 4,
+        text: `Move ${d.name} up to 4 spaces to a free space.`,
+        run: (bt, self, t) => {
+          const p = t && 'x' in t ? t : (t as Unit).pos
+          if (chebyshev(d.pos, p) > 4) throw new Error('Drones move up to 4 spaces')
+          if (bt.alive().some(o => o !== d && !o.flags.flat && footprint(o).some(q => q.x === p.x && q.y === p.y)) || !bt.map.tiles[p.y * bt.map.w + p.x]) throw new Error('Space occupied')
+          const from = d.pos
+          d.pos = { ...p }
+          bt.emit({ type: 'move', unitId: d.id, path: [from, d.pos] })
+          bt.invalidateTerrain()
+          self.flags.flock = (self.flags.flock as string[]).filter(x => x !== d.id)
+        },
+        aiScore: () => -1,
+      })),
       action({
         key: 'electropulse', name: 'Electropulse', activation: 'quick_tech', target: 'none', text: 'Characters you choose within Sensors that are adjacent to any drone or deployable take 2 energy damage.',
         run: (bt, self) => {
