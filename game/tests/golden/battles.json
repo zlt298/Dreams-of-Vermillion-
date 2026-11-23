@@ -3,15 +3,15 @@
     "id": "t1-standard",
     "round": 7,
     "winner": null,
-    "commands": 51,
-    "hash": "68362a79"
+    "commands": 52,
+    "hash": "3fd89bfa"
   },
   {
     "id": "t1-boss",
     "round": 7,
     "winner": null,
-    "commands": 77,
-    "hash": "0abd5a45"
+    "commands": 69,
+    "hash": "bc45197a"
   },
   {
     "id": "t2-standard",
