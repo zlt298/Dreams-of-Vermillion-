@@ -17,10 +17,10 @@ const load = (x: any[]) => x.map(p => importPilots(p)[0])
 const presets = themed as unknown as { id: string; theme: string; level: number; pilots: PilotBuild[] }[]
 
 describe('pre-built squads', () => {
-  it('has 4 themes at LL0, LL5 and LL10, 4 pilots each', () => {
-    expect(presets).toHaveLength(12)
-    expect(new Set(presets.map(s => s.theme)).size).toBe(4)
-    for (const level of [0, 5, 10]) expect(presets.filter(s => s.level === level)).toHaveLength(4)
+  it('has 3 themes at LL0, LL5 and LL10, 4 pilots each', () => {
+    expect(presets).toHaveLength(9)
+    expect(new Set(presets.map(s => s.theme)).size).toBe(3)
+    for (const level of [0, 5, 10]) expect(presets.filter(s => s.level === level)).toHaveLength(3)
     expect(presets.every(s => s.pilots.length === 4)).toBe(true)
     const ids = presets.flatMap(s => s.pilots.map(p => p.id))
     expect(new Set(ids).size).toBe(ids.length)
@@ -33,8 +33,8 @@ describe('pre-built squads', () => {
     }
   })
 
-  it('each act offers one squad per difficulty (Easy, Medium, Hard, Very hard)', () => {
-    for (const level of [0, 5, 10]) expect(presets.filter(s => s.level === level).map(s => (s as any).difficulty).sort()).toEqual(['Easy', 'Hard', 'Medium', 'Very hard'])
+  it('each act offers one squad per difficulty (Easy, Medium, Hard)', () => {
+    for (const level of [0, 5, 10]) expect(presets.filter(s => s.level === level).map(s => (s as any).difficulty).sort()).toEqual(['Easy', 'Hard', 'Medium'])
   })
 
   it('squads differ: no two pilots in a squad have the same loadout, and themes use different frames', () => {
@@ -43,7 +43,7 @@ describe('pre-built squads', () => {
       expect(new Set(loadouts).size, s.id).toBe(4)
     }
     const frames = (level: number) => presets.filter(s => s.level === level).flatMap(s => s.pilots.map(p => p.mech.frameId))
-    expect(new Set(frames(5)).size).toBe(16)
+    expect(new Set(frames(5)).size).toBe(frames(5).length)
   })
 
   it('the COMP/CON pregens and the sample squads are ready at their act levels', () => {

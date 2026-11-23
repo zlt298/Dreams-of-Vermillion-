@@ -10,7 +10,7 @@ import { mechSP } from '../src/rules/stats'
 import { averageDice } from '../src/rules/rng'
 import { newDraft, setFrame, weaponOptions, systemOptions, setWeapon, syncMounts, EVEREST } from '../src/ui/builder'
 
-type Theme = 'brawl' | 'long' | 'ghost' | 'drone'
+type Theme = 'brawl' | 'long' | 'ghost' | 'drone' // 'ghost' scoring kept for a future stealth squad
 type Hase = [number, number, number, number]
 interface PilotSpec {
   callsign: string
@@ -27,8 +27,10 @@ interface PilotSpec {
   avoid?: string[]
 }
 /** How hard the squad plays, from AI-vs-AI sims over every enemy team at its act level (target overall player
- *  wins: Easy ~90%, Medium ~80%, Hard ~70%, Very hard ~60%). Re-check with the balance sim after changing a squad. */
-export type Difficulty = 'Easy' | 'Medium' | 'Hard' | 'Very hard'
+ *  wins: Easy ~90%, Medium ~80%, Hard ~70%). Re-check with the balance sim after changing a squad. A Ghosts
+ *  (tech/stealth) squad was removed: even with a Striker/Defender/Controller/Artillery lineup it won ~36% of
+ *  elite/boss-heavy fights against ~69% for the others. */
+export type Difficulty = 'Easy' | 'Medium' | 'Hard'
 interface SquadSpec { id: string; name: string; theme: Theme; difficulty: Difficulty; blurb: string; pilots: PilotSpec[] }
 
 const text = (x: { effect?: string; description?: string }) => `${x.effect ?? ''} ${(x as any).description ?? ''}`.toLowerCase()
@@ -140,19 +142,6 @@ const SQUADS: SquadSpec[] = [
         hase: { 0: H(0, 1, 1, 0), 5: H(2, 2, 2, 1), 10: H(3, 3, 3, 3) }, cbs: { 5: ['cb_neurolink_targeting'], 10: ['cb_neurolink_targeting', 'cb_integrated_nerveweave', 'cb_improved_armament'] } },
       { callsign: 'Longwatch', prefer: ['mw_heavy_machine_gun', 'mw_thermal_rifle', 'ms_pattern_a_jericho_deployable_cover'], name: 'Pell Ansari', frame: 'mf_napoleon', extra: ['mf_barbarossa', 'mf_sherman', 'mf_saladin'], talents: ['t_heavy_gunner', 't_walking_armory', 't_siege_specialist', 't_spotter', 't_juggernaut'],
         hase: { 0: H(1, 0, 0, 1), 5: H(3, 0, 1, 3), 10: H(5, 0, 2, 5) }, cbs: { 5: ['cb_armory_sculpted_chassis'], 10: ['cb_armory_sculpted_chassis', 'cb_superior_by_design', 'cb_overpower_caliber'] } },
-    ],
-  },
-  {
-    id: 'ghosts', name: 'Ghosts', theme: 'ghost', difficulty: 'Very hard', blurb: 'Tech and stealth: invasions, invisibility and slipping through the lines.',
-    pilots: [
-      { callsign: 'Wisp', prefer: ['mw_tactical_knife', 'mw_charged_blade', 'ms_pattern_a_smoke_charges', 'ms_rapid_burst_jump_jet_system'], name: 'Noor Calloway', frame: 'mf_mourning_cloak', extra: ['mf_swallowtail', 'mf_dusk_wing', 'mf_black_witch'], talents: ['t_infiltrator', 't_skirmisher', 't_duelist', 't_ace', 't_hunter'],
-        hase: { 0: H(0, 1, 1, 0), 5: H(1, 3, 2, 1), 10: H(1, 5, 4, 2) }, cbs: { 5: ['cb_ghostweave'], 10: ['cb_ghostweave', 'cb_all_theater_movement_suite', 'cb_auto_stabilizing_hardpoints'] } },
-      { callsign: 'Glitch', prefer: ['mw_nexus_light', 'mw_pistol', 'ms_pattern_b_hex_charges'], name: 'Oren Sato', frame: 'mf_minotaur', extra: ['mf_goblin', 'mf_hydra', 'mf_manticore'], talents: ['t_hacker', 't_technophile', 't_tactician', 't_infiltrator', 't_skirmisher'],
-        hase: { 0: H(0, 0, 2, 0), 5: H(0, 2, 4, 1), 10: H(1, 3, 6, 2) }, cbs: { 5: ['cb_the_lesson_of_the_open_door'], 10: ['cb_the_lesson_of_the_open_door', 'cb_the_lesson_of_disbelief', 'cb_integrated_weapon'] } },
-      { callsign: 'Snare', prefer: ['mw_nexus_hunter_killer', 'mw_segment_knife', 'ms_pattern_a_smoke_charges'], name: 'Ilse Varga', frame: 'mf_gorgon', extra: ['mf_goblin', 'mf_minotaur', 'mf_balor'], talents: ['t_hacker', 't_tactician', 't_technophile', 't_leader', 't_infiltrator'],
-        hase: { 0: H(0, 0, 1, 1), 5: H(1, 1, 3, 2), 10: H(2, 2, 5, 3) }, cbs: { 5: ['cb_the_lesson_of_disbelief'], 10: ['cb_the_lesson_of_disbelief', 'cb_the_lesson_of_the_held_image', 'cb_improved_armament'] } },
-      { callsign: 'Shade', prefer: ['mw_assault_rifle', 'mw_pistol', 'ms_rapid_burst_jump_jet_system'], name: 'Juno Reyes', frame: 'mf_deaths_head', extra: ['mf_swallowtail', 'mf_mourning_cloak', 'mf_black_witch'], talents: ['t_infiltrator', 't_spotter', 't_skirmisher', 't_hacker', 't_ace'],
-        hase: { 0: H(0, 1, 1, 0), 5: H(0, 3, 3, 1), 10: H(1, 5, 4, 2) }, cbs: { 5: ['cb_all_theater_movement_suite'], 10: ['cb_all_theater_movement_suite', 'cb_ghostweave', 'cb_universal_compatibility'] } },
     ],
   },
   {

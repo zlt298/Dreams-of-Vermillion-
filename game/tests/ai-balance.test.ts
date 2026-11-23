@@ -7,7 +7,8 @@ import { buildTeam } from '../src/enemies/build'
 import { planFor, stallRounds, pickNextUnit, runAiTurn } from '../src/ai/ai'
 import { Battle } from '../src/rules/battle'
 import { generateMap } from '../src/run/mapgen'
-import themed from '../src/data/squads/themed.json'
+// the Ghosts presets (removed from the game) are kept as a fixture: the fights these bugs were found in
+import themed from './fixtures/ghosts-squads.json'
 import { battle, flatMap, pregenUnit } from './helpers'
 
 const ghost = (callsign: string, level = 10) => buildMechUnit(structuredClone((themed as any[]).find(s => s.theme === 'ghosts' && s.level === level).pilots.find((p: any) => p.callsign === callsign)))
