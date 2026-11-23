@@ -1,6 +1,7 @@
 // End-to-end regression: start a campaign, let the AI play the lancers through one battle, and
 // check the game reaches the next screen (debrief/repairs/map or defeat) with no page errors.
 // Usage: npm run e2e   (needs Playwright + Chromium available; skips otherwise)
+//        E2E_URL=<url> npm run e2e   tests an already-served build (e.g. vite preview or the Pages site)
 import { createServer } from 'vite'
 import { createRequire } from 'node:module'
 
@@ -17,8 +18,9 @@ try {
   }
 }
 
-const server = await createServer({ server: { port: 5199, strictPort: true }, logLevel: 'error' })
-await server.listen()
+const url = process.env.E2E_URL || 'http://localhost:5199/'
+const server = process.env.E2E_URL ? null : await createServer({ server: { port: 5199, strictPort: true }, logLevel: 'error' })
+await server?.listen()
 const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] })
 let failed = false
 try {
@@ -26,7 +28,7 @@ try {
   const errors = []
   page.on('pageerror', e => errors.push(String(e)))
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()) })
-  await page.goto('http://localhost:5199/')
+  await page.goto(url)
   await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dov.animSpeed', '0') })
   await page.reload()
   await page.click('text=New run')
@@ -55,6 +57,6 @@ try {
   if (errors.length) { console.error('e2e: FAILED — page errors:\n' + errors.join('\n')); failed = true }
 } finally {
   await browser.close()
-  await server.close()
+  await server?.close()
 }
 process.exit(failed ? 1 : 0)

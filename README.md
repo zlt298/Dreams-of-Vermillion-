@@ -2,9 +2,13 @@
 
 A personal, non-commercial **LANCER** tactics roguelike. You build lancers in **COMP/CON**, import them, and fight increasingly dangerous enemy teams on a 2.5D isometric grid in the style of XCOM. The rules engine follows the LANCER core book.
 
-> Unofficial fan project for personal use only. LANCER is © Massif Press. COMP/CON and `@massif/lancer-data` are GPL-3.0, so this project is GPL-3.0 too.
+> Unofficial, non-commercial fan project, not affiliated with or endorsed by Massif Press. LANCER is © Massif Press. COMP/CON and `@massif/lancer-data` are GPL-3.0, so this project is GPL-3.0 too (see [License](#license)).
 
-## Quick start
+## Play online
+
+Once GitHub Pages is enabled, the game is at **https://zlt298.github.io/Dreams-of-Vermillion-/**. Nothing to install: it runs in the browser and saves to that browser's local storage. Build pilots in the [COMP/CON web app](https://compcon.app) and import the exported `.json` in the Hangar.
+
+## Quick start (run locally)
 
 ```bash
 git clone --recurse-submodules <this repo>      # or: git submodule update --init
@@ -134,4 +138,18 @@ game/src/render        Three.js isometric view
 game/src/ui            screens and battle HUD
 data/enemies           enemy team files
 docs/                  enemy ruleset
+.github/workflows      GitHub Pages deploy
 ```
+
+### Deploying to GitHub Pages
+
+`.github/workflows/pages.yml` runs the tests, builds `game/dist` and publishes it on every push to `main` (or by hand from the Actions tab). One-time setup, with the repo public:
+
+1. Settings → Pages → **Source: GitHub Actions**.
+2. Push to `main`, or run **Deploy to GitHub Pages** from the Actions tab.
+
+The build uses relative asset paths (`base: './'` in `vite.config.ts`), so it works under any subpath. To smoke-test a production build: `npm run build && npx vite preview`, or point the e2e test at any URL with `E2E_URL=<url> npm run e2e`.
+
+## License
+
+GPL-3.0-or-later; see [`LICENSE`](LICENSE). LANCER and its setting are © Massif Press, and this project is an unofficial fan work. Game data comes from [`@massif/lancer-data`](https://github.com/massif-press/lancer-data) (GPL-3.0) and the pilot format from [COMP/CON](https://github.com/massif-press/compcon) (GPL-3.0). Enemy teams and the enemy ruleset are original.
