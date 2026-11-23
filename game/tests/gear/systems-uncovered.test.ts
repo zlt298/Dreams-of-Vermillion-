@@ -42,9 +42,9 @@ describe('systems: control', () => {
     const r = b.weaponAttack(e, w(e, 'mw_assault_rifle'), { targetId: ally.id }, 'free')
     expect(r.ctxs[0].hit).toBe(false)
   })
-  // BUG: "they become Stunned, gain Immunity to all damage and effects, and can't be … targeted" — the attack is only
+  // regression (fixed): "they become Stunned, gain Immunity to all damage and effects, and can't be … targeted" — the attack is only
   // cancelled (a miss), so the Assault Rifle's Reliable 2 still damages the target.
-  it.fails('Stasis Generator: "Immunity to all damage" – a Reliable weapon deals nothing to the target', () => {
+  it('Stasis Generator: "Immunity to all damage" – a Reliable weapon deals nothing to the target', () => {
     const { a, e, b } = setup(['ms_stasis_generator'])
     const ally = mech({ callsign: 'Ally' })
     ally.pos = { x: 5, y: 6 }
@@ -262,8 +262,8 @@ describe('systems: defence and support', () => {
     expect(ally.overshield).toBe(a.stats.grit + 4)
     expect(sysOf(a, 'ms_aceso_stabilizer').usesLeft).toBe(uses - 1)
   })
-  // BUG: "While they have this Overshield they gain Immunity to Impaired and Jammed." (flags.aceso is set but never read)
-  it.fails('Aceso Stabilizer: Immunity to Impaired and Jammed while the Overshield lasts', () => {
+  // regression (fixed): "While they have this Overshield they gain Immunity to Impaired and Jammed." (flags.aceso is set but never read)
+  it('Aceso Stabilizer: Immunity to Impaired and Jammed while the Overshield lasts', () => {
     const { a, e, b } = setup(['ms_aceso_stabilizer'])
     b.useCustom(a, custom(b, a, /Aceso/), a)
     expect(a.overshield).toBeGreaterThan(0)
@@ -318,11 +318,13 @@ describe('systems: defence and support', () => {
     expect(b.weaponReach(a, rifle)).toBe(15)
     a.stats.attackBonus = 50
     const r = b.weaponAttack(a, rifle, { targetId: e.id }, 'free')
-    expect(r.ctxs[0].hit).toBe(false)
+    expect(r.ok).toBe(false)
+    expect(r.reason).toMatch(/within range 5/)
+    expect(r.ctxs).toHaveLength(0)
   })
-  // BUG: "can't make ranged attacks against or centered on characters … within range 5" — the attack is made and
+  // regression (fixed): "can't make ranged attacks against or centered on characters … within range 5" — the attack is made and
   // cancelled as a miss, so Reliable damage still lands.
-  it.fails('Siege Stabilizers: no attack at all within range 5 (Reliable damage does not land)', () => {
+  it('Siege Stabilizers: no attack at all within range 5 (Reliable damage does not land)', () => {
     const { a, e, b } = setup(['ms_siege_stabilizers'], { x: 5, y: 7 })
     b.useCustom(a, custom(b, a, /Extend Stabilizers/))
     b.weaponAttack(a, w(a, 'mw_assault_rifle'), { targetId: e.id }, 'free')

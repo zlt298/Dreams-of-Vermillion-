@@ -413,10 +413,12 @@ registerScripts([
   {
     id: 't_hunter:1', note: 'Lunge (fly 3 toward target before aux melee attack)',
     beforeAttack(b, self, ctx, role) {
-      if (role !== 'attacker' || !ctx.melee || ctx.weapon?.size !== 'Auxiliary' || b.adjacent(self, ctx.target) || !once(self, 'lunge')) return
+      // the weapon is melee (the attack only counts as melee once the lunge has closed the distance)
+      if (role !== 'attacker' || !ctx.weapon || !b.isMelee(ctx.weapon) || ctx.weapon.size !== 'Auxiliary' || b.adjacent(self, ctx.target) || !once(self, 'lunge')) return
       self.flags['turn:disengaged'] = true
       b.forceMove(self, ctx.target, 3, -1)
       delete self.flags['turn:disengaged']
+      if (b.adjacent(self, ctx.target)) { ctx.melee = true; ctx.ranged = false }
     },
   },
   { id: 't_hunter:2', note: 'Knife Juggler: aux melee gain Thrown 5 (bonus)' },
@@ -497,7 +499,7 @@ registerScripts([
   {
     id: 't_nuclear_cavalier:2', note: 'Fusion Hemorrhage',
     beforeAttack(b, self, ctx, role) {
-      if (role === 'attacker' && self.activeTurn && !ctx.tech && b.has(self, 'dangerzone') && once(self, 'fusion', 'turn')) { ctx.bonusDamage.push({ type: 'Energy', val: '1d6' }); ctx.reasons.push('Fusion Hemorrhage') }
+      if (role === 'attacker' && self.activeTurn && !ctx.tech && b.has(self, 'dangerzone') && once(self, 'fusion', 'turn')) { ctx.bonusDamage.push({ type: 'Energy', val: '1d6' }); ctx.convertDamage = 'Energy'; ctx.reasons.push('Fusion Hemorrhage') }
     },
   },
   // ---------------- Siege Specialist

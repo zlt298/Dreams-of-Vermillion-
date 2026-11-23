@@ -88,10 +88,10 @@ describe('Combined Arms', () => {
 })
 
 describe('Hunter', () => {
-  // BUG: "1/round, when you attack with an Auxiliary melee weapon, you may fly up to 3 spaces directly towards the targeted
+  // regression (fixed): "1/round, when you attack with an Auxiliary melee weapon, you may fly up to 3 spaces directly towards the targeted
   // character before the attack." Lunge only runs inside beforeAttack and skips adjacent targets, but a non-adjacent target
   // is already refused as out of Threat, so the lunge can never happen.
-  it.fails('1 Lunge: "when you attack with an Auxiliary melee weapon, you may fly up to 3 spaces directly towards the targeted character"', () => {
+  it('1 Lunge: "when you attack with an Auxiliary melee weapon, you may fly up to 3 spaces directly towards the targeted character"', () => {
     const { a, e, b } = setup([['t_hunter', 1]], { x: 5, y: 8 }, { weapons: [['Auxiliary', 'mw_segment_knife']] })
     rigDice(b, 20, 15)
     b.weaponAttack(a, w(a, 'mw_segment_knife'), { targetId: e.id }, 'free')
@@ -227,8 +227,8 @@ describe('Grease Monkey, Nuclear Cavalier, Technophile', () => {
     expect(r.ctxs[0].bonusDamage).toContainEqual({ type: 'Energy', val: '1d6' })
     expect(e.hp).toBe(40 - 6)
   })
-  // BUG: "The first ranged or melee attack roll … deals Energy instead of Kinetic or Explosive" — only the bonus is added.
-  it.fails('Nuclear Cavalier 2 Fusion Hemorrhage: the attack "deals Energy instead of Kinetic" (Kinetic resistance does not apply)', () => {
+  // regression (fixed): "The first ranged or melee attack roll … deals Energy instead of Kinetic or Explosive" — only the bonus is added.
+  it('Nuclear Cavalier 2 Fusion Hemorrhage: the attack "deals Energy instead of Kinetic" (Kinetic resistance does not apply)', () => {
     const { a, e, b } = setup([['t_nuclear_cavalier', 2]])
     a.heat = Math.ceil(a.stats.heatcap / 2)
     e.stats.hp = 40; e.hp = 40

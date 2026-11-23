@@ -160,9 +160,9 @@ describe('IPS-N Lancaster', () => {
 })
 
 describe('SSC Metalmark', () => {
-  // BUG: "When the Metalmark is in soft cover, ranged attackers receive +2 difficulty instead of +1 difficulty."
+  // regression (fixed): "When the Metalmark is in soft cover, ranged attackers receive +2 difficulty instead of +1 difficulty."
   // The script looks for the 'Soft cover -1' reason in beforeAttack, but cover is added after every beforeAttack hook.
-  it.fails('Carapace Adaptation: "in soft cover, ranged attackers receive +2 difficulty instead of +1"', () => {
+  it('Carapace Adaptation: "in soft cover, ranged attackers receive +2 difficulty instead of +1"', () => {
     const { a, e, b } = frame('mf_metalmark', { x: 3, y: 3 }, { x: 3, y: 8 })
     b.addArea({ kind: 'soft_cover', tiles: [{ ...a.pos }], expiresRound: 99, ownerId: a.id })
     expect(b.cover(e, a)).toBe('soft')

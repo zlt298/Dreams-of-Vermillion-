@@ -303,6 +303,9 @@ registerScripts([
         },
       })]
     },
+    // immunity to Impaired and Jammed for as long as the Aceso overshield lasts
+    blockAnyStatus: (b, self, target, st) => !!target.flags.aceso && target.overshield > 0 && (st === 'impaired' || st === 'jammed'),
+    blockStatus: (b, self, st) => !!self.flags.aceso && self.overshield > 0 && (st === 'impaired' || st === 'jammed'),
   },
   { id: 'ms_bulwark_mods', note: 'Ignore difficult terrain', init: u => { u.flags.ignoreDifficult = true } },
   {
@@ -951,6 +954,13 @@ registerScripts([
         else self.statuses = self.statuses.filter(s => !s.data?.stab)
       },
     })],
+    // while extended: no melee attacks and no targets within range 5 (refused up front, so nothing — not even Reliable — lands)
+    forbidsTarget(b, self, w, t, from) {
+      if (!self.flags.stabilizers) return undefined
+      if (b.isMelee(w)) return 'Siege Stabilizers: no melee attacks while extended'
+      if (b.distance({ ...self, pos: from } as Unit, t) <= 5) return 'Siege Stabilizers: can’t attack targets within range 5'
+      return undefined
+    },
     beforeAttack(b, self, ctx, role) { if (role === 'attacker' && self.flags.stabilizers && (ctx.melee || b.distance(self, ctx.target) <= 5)) ctx.cancelled = true },
   },
   { id: 'ms_external_ammo_feed', note: 'Equivalent to the Reload quick action (1/round)' },
@@ -1014,6 +1024,8 @@ registerScripts([
       },
     })],
     beforeAnyAttack(b, self, ctx) { if (ctx.target.flags.stasisUntilRound && ctx.target.statuses.some(s => s.data?.stasis)) ctx.cancelled = true },
+    // "immune to all damage": Reliable damage and effects that hit without an attack deal nothing either
+    modifyAnyIncoming(b, self, target, d) { if (target.flags.stasisUntilRound && target.statuses.some(s => s.data?.stasis)) d.amount = 0 },
   },
   {
     id: 'ms_stasis_bolt', note: 'Interdiction Point: contested roll makes an attack miss',

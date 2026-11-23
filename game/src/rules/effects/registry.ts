@@ -47,6 +47,8 @@ export interface AttackCtx {
   rerollOnMiss?: boolean | (() => boolean)
   /** treat target as Invisible for this attack */
   forceInvisible?: boolean
+  /** set by scripts: the weapon's Kinetic/Explosive damage is dealt as this type instead (Fusion Hemorrhage → Energy) */
+  convertDamage?: string
   irreducible?: boolean
   /** set by scripts: the attack is AP (ignores Armor) like the tg_ap tag */
   ap?: boolean
@@ -166,6 +168,8 @@ export interface ItemScript {
   canBeMoved?(b: Battle, self: Unit, source?: Unit): boolean
   /** return true to block a status being applied to this unit */
   blockStatus?(b: Battle, self: Unit, status: string, source?: Unit): boolean
+  /** the attacker's own rule refuses this target (a reason), checked by validTarget (e.g. Siege Stabilizers within range 5) */
+  forbidsTarget?(b: Battle, self: Unit, w: Weapon, target: Unit, from: Pos): string | undefined
   /** this unit inflicted a status on someone */
   onStatusInflicted?(b: Battle, self: Unit, target: Unit, status: string): void
   /** after any attack roll is made (hit/miss known, damage not yet applied) */

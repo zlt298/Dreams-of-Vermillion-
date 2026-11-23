@@ -103,6 +103,11 @@ export function weaponReach(bt: Battle, u: Unit, w: Weapon): number {
   // the official Thrown X tag: the weapon can be thrown at targets within range X
   const tagged = tagVal(bt.profile(w).tags, 'tg_thrown')
   if (tagged) m = Math.max(m, tagged)
+  // Hunter 1 Lunge (1/round): fly up to 3 spaces toward the target before an Auxiliary melee attack
+  if (w.size === 'Auxiliary' && bt.isMelee(w) && u.talents?.some(t => t.id === 't_hunter') && !u.flags['round:lunge']) {
+    const threat = Math.max(1, ...rs.filter(r => r.type === 'Threat').map(r => Number(r.val)))
+    m = Math.max(m, threat + 3)
+  }
   return m
 }
 
@@ -140,6 +145,7 @@ export function validTarget(bt: Battle, u: Unit, w: Weapon, t: Unit, from: Pos =
   if (bt.isBlinded(u) && chebyshev(from, t.pos) > 1 && distanceBetween(bt.map, { ...u, pos: from }, t) > 1) return 'Blinded: can only see adjacent spaces'
   if (bt.has(t, 'hidden') && bt.hostile(u, t)) return 'Hidden'
   if (hasTag(bt.profile(w).tags, 'tg_ordnance') && bt.hostile(u, t) && bt.adjacent({ ...u, pos: from } as Unit, t)) return 'Ordnance can’t target characters engaged with you'
+  for (const s of scriptsFor(u)) { const no = s.forbidsTarget?.(bt, u, w, t, from); if (no) return no }
   const pr = bt.profile(w)
   const tags = pr.tags
   const reach = bt.weaponReach(u, w)
@@ -410,6 +416,7 @@ export function weaponAttack(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, mod
     if (ctx.hit) {
       // Brutal (Predator): a natural 20 crit deals maximum damage and bonus damage
       const base = ctx.maxDamage ? pr.damage.map(d => ({ type: d.type, amount: maxOf(d.val) + bt.flatDamageBonus(u, w, d.type) })) : (ctx.crit ? dmgCrit : dmgNormal).map(x => ({ ...x }))
+      if (ctx.convertDamage) for (const p of base) if (p.type === 'Kinetic' || p.type === 'Explosive') p.type = ctx.convertDamage
       // bonus damage (halved vs multiple targets)
       for (const bd of ctx.bonusDamage) {
         let a = ctx.maxDamage ? maxOf(bd.val) : rollDice(bt.rng, bd.val, { crit: ctx.crit }).total

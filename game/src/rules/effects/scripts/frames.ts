@@ -332,7 +332,8 @@ registerScripts([
     beforeAttack(b, self, ctx, role) {
       if (role !== 'target') return
       if (ctx.mode === 'overwatch') ctx.forceInvisible = true
-      if (ctx.ranged && ctx.reasons.includes('Soft cover -1')) { ctx.difficulty++; ctx.reasons.push('Carapace -1') }
+      // cover is added after the attack hooks, so look at it directly: soft cover gives +2 difficulty instead of +1
+      if (ctx.ranged && !ctx.ignoreCover && b.cover(ctx.attacker, self, b.blastCentre ?? b.attackOrigin ?? undefined) === 'soft') { ctx.difficulty++; ctx.reasons.push('Carapace -1') }
     },
   },
   { id: 'core:mf_metalmark', note: 'Tactical Cloak', onCoreActivate: (b, u) => { b.addStatus(u, 'invisible', 'scene', u) } },
