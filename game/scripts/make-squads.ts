@@ -7,6 +7,7 @@ import { Lancer, type WeaponData, type SystemData } from '../src/data/lancer'
 import type { PilotBuild } from '../src/import/compcon'
 import { validateBuild } from '../src/rules/legality'
 import { mechSP } from '../src/rules/stats'
+import { averageDice } from '../src/rules/rng'
 import { newDraft, setFrame, weaponOptions, systemOptions, setWeapon, syncMounts, EVEREST } from '../src/ui/builder'
 
 type Theme = 'brawl' | 'long' | 'ghost' | 'drone'
@@ -29,6 +30,8 @@ interface SquadSpec { id: string; name: string; theme: Theme; blurb: string; pil
 
 const text = (x: { effect?: string; description?: string }) => `${x.effect ?? ''} ${(x as any).description ?? ''}`.toLowerCase()
 const maxRange = (w: WeaponData) => Math.max(0, ...((w.range ?? []) as any[]).map(r => (r.type === 'Range' || r.type === 'Line' || r.type === 'Cone' ? r.val : r.val * 0.5) ?? 0))
+/** Average damage of a weapon's first profile (0 for no-attack weapons). */
+const avgDamage = (w: WeaponData) => ((((w as any).damage ?? (w as any).profiles?.[0]?.damage) ?? []) as { val: string | number }[]).reduce((a, d) => a + averageDice(d.val as any), 0)
 const hasTag = (x: { tags?: { id: string }[] }, t: string) => !!x.tags?.some(g => g.id === t)
 
 function weaponScore(theme: Theme, w: WeaponData, spec: PilotSpec, frameLic: string, p: PilotBuild): number {
@@ -41,7 +44,8 @@ function weaponScore(theme: Theme, w: WeaponData, spec: PilotSpec, frameLic: str
   const r = maxRange(w)
   if (theme === 'brawl') s += w.type === 'Melee' ? 10 : w.type === 'CQB' ? 6 : r <= 5 ? 2 : 0
   if (theme === 'long') s += w.type === 'Melee' ? -8 : Math.min(r, 20) * 0.6 + (['Rifle', 'Cannon', 'Launcher'].includes(w.type) ? 3 : 0)
-  if (theme === 'ghost') s += w.type === 'Nexus' ? 6 : w.type === 'CQB' ? 4 : w.type === 'Rifle' ? 3 : w.type === 'Melee' ? 2 : 0
+  // ghosts: favour light, quiet weapons, but weigh damage too, or every mount fills with 2-damage Nexus/Pistols
+  if (theme === 'ghost') s += (w.type === 'Nexus' ? 6 : w.type === 'CQB' ? 4 : w.type === 'Rifle' ? 3 : w.type === 'Melee' ? 2 : 0) + avgDamage(w) * 1.5
   if (theme === 'drone') s += w.type === 'Nexus' ? 10 : w.type === 'Launcher' ? 3 : 1
   return s
 }

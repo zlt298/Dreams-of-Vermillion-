@@ -45,6 +45,17 @@ function effectValue(b: Battle, src: Unit, t: Unit, effects: Effect[]): number {
 }
 
 /** Expected value of attacking `t` with `w` from position `from`. */
+/**
+ * Value of a hit with Fragment Signal: 2 heat plus Impaired and Slowed. Statuses the target already has are
+ * worth nothing (repeat invades on a disabled target used to crowd out weapon attacks). Heat destroys a Grunt,
+ * is Energy damage to a character without a Heat Cap, and matters most when it would overheat the target.
+ */
+function invadeValue(b: Battle, u: Unit, t: Unit): number {
+  const status = effectValue(b, u, t, [{ do: 'status', status: 'impaired' } as Effect, { do: 'status', status: 'slowed' } as Effect])
+  const heat = t.isGrunt ? 4 : !t.stats.heatcap ? 2 : t.heat + 2 > t.stats.heatcap ? 4 : 1
+  return status + heat
+}
+
 function attackValue(b: Battle, u: Unit, w: Weapon, t: Unit, from: Pos): number {
   if (!b.hostile(u, t) || t.destroyed) return 0
   const saved = u.pos
@@ -310,7 +321,7 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
         if (b.techTargetValid(u, t, 'lock_on') !== true) continue
         const canInvade = b.canQuickTech(u, 'invade') === true && b.techTargetValid(u, t) === true
         const chance = Math.max(0.1, Math.min(0.95, (21 - (t.stats.edef - u.stats.techAttack)) / 20))
-        if (canInvade) opts.push({ kind: 'invade', target: t, value: chance * (2 * (t.stats.heatcap ? 1 : 0) + 3), cost: 'quick' })
+        if (canInvade) opts.push({ kind: 'invade', target: t, value: chance * invadeValue(b, u, t), cost: 'quick' })
         if (!b.has(t, 'lockon') && b.canQuickTech(u, 'lock_on') === true) opts.push({ kind: 'lockon', target: t, value: 1.2, cost: 'quick' })
       } finally { u.pos = saved }
     }

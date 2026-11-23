@@ -2629,7 +2629,7 @@
        "slots": [
         {
          "size": "Main",
-         "weaponId": "mw_pistol",
+         "weaponId": "mw_assault_rifle",
          "modId": null,
          "profile": 0
         }
@@ -2641,14 +2641,15 @@
        "slots": [
         {
          "size": "Main",
-         "weaponId": "mw_assault_rifle",
+         "weaponId": "mw_pistol",
          "modId": null,
          "profile": 0
         },
         {
          "size": "Auxiliary",
-         "weaponId": null,
-         "modId": null
+         "weaponId": "mw_pistol",
+         "modId": null,
+         "profile": 0
         }
        ],
        "bonusEffects": []
@@ -2658,7 +2659,7 @@
        "slots": [
         {
          "size": "Superheavy",
-         "weaponId": "mw_pistol",
+         "weaponId": "mw_assault_rifle",
          "modId": null,
          "profile": 0
         }
@@ -2752,13 +2753,13 @@
        "slots": [
         {
          "size": "Main",
-         "weaponId": "mw_nexus_light",
+         "weaponId": "mw_charged_blade",
          "modId": null,
          "profile": 0
         },
         {
          "size": "Auxiliary",
-         "weaponId": "mw_fold_knife",
+         "weaponId": "mw_nexus_light",
          "modId": null,
          "profile": 0
         }
@@ -2828,15 +2829,14 @@
        "slots": [
         {
          "size": "Main",
-         "weaponId": "mw_nexus_light",
+         "weaponId": "mw_nexus_hunter_killer",
          "modId": null,
          "profile": 0
         },
         {
          "size": "Auxiliary",
-         "weaponId": "mw_pistol",
-         "modId": null,
-         "profile": 0
+         "weaponId": null,
+         "modId": null
         }
        ],
        "bonusEffects": []
@@ -2981,15 +2981,14 @@
        "slots": [
         {
          "size": "Main",
-         "weaponId": "mw_oracle_lmg_i",
+         "weaponId": "mw_nexus_hunter_killer",
          "modId": null,
          "profile": 0
         },
         {
          "size": "Auxiliary",
-         "weaponId": "mw_nexus_light",
-         "modId": null,
-         "profile": 0
+         "weaponId": null,
+         "modId": null
         }
        ],
        "bonusEffects": []
@@ -2999,13 +2998,13 @@
        "slots": [
         {
          "size": "Auxiliary",
-         "weaponId": "mw_pistol",
+         "weaponId": "mw_oracle_lmg_i",
          "modId": null,
          "profile": 0
         },
         {
          "size": "Auxiliary",
-         "weaponId": "mw_thermal_pistol",
+         "weaponId": "mw_nexus_light",
          "modId": null,
          "profile": 0
         }
@@ -3114,13 +3113,13 @@
        "slots": [
         {
          "size": "Main",
-         "weaponId": "mw_nexus_light",
+         "weaponId": "mw_charged_blade",
          "modId": null,
          "profile": 0
         },
         {
          "size": "Auxiliary",
-         "weaponId": "mw_fold_knife",
+         "weaponId": "mw_nexus_light",
          "modId": null,
          "profile": 0
         }
@@ -3206,15 +3205,14 @@
        "slots": [
         {
          "size": "Main",
-         "weaponId": "mw_nexus_light",
+         "weaponId": "mw_ghoul_nexus",
          "modId": null,
          "profile": 0
         },
         {
          "size": "Auxiliary",
-         "weaponId": "mw_pistol",
-         "modId": null,
-         "profile": 0
+         "weaponId": null,
+         "modId": null
         }
        ],
        "bonusEffects": []
@@ -3224,7 +3222,7 @@
        "slots": [
         {
          "size": "Auxiliary",
-         "weaponId": "mw_catalyst_pistol",
+         "weaponId": "mw_nexus_light",
          "modId": null,
          "profile": 0
         }
@@ -3419,15 +3417,14 @@
        "slots": [
         {
          "size": "Main",
-         "weaponId": "mw_oracle_lmg_i",
+         "weaponId": "mw_nexus_hunter_killer",
          "modId": null,
          "profile": 0
         },
         {
          "size": "Auxiliary",
-         "weaponId": "mw_nexus_light",
-         "modId": null,
-         "profile": 0
+         "weaponId": null,
+         "modId": null
         }
        ],
        "bonusEffects": []
@@ -3437,13 +3434,13 @@
        "slots": [
         {
          "size": "Auxiliary",
-         "weaponId": "mw_pistol",
+         "weaponId": "mw_oracle_lmg_i",
          "modId": null,
          "profile": 0
         },
         {
          "size": "Auxiliary",
-         "weaponId": "mw_thermal_pistol",
+         "weaponId": "mw_nexus_light",
          "modId": null,
          "profile": 0
         }
