@@ -8,6 +8,7 @@ import { buildUnitModel, MODEL_GEOMETRIES } from './models'
 import { Atmosphere, radialTexture } from './atmosphere'
 import { PostFX, type GradeLook } from './post'
 import { resolveQuality, saveQuality, reducedMotion, type Quality } from './quality'
+import { FX, attackStyle } from './fx'
 
 export const LEVEL = 0.55 // world units per elevation level
 
@@ -103,7 +104,6 @@ export class BattleView {
   /** instanced highlight layers keyed by colour+opacity, reused across calls */
   private layers = new Map<string, THREE.InstancedMesh>()
   private pathLine: THREE.Line | null = null
-  private tracer: THREE.Line | null = null
   private battleListener = (e: BattleEvent) => this.onEvent(e)
   private dummy = new THREE.Object3D()
   private zoneMeshes: THREE.Object3D[] = []
@@ -114,7 +114,10 @@ export class BattleView {
   private blobTex!: THREE.Texture
   private hazardMats = new Set<THREE.MeshStandardMaterial>()
   private clock = new THREE.Clock()
-  private slowMotion = reducedMotion()
+  slowMotion = reducedMotion()
+  private fx!: FX
+  private shakeAmp = 0
+  private shakeUntil = 0
 
   constructor(container: HTMLElement, battle: Battle) {
     this.container = container
@@ -147,6 +150,14 @@ export class BattleView {
     sun.target.position.set(this.map.w / 2, 0, this.map.h / 2)
     this.scene.add(sun, sun.target)
     this.scene.add(this.highlightGroup, this.fxGroup, this.mineGroup)
+    const view = this
+    this.fx = new FX({
+      fxGroup: this.fxGroup,
+      wait: ms => this.wait(ms),
+      get skipping() { return view.skipping },
+      get slowMotion() { return view.slowMotion },
+      shake: (a, ms) => this.shake(a, ms),
+    }, this.map.w * this.map.h)
     this.buildTerrain()
     this.buildZones()
     for (const u of battle.units) this.addUnit(u)
@@ -230,7 +241,25 @@ export class BattleView {
       const active = !!u?.activeTurn && !u.destroyed
       const s = active ? 1 + pulse * 0.12 : 1
       v.ring.scale.set(s, s, s)
+      if (u) this.fx.syncUnit(u, v.group, v.height, v.own[1], dt)
     }
+    this.fx.update(dt)
+    if (this.shakeUntil) {
+      this.placeCamera()
+      if (performance.now() < this.shakeUntil) {
+        const a = this.shakeAmp / this.zoom
+        this.camera.position.x += (Math.random() - 0.5) * a
+        this.camera.position.y += (Math.random() - 0.5) * a
+        this.camera.position.z += (Math.random() - 0.5) * a
+      } else this.shakeUntil = 0
+    }
+  }
+
+  /** Brief camera shake (off under reduced motion and when skipping). */
+  shake(amount: number, ms: number) {
+    if (this.slowMotion || this.skipping) return
+    this.shakeAmp = Math.max(amount, performance.now() < this.shakeUntil ? this.shakeAmp : 0)
+    this.shakeUntil = performance.now() + ms / Math.max(1, this.speed)
   }
 
   /** Free every GPU resource this view created and detach from the battle and the window. */
@@ -255,6 +284,7 @@ export class BattleView {
     this.materials.clear()
     this.post?.dispose()
     this.post = null
+    this.fx.dispose()
     this.atmosphere.dispose()
     this.blobTex.dispose()
     this.hazardMats.clear()
@@ -707,15 +737,17 @@ export class BattleView {
         break
       }
       case 'attack':
-        this.enqueue(() => this.animateAttack(e.attackerId, e.targetId, e.hit, e.crit))
+        this.enqueue(() => this.animateAttack(e.attackerId, e.targetId, e.hit, e.crit, e.weapon))
         break
       case 'damage':
+        if (e.kind === 'structure' || e.kind === 'stress') this.enqueue(async () => { const v = this.units.get(e.unitId); if (v && !this.skipping) this.fx.hurt(v.group.position.clone().setY(v.group.position.y + v.height * 0.6), e.kind as 'structure' | 'stress') }, true)
         if (e.kind === 'hp' || e.kind === 'heat' || e.kind === 'structure' || e.kind === 'stress') this.enqueue(() => this.floatText(e.unitId, e.kind === 'hp' ? `-${e.amount}` : e.kind === 'heat' ? `+${e.amount} heat` : e.kind.toUpperCase(), e.kind === 'hp' ? '#ff6b6b' : e.kind === 'heat' ? '#ffae42' : '#ff3355'), true)
         break
       case 'destroyed':
         this.enqueue(() => this.animateDestroyed(e.unitId))
         break
       case 'area':
+        if (e.kind === 'explosion' && e.tiles.length) this.enqueue(async () => this.blast(e.tiles), true)
         this.enqueue(() => this.flashTiles(e.tiles, e.kind === 'explosion' ? 0xff7b29 : e.kind === 'soft_cover' ? 0xb0b0b0 : 0xffb347), true)
         break
       case 'terrain':
@@ -777,6 +809,8 @@ export class BattleView {
       const ea = (elevationAt(this.map, u, a) + (u.flying ? 1 : 0)) * LEVEL
       const eb = (elevationAt(this.map, u, b) + (u.flying ? 1 : 0)) * LEVEL
       vis.group.rotation.y = Math.atan2(b.x - a.x, b.y - a.y)
+      vis.group.rotation.x = u.flying ? 0.12 : 0.06 // lean into the move
+      if (!this.skipping && !u.flying) this.fx.footstep(new THREE.Vector3(a.x + fs / 2, ea + 0.05, a.y + fs / 2), this.dustColor())
       const steps = 6
       for (let s = 1; s <= steps; s++) {
         const t = s / steps
@@ -784,61 +818,58 @@ export class BattleView {
         await this.wait(14)
       }
     }
+    vis.group.rotation.x = 0
     vis.shown = { ...path[path.length - 1] }
   }
-  private async animateAttack(aid: string, tid: string, hit: boolean, crit: boolean) {
+  private dustColor(): number {
+    return ({ outskirts: 0x8a7a62, industrial: 0x6a6258, cleanroom: 0xb06a48 } as const)[this.map.theme ?? 'outskirts']
+  }
+  private async animateAttack(aid: string, tid: string, hit: boolean, crit: boolean, weaponName?: string) {
     const a = this.units.get(aid), t = this.units.get(tid)
     if (!a || !t) return
-    const ap = a.group.position.clone().add(new THREE.Vector3(0, 0.7, 0))
-    const tp = t.group.position.clone().add(new THREE.Vector3(hit ? 0 : 0.6, 0.6, hit ? 0 : 0.4))
+    const attacker = this.battle.unit(aid)
+    const weapon = attacker?.weapons.find(w => w.name === weaponName)
+    const style = attackStyle(weapon)
+    const ap = a.group.position.clone().add(new THREE.Vector3(0, Math.max(0.5, a.height * 0.62), 0))
+    const tp = t.group.position.clone().add(new THREE.Vector3(hit ? 0 : 0.7, Math.max(0.4, t.height * 0.55), hit ? 0 : 0.5))
     a.group.rotation.y = Math.atan2(tp.x - ap.x, tp.z - ap.z)
-    if (!this.tracer) {
-      const geo = new THREE.BufferGeometry()
-      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3))
-      this.tracer = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffa64d }))
-      this.tracer.frustumCulled = false
-      this.tracer.visible = false
-      this.fxGroup.add(this.tracer)
-    }
-    const attr = this.tracer.geometry.getAttribute('position') as THREE.BufferAttribute
-    attr.setXYZ(0, ap.x, ap.y, ap.z)
-    attr.setXYZ(1, tp.x, tp.y, tp.z)
-    attr.needsUpdate = true
-    ;(this.tracer.material as THREE.LineBasicMaterial).color.setHex(crit ? 0xfff066 : hit ? 0xffa64d : 0x8899aa)
-    this.tracer.visible = true
-    await this.wait(160)
-    this.tracer.visible = false
-    if (hit) {
-      const flash = new THREE.Mesh(SHARED.sphere, this.basic(crit ? 0xfff066 : 0xff8c3a, 0.85))
-      flash.scale.setScalar(crit ? 0.45 : 0.3)
-      flash.position.copy(tp)
-      this.fxGroup.add(flash)
-      await this.wait(120)
-      this.fxGroup.remove(flash)
-    } else {
-      await this.floatText(tid, 'MISS', '#9fb3c8')
-    }
+    if (this.skipping) { if (!hit) await this.floatText(tid, 'MISS', '#9fb3c8'); return }
+    await this.fx.attack(a.group, ap, tp, style, hit, crit)
+    if (!hit) await this.floatText(tid, 'MISS', '#9fb3c8')
+  }
+  /** Area explosion: flash, ring and scorch marks. */
+  private blast(tiles: Pos[]) {
+    if (this.skipping && this.speed === 0) return
+    let x = 0, z = 0, y = 0
+    for (const p of tiles) { x += p.x + 0.5; z += p.y + 0.5; y = Math.max(y, this.topY(p)) }
+    const c = new THREE.Vector3(x / tiles.length, y + 0.4, z / tiles.length)
+    this.fx.areaBlast(c, tiles.map(p => ({ x: p.x, y: p.y, top: this.topY(p) })))
   }
   private async animateDestroyed(id: string) {
     const vis = this.units.get(id)
     if (!vis) return
-    // the fading material is animated, so it is per-explosion and disposed right after
-    const boomMat = new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.9 })
-    const boom = new THREE.Mesh(SHARED.sphere, boomMat)
-    boom.position.copy(vis.group.position).add(new THREE.Vector3(0, 0.5, 0))
-    this.fxGroup.add(boom)
-    for (let i = 0; i < 10; i++) {
-      boom.scale.setScalar(0.2 * (1 + i * 0.6))
-      boomMat.opacity = 0.9 - i * 0.08
-      vis.group.position.y -= 0.03
-      await this.wait(25)
+    const u = this.battle.unit(id)
+    const fs = u ? footprintSize(u) : 1
+    const floor = vis.group.position.y
+    const at = vis.group.position.clone().add(new THREE.Vector3(0, Math.max(0.4, vis.height * 0.5), 0))
+    if (!this.skipping) {
+      const boom = this.fx.explode(at, 0.8 + fs * 0.4, floor)
+      for (let i = 0; i < 8; i++) { vis.group.position.y -= 0.04; vis.group.rotation.z += 0.05; await this.wait(20) }
+      await boom
     }
-    this.fxGroup.remove(boom)
-    boomMat.dispose()
     vis.group.visible = false
-    const wreck = new THREE.Mesh(SHARED.wreck, this.standard(0x2b2b2b))
-    wreck.position.copy(vis.group.position).add(new THREE.Vector3(0, 0.1, 0))
+    // the wreck: a tilted, scorched hull
+    const wreck = new THREE.Mesh(SHARED.wreck, this.wreckMat())
+    wreck.scale.set(fs * 1.1, 1.4, fs * 1.1)
+    wreck.position.set(vis.group.position.x, floor + 0.1, vis.group.position.z)
+    wreck.rotation.set(0.18, (id.length * 1.3) % Math.PI, -0.12)
+    wreck.castShadow = wreck.receiveShadow = true
     this.scene.add(wreck)
+  }
+  private wreckMat(): THREE.MeshStandardMaterial {
+    let m = this.materials.get('wreck') as THREE.MeshStandardMaterial | undefined
+    if (!m) { m = new THREE.MeshStandardMaterial({ color: 0x1e1c1b, roughness: 0.95, emissive: 0x4a1400, emissiveIntensity: 0.5 }); this.materials.set('wreck', m) }
+    return m
   }
   private async flashTiles(tiles: Pos[], color: number) {
     if (this.skipping) return

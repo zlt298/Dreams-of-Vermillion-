@@ -69,7 +69,7 @@ class Builder {
   group = new THREE.Group()
   constructor(private mats: ModelMaterials, readonly paint: THREE.MeshStandardMaterial, readonly dark: THREE.MeshStandardMaterial, readonly pal: Palette) {}
   glow(): THREE.Material {
-    return this.mats.shared(`glow:${this.pal.glow}`, () => new THREE.MeshBasicMaterial({ color: this.pal.glow }))
+    return this.mats.shared(`glow:${this.pal.glow}`, () => new THREE.MeshBasicMaterial({ color: new THREE.Color(this.pal.glow).multiplyScalar(2.2) })) // HDR: blooms on 'high'
   }
   trim(): THREE.Material {
     return this.mats.shared(`trim:${this.pal.trim}`, () => new THREE.MeshStandardMaterial({ color: this.pal.trim, roughness: 0.5, metalness: 0.4 }))
