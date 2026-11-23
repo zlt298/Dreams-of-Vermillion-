@@ -226,8 +226,21 @@ The 32 systems that used to be resolved by hand now have scripts (`scripts/syste
 - **Zero-g areas:** characters inside fly and are Slowed unless they could already fly. Tesseract Spread Focus creates one.
 - **Destructible terrain (house rule):** each block level has 10 HP and Evasion 5; a skirmish can target a block, and a block with no levels left becomes rubble. Jackhammer, the BB charges, the Apocalypse Rail, COREBURN, Unstoppable Force and Earthshaker (raising debris cover) all use it.
 
+### Player decisions (in-HUD picker)
+- `Battle.choose` asks player mechs; enemies, AI-driven turns, autoplay and tests take the default.
+- Commands and AI turns run as transactions: when the player has to decide, the battle rolls back to a checkpoint, the HUD picker asks (number keys, Esc for the default) and the command replays with the answer. The seeded RNG makes the replay exact.
+- Brace and Overwatch "ask" now use the picker. A third policy, **Other reactions**, governs scripted reactions (Vorpal Gun, Intercede, Area Denial and the rest).
+
+### Weapons, mods and the last partial scripts
+- **Manual weapons and mods:** Autopod, Vorpal Gun, Mimic Gun, Siege Cannon modes, Prototype Weapons I–III (set-up and uses last until a Full Repair), Apocalypse Rail, UNCLE and Throughbolt Rounds (weapon-card toggle).
+- **Frames and cores:** Drake Fortress, Mourning Cloak (true teleport moves), Goblin Reactive Code and INSTINCT Rig, Napoleon Heavy Shielding.
+- **Weapons, mods, core bonuses:** Combat Drill, Pinaka (second area and delayed strike), Ghast Nexus drone mode, Annihilation Nexus drone centring, Plasma Thrower (cone/line toggle), Shock Wreath, Overpower Caliber, Briareos, Ghostweave, Open Door.
+- **Systems:** all 32 partial systems rewritten against their rules text.
+- **Talents:** all 16 partial ranks; the Bondmate is chosen once and kept for the run.
+- **Engine additions:** save sources, line-of-sight zones, per-type resistance, straight-line moves, teleport lockout, chained turns, forced actions, attack rerolls and max damage.
+
 ### Rules fidelity snapshot
-Out of the 392 items in lancer-data, 319 (81%) are fully executed and 63 are approximated. The rest show a `*` and log their rules text for you to resolve by hand.
+Out of the 392 items in lancer-data, 390 (99%) are fully executed and 2 are approximated (Goblin INSTINCT Rig turn timing, PUPPETMASTER group moves). The rest show a `*` and log their rules text for you to resolve by hand.
 
 | section | scripted | partial | auto | manual |
 |---|---|---|---|---|
@@ -253,24 +266,17 @@ Out of the 392 items in lancer-data, 319 (81%) are fully executed and 63 are app
 ✅ The framework and 16 drone/deployable items are done (see Done).
 
 Remaining here:
-- Approximations: Assassin Drone's reaction trigger, the Command Plate's ally flight, OASIS Wall's energy resistance and straight-line movement, Interdiction Field's teleport lockout.
 - Using the framework for the remaining deployable-based player items (Javelin Rockets, charges, NHP-driven drones).
 
 ### 2. Player content (L, in batches, each with a test)
 Driven by `npm run coverage -- --list`.
-1. ✅ **CORE systems:** done; Goblin Symbiosis is partial.
-2. ✅ **Systems:** every system is now executed; 32 are approximations (see `npm run coverage -- --list`).
-3. ✅ **Talent ranks:** every rank is now executed; 16 are approximations (see `npm run coverage -- --list`).
-4. **Manual weapons and mods:**
-   - Vorpal Gun, Mimic Gun, Siege Cannon, Autopod
-   - prototype weapons
-   - Throughbolt Rounds, UNCLE
-5. **Finish the partial scripts** (39 items).
-6. ✅ **Grapple completion and environment rules:** done (see Done).
+✅ Done: 390 of 392 items are fully executed (see Done). Two documented simplifications remain:
+- **Goblin INSTINCT Rig:** the attached Goblin acts right after its host's turn, rather than at any point during it.
+- **PUPPETMASTER Guide the Flock:** drones move as a group (yours, hostile or all) toward one chosen space, rather than each to its own space.
 
 ### 3. UX
 1. Minimap or overview toggle (S).
-2. In-HUD reaction prompts instead of `confirm()` (M).
+2. ✅ In-HUD reaction prompts instead of `confirm()` (done: the decision picker).
 3. Threat overlay (M).
 4. Campaign map edges and hover previews (S).
 5. Overcharge clarity (S).

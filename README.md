@@ -100,14 +100,14 @@ It is deterministic (seeded) and has no UI code, so tests and the AI run headles
 
 ```
 section            scripted partial   auto  manual   done%
-Frame traits             27       2      0       0     93%
-Core systems             26       3      0       0     90%
-Weapons                  19       5     53       8     85%
-Systems                  88      32      4       0     74%
-Mods                      2       1      3       2     63%
-Talent ranks             65      16      6       0     82%
-Core bonuses              9       4     17       0     87%
-TOTAL 319/392 (81%) fully executed by the engine, 63 partially
+Frame traits             29       0      0       0    100%
+Core systems             28       1      0       0     97%
+Weapons                  32       0     53       0    100%
+Systems                 119       1      4       0     99%
+Mods                      5       0      3       0    100%
+Talent ranks             81       0      6       0    100%
+Core bonuses             13       0     17       0    100%
+TOTAL 390/392 (99%) fully executed by the engine, 2 partially
 ```
 
 - **auto**: fully described by structured data (bonuses, damage, ranges, tags, on-hit statuses).
@@ -122,6 +122,8 @@ To add fidelity, register a script keyed by the item id in `game/src/rules/effec
 - Rules follow the core book: hard cover must be adjacent to the target and at least as large as it (distant obstructions give soft cover); Blast cover is measured from the blast centre; armor comes off an attack's total once; one reaction per turn, each type once per round; wreckage is hard cover and difficult terrain. Being 2+ levels above cover negates it.
 - Wreckage can be crossed (as difficult terrain) but you can't end a move on it.
 - Destructible terrain is a house rule: each level of a terrain block has 10 HP and Evasion 5, and a block with no levels left becomes rubble.
+- Two items are simplified: the Goblin's INSTINCT Rig acts right after its host's turn (not at any point during it), and PUPPETMASTER's Guide the Flock moves drones as a group toward one space.
+- Player decisions (reactions, firing modes, effect choices) appear in an in-HUD picker. Per-mech policies (auto / ask / off) cover Brace, Overwatch and other reactions; the AI and Auto turns take the default.
 - Flight altitude is abstract (one level). Flyers land when Immobilized or Stunned, or when they fail an Agility save after Structure or Stress damage.
 - Each weapon can attack once per turn via Skirmish or Barrage. Reactions and free attacks are exempt.
 - Reactions that need a player decision (most talent and system reactions, Brace, Overwatch) fire automatically under a sensible policy.
