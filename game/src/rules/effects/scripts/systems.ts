@@ -3,7 +3,7 @@ import { blastTiles, burstTiles, footprint, unitsOnTiles, chebyshev } from '../.
 import { rollDice } from '../../rng'
 import { dropSystemBonuses } from '../../stats'
 import type { Effect, Pos, SystemInst, Unit } from '../../types'
-import type { Battle } from '../../battle'
+import { PendingChoice, type Battle } from '../../battle'
 import { deployableUnit } from '../generic'
 import { Lancer } from '../../../data/lancer'
 import { registerScripts, type CustomAction, type ItemScript } from '../registry'
@@ -647,7 +647,7 @@ registerScripts([
       const r = b.reachable(u, u.moveLeft)
       const score = (p: Pos) => Math.max(Math.abs(p.x - o.to.x), Math.abs(p.y - o.to.y)) * o.dir
       const best = o.dir === 0 ? null : [...r.values()].sort((x, y) => score(y.pos) - score(x.pos))[0]
-      if (best && (best.pos.x !== u.pos.x || best.pos.y !== u.pos.y)) { b.say(`${self.name} steers ${u.name}'s move.`); try { b.move(u, best.pos, { mode: 'standard' }) } catch { /* blocked */ } }
+      if (best && (best.pos.x !== u.pos.x || best.pos.y !== u.pos.y)) { b.say(`${self.name} steers ${u.name}'s move.`); try { b.move(u, best.pos, { mode: 'standard' }) } catch (e) { if (e instanceof PendingChoice) throw e /* else blocked */ } }
       u.moveLeft = 0
     },
     onAnyTurnEnd(b, self, u) {

@@ -141,6 +141,14 @@ export function endTurnInner(bt: Battle, u: Unit) {
   }
   for (const m of bt.mines) if (m.ownerId === u.id && !m.armed) { m.armed = true; bt.say(`${m.name} arms.`); bt.emit({ type: 'mine', mineId: m.id, pos: m.pos, added: true }) }
   bt.checkVictory()
+  bt.handOverTurn(u)
+}
+
+/**
+ * `u`'s turn has ended (normally, or by its destruction): pass the turn to whoever acts next
+ * (a chained unit, the other side, the same side, or a new round). Does nothing once the battle is won.
+ */
+export function handOverTurn(bt: Battle, u: Unit) {
   if (bt.winner) return
   const chain = bt.chainTurn ? bt.unit(bt.chainTurn) : undefined
   if (chain && !chain.destroyed && chain.activationsLeft > 0) { bt.currentSide = chain.side; return }
@@ -214,6 +222,8 @@ export function canSpend(bt: Battle, u: Unit, cost: 'quick' | 'full' | 'protocol
     return true
   }
   if (!u.activeTurn) return 'Not this unit’s turn'
+  // Brace: the next turn allows only one quick action (or a full action with Drake Fortress), no free actions or protocols
+  if ((cost === 'free' || cost === 'protocol') && bt.has(u, 'bracing_recovery')) return 'Recovering from brace'
   if (bt.has(u, 'stunned') && cost !== 'free') return 'Stunned'
   if (bt.has(u, 'stunned')) return 'Stunned'
   if (bt.has(u, 'shutdown')) return 'Shut down'
@@ -282,5 +292,10 @@ export function endInterjection(bt: Battle, u: Unit) {
   u.activeTurn = false
   bt.say(`${u.name} hands control back${host ? ` to ${host.name}` : ''}.`, 'turn')
   if (host && !host.destroyed) { bt.activeId = host.id; host.activeTurn = true; bt.emit({ type: 'turn', unitId: host.id }) }
-  else { bt.activeId = null; bt.checkVictory() }
+  else {
+    // the host was destroyed during the interjection: its turn is over, so the turn passes on as usual
+    bt.activeId = null
+    bt.checkVictory()
+    if (host) bt.handOverTurn(host)
+  }
 }

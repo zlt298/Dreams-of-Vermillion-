@@ -172,26 +172,36 @@ export function destroy(bt: Battle, u: Unit, why: string) {
   for (const o of bt.alive()) for (const s of scriptsFor(o)) s.onDestroyed?.(bt, o, u)
   for (const s of scriptsFor(u)) s.onDestroyed?.(bt, u, u)
   // drones/deployables persist; owned drones of destroyed mechs remain until the scene ends
-  const ownTurn = u.id === bt.activeId && bt.endingTurnOf !== u.id
+  // a character acting inside another's turn (Goblin INSTINCT Rig) isn't taking its own turn: its death hands control back to the host
+  const interjecting = bt.interjection?.unit === u.id
+  const ownTurn = u.id === bt.activeId && bt.endingTurnOf !== u.id && !interjecting
+  // whose turn is in progress (the host's during an interjection)
+  const turnOf = bt.interjection?.host ?? bt.activeId
   // its turn is over: statuses timed to the end of this unit's turn expire now
   if (ownTurn) bt.tickStatuses(u, false)
   // statuses timed to its future turns would never tick again: they end with the current turn instead
   // (or at the end of the affected unit's next turn, between turns). Dying during its own endTurn: that tick is about to run.
   for (const o of bt.units) for (const st of o.statuses) if (st.clockUnit === u.id && o !== u) {
-    if (bt.endingTurnOf !== u.id) st.clockUnit = bt.activeId && bt.activeId !== u.id ? bt.activeId : o.id
+    if (bt.endingTurnOf !== u.id) st.clockUnit = turnOf && turnOf !== u.id ? turnOf : o.id
     st.turnsLeft = 1
     delete st.atStart
   }
-  if (ownTurn) {
+  // likewise zones lasting until the end of its (next) turn (Smoke Mine): they end with the current turn,
+  // or right away if that was its own turn or no turn is in progress
+  if (bt.endingTurnOf !== u.id && bt.areas.some(a => a.expiresAfterTurnOf === u.id)) {
+    const cur = turnOf && turnOf !== u.id ? turnOf : null
+    if (cur) { for (const a of bt.areas) if (a.expiresAfterTurnOf === u.id) { a.expiresAfterTurnOf = cur; a.turnsLeft = 1 } }
+    else bt.areas = bt.areas.filter(a => a.expiresAfterTurnOf !== u.id)
+    bt.invalidateTerrain()
+  }
+  if (interjecting) {
+    bt.endInterjection(u)
+    bt.checkVictory()
+  } else if (ownTurn) {
     u.activeTurn = false
     bt.activeId = null
     bt.checkVictory()
-    if (!bt.winner) {
-      const opp = other(u.side)
-      if (bt.hasActivations(opp)) bt.currentSide = opp
-      else if (bt.hasActivations(u.side)) bt.currentSide = u.side
-      else bt.endRound()
-    }
+    bt.handOverTurn(u)
   } else bt.checkVictory()
 }
 
