@@ -1,15 +1,13 @@
 // Whole-battle invariants: the same seed replays the same battle, and no auto-battle leaves a unit
-// in an impossible state (HP above max, negative stress, a destroyed unit still acting...).
+// in an impossible state (HP above max, negative stress, two mechs on one tile...) or gives a destroyed unit a turn.
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { Battle } from '../src/rules/battle'
-import { autoBattle, aiErrors } from '../src/ai/ai'
-import { buildTeam } from '../src/enemies/build'
-import { generateMap } from '../src/run/mapgen'
-import { pregenUnit } from './helpers'
+import { Battle } from '../../src/rules/battle'
+import { autoBattle, aiErrors } from '../../src/ai/ai'
+import { buildTeam } from '../../src/enemies/build'
+import { generateMap } from '../../src/run/mapgen'
+import { pregenUnit, teamFile } from '../support'
 
-const team = JSON.parse(readFileSync(join(__dirname, '../../data/enemies/t1-checkpoint-garrison.json'), 'utf8'))
+const team = teamFile('t1-checkpoint-garrison')
 
 function setup(seed: number) {
   const squad = ['Vanguard', 'Assault', 'Sniper', 'Hacker'].map(n => pregenUnit(n))
@@ -40,10 +38,15 @@ describe('battle invariants', () => {
   })
 
   it.each([1, 2, 5, 8])('seed %s: auto-battle keeps every unit in a legal state', seed => {
-    aiErrors.length = 0
     const b = setup(seed)
+    // no turn ever starts for a unit that is already destroyed
+    const turnsOfDestroyed: string[] = []
+    let turns = 0
+    b.listeners.push(ev => { if (ev.type === 'turn') { turns++; if (b.unit(ev.unitId)?.destroyed) turnsOfDestroyed.push(ev.unitId) } })
     autoBattle(b, 10)
     expect(aiErrors).toEqual([])
+    expect(turns).toBeGreaterThan(0)
+    expect(turnsOfDestroyed).toEqual([])
     for (const u of b.units) {
       expect(u.hp).toBeLessThanOrEqual(u.stats.hp)
       expect(u.hp).toBeGreaterThanOrEqual(0)

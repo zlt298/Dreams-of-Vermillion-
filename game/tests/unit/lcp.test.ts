@@ -1,13 +1,13 @@
 // LCP importer tests. They use a small invented NPC class: no official (paid) content lives in the repo.
 import { describe, expect, it } from 'vitest'
 import { zipSync, strToU8 } from 'fflate'
-import { readLcp, tierVal, tierText, parseEffects, parseAreaSave } from '../src/import/lcp'
-import { generateOfficialTeam } from '../src/enemies/official'
-import { buildTeam } from '../src/enemies/build'
-import { teamBudget } from '../src/enemies/ruleset'
-import { autoBattle } from '../src/ai/ai'
-import { Battle } from '../src/rules/battle'
-import { flatMap, pregenUnit } from './helpers'
+import { readLcp, tierVal, tierText, parseEffects, parseAreaSave } from '../../src/import/lcp'
+import { generateOfficialTeam } from '../../src/enemies/official'
+import { buildTeam } from '../../src/enemies/build'
+import { teamBudget } from '../../src/enemies/ruleset'
+import { autoBattle } from '../../src/ai/ai'
+import { Battle } from '../../src/rules/battle'
+import { flatMap, pregenUnit } from '../support'
 
 const stats = { armor: 1, hp: [12, 14, 16], evade: [8, 9, 10], edef: [8, 8, 8], heatcap: 6, speed: 4, sensor: 8, save: [10, 11, 12], hull: [1, 2, 3], agility: [0, 1, 1], systems: [0, 0, 1], engineering: [1, 1, 2], size: 1, activations: 1 }
 const v2Features = [

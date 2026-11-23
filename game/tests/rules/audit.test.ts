@@ -2,29 +2,12 @@
 // (turns, actions, movement, attacks, cover, damage, statuses, structure and overheating). Each check
 // names the rule it covers in our own words; dice are rigged where the rule's outcome depends on a roll.
 import { describe, expect, it } from 'vitest'
-import { battle, flatMap, pregenUnit } from './helpers'
-import type { Battle } from '../src/rules/battle'
-import type { Unit } from '../src/rules/types'
+import { battle, duel as duelOn, flatMap, pregenUnit, rigDice } from '../support'
+import type { Battle } from '../../src/rules/battle'
+import type { Unit } from '../../src/rules/types'
 
-/** Make the next d(sides) rolls return these values (then fall back to the real generator). */
-function rig(b: Battle, sides: number, ...values: number[]) {
-  const rng = b.rng as any
-  rng.rigged ??= {} as Record<number, number[]>
-  ;(rng.rigged[sides] ??= []).push(...values)
-  if (!rng.origD) {
-    rng.origD = rng.d.bind(rng)
-    rng.d = (s: number) => (rng.rigged[s]?.length ? rng.rigged[s].shift() : rng.origD(s))
-  }
-}
-
-function duel(mapF?: Parameters<typeof flatMap>[2], aPos = { x: 1, y: 5 }, ePos = { x: 6, y: 5 }) {
-  const a = pregenUnit('Assault')
-  const e = pregenUnit('Sniper', 'enemy')
-  a.pos = aPos
-  e.pos = ePos
-  const b = battle([a, e], flatMap(14, 14, mapF))
-  return { a, e, b }
-}
+/** Assault vs Sniper on a 14x14 map (positions overridable). */
+const duel = (map?: Parameters<typeof flatMap>[2], a = { x: 1, y: 5 }, e = { x: 6, y: 5 }) => duelOn({ map, size: 14, a, e })
 const firstRanged = (u: Unit) => u.weapons.find(w => !w.destroyed && w.type !== 'Melee' && w.size !== 'Superheavy' && w.profiles[0]?.range.some(r => r.type === 'Range' && Number(r.val) >= 5))!
 
 // ------------------------------------------------------------------------------------------------ turns
@@ -60,7 +43,7 @@ describe('audit: turns and actions', () => {
     b.beginTurn(a)
     expect(heatOf(() => b.overcharge(a))).toBe(1)
     expect(() => b.overcharge(a)).toThrow()
-    const next = (sides: number, roll: number) => { b.endTurn(a); b.beginTurn(b.units.find(u => u.side === 'enemy')!); b.endTurn(); b.beginTurn(a); rig(b, sides, roll); return heatOf(() => b.overcharge(a)) }
+    const next = (sides: number, roll: number) => { b.endTurn(a); b.beginTurn(b.units.find(u => u.side === 'enemy')!); b.endTurn(); b.beginTurn(a); rigDice(b, sides, roll); return heatOf(() => b.overcharge(a)) }
     expect(next(3, 3)).toBe(3)
     expect(next(6, 5)).toBe(5)
     expect(next(6, 2)).toBe(6)
@@ -157,15 +140,15 @@ describe('audit: attacks and cover', () => {
   it('melee attacks ignore cover', () => {
     const { a, e, b } = duel((x, y) => (x === 7 && y === 4 ? { h: 3, kind: 'ground' } : undefined), { x: 5, y: 5 }, { x: 6, y: 5 })
     const melee = a.weapons.find(w => w.type === 'Melee')
-    if (!melee) return
-    expect(b.previewAttack(a, melee, e).ctx.difficulty).toBe(0)
+    expect(melee).toBeDefined()
+    expect(b.previewAttack(a, melee!, e).ctx.difficulty).toBe(0)
   })
 
   it('a natural 20 or a total of 20+ on a melee or ranged attack crits; NPCs never crit', () => {
     const { a, e, b } = duel()
     b.beginTurn(a)
     e.stats.evasion = 5
-    rig(b, 20, 20)
+    rigDice(b, 20, 20)
     const r = b.skirmish(a, firstRanged(a), { targetId: e.id })
     expect(r.ok).toBe(true)
     const log = b.log.map(l => l.text).join('\n')
@@ -177,7 +160,7 @@ describe('audit: attacks and cover', () => {
     b.addStatus(e, 'invisible')
     b.beginTurn(a)
     e.stats.evasion = 1
-    rig(b, 6, 2) // ≤3: the attack misses outright
+    rigDice(b, 6, 2) // ≤3: the attack misses outright
     b.skirmish(a, firstRanged(a), { targetId: e.id })
     expect(b.log.map(l => l.text).join('\n')).toMatch(/misses \(invisible\)/) // (Reliable damage still applies on a miss)
   })
@@ -245,7 +228,7 @@ describe('audit: damage', () => {
       b.applyDamage(a, [{ type: 'Burn', amount: 3 }])
       const hp = a.hp
       a.stats.eng = 0
-      rig(b, 20, pass ? 20 : 1)
+      rigDice(b, 20, pass ? 20 : 1)
       b.endTurn(a)
       expect(a.hp, pass ? 'pass' : 'fail').toBe(pass ? hp : hp - 3)
       expect(a.burn).toBe(pass ? 0 : 3)
@@ -260,7 +243,7 @@ describe('audit: damage', () => {
     e.heat = 0
     b.beginTurn(a)
     e.stats.edef = 1
-    rig(b, 20, 15)
+    rigDice(b, 20, 15)
     b.invade(a, e)
     expect(e.heat).toBe(1)
   })
@@ -268,7 +251,7 @@ describe('audit: damage', () => {
   it('heat over the cap: 1 stress, heat clears, then only the heat beyond what it took to exceed the cap is kept', () => {
     const { e, b } = duel()
     e.heat = e.stats.heatcap - 1
-    rig(b, 6, 6)
+    rigDice(b, 6, 6)
     b.addHeat(e, 4) // 2 of the 4 take it over the cap: 2 carry over
     expect(e.stress).toBe(e.stats.stress - 1)
     expect(e.heat).toBe(2)
@@ -295,8 +278,10 @@ describe('audit: statuses and conditions', () => {
     const imp = b.previewAttack(a, firstRanged(a), e).ctx
     expect(imp.accuracy - imp.difficulty).toBe(base.accuracy - base.difficulty - 1)
     a.stats.hull = 0
-    rig(b, 20, 10, 6)
-    expect(b.save(a, 'hull', 10)).toBe(false) // 10 + 0 - d6(6) < 10
+    // (this used to rig the d20 with [10, 6]: the 6 meant for the difficulty die was never rolled)
+    rigDice(b, 20, 10)
+    rigDice(b, 6, 1)
+    expect(b.save(a, 'hull', 10)).toBe(false) // 10 + 0 - d6(1) < 10: even the lowest difficulty die fails it
   })
 
   it('Jammed: no attacks except Improvised Attack, Grapple and Ram; no tech actions', () => {
@@ -315,8 +300,10 @@ describe('audit: statuses and conditions', () => {
     const ctx = b.previewAttack(a, firstRanged(a), e).ctx
     expect(b.defenseOf(e, ctx)).toBeLessThanOrEqual(5)
     e.stats.agi = 6
-    rig(b, 20, 20)
+    // an automatic failure: no die is rolled at all (a rigged natural 20 used to go unrolled here)
+    const rng = b.rng.state
     expect(b.save(e, 'agi', 5)).toBe(false)
+    expect(b.rng.state).toBe(rng)
     b.addStatus(a, 'stunned')
     b.beginTurn(a)
     expect(() => b.boost(a)).toThrow()
@@ -360,7 +347,7 @@ describe('audit: actions', () => {
     e.stats.size = 0.5 as any
     e.stats.evasion = 1
     b.beginTurn(a)
-    rig(b, 20, 15)
+    rigDice(b, 20, 15)
     b.grapple(a, e)
     expect(b.has(e, 'immobilized')).toBe(true)
     expect(b.isEngaged(a) && b.isEngaged(e)).toBe(true)
@@ -371,7 +358,7 @@ describe('audit: actions', () => {
     const { a, e, b } = duel(undefined, { x: 5, y: 5 }, { x: 6, y: 5 })
     e.stats.evasion = 1
     b.beginTurn(a)
-    rig(b, 20, 15)
+    rigDice(b, 20, 15)
     b.ram(a, e)
     expect(b.has(e, 'prone')).toBe(true)
     const big = duel(undefined, { x: 5, y: 5 }, { x: 6, y: 5 })
@@ -384,7 +371,7 @@ describe('audit: actions', () => {
     const { a, e, b } = duel()
     b.beginTurn(a)
     e.stats.edef = 1
-    rig(b, 20, 15)
+    rigDice(b, 20, 15)
     b.invade(a, e)
     expect(e.heat).toBe(2)
     expect(b.has(e, 'impaired') && b.has(e, 'slowed')).toBe(true)
@@ -409,8 +396,8 @@ describe('audit: actions', () => {
     b.beginTurn(a)
     b.bolster(a, ally)
     ally.stats.hull = 0
-    rig(b, 20, 8)
-    rig(b, 6, 2, 3)
+    rigDice(b, 20, 8)
+    rigDice(b, 6, 2, 3)
     expect(b.save(ally, 'hull', 11)).toBe(true) // 8 + d6 high of 2 = 3 → 11
   })
 
@@ -418,8 +405,8 @@ describe('audit: actions', () => {
     const { a, e, b } = duel(undefined, { x: 5, y: 5 }, { x: 6, y: 5 })
     e.stats.evasion = 1; e.stats.armor = 0
     b.beginTurn(a)
-    rig(b, 20, 15)
-    rig(b, 6, 4)
+    rigDice(b, 20, 15)
+    rigDice(b, 6, 4)
     const hp = e.hp
     b.improvisedAttack(a, e)
     expect(hp - e.hp).toBe(4)
@@ -517,7 +504,7 @@ describe('audit: structure damage and overheating tables', () => {
   const hitStructure = (setup: (u: Unit) => void, rolls: number[], extra?: (b: Battle) => void) => {
     const { e, b } = duel()
     setup(e)
-    rig(b, 6, ...rolls)
+    rigDice(b, 6, ...rolls)
     extra?.(b)
     e.hp = 1
     b.applyDamage(e, [{ type: 'Kinetic', amount: 1 }], { ap: true })
@@ -564,7 +551,7 @@ describe('audit: structure damage and overheating tables', () => {
     const { e, b } = duel()
     pc(e)
     e.stress = stress
-    rig(b, 6, ...rolls)
+    rigDice(b, 6, ...rolls)
     e.heat = e.stats.heatcap
     b.addHeat(e, 1)
     return { e, b }
@@ -578,13 +565,22 @@ describe('audit: structure damage and overheating tables', () => {
     const { e, b } = overheat(4, [3])
     expect(b.has(e, 'exposed')).toBe(true)
   })
+  const log = (b: Battle) => b.log.map(l => l.text).join('\n')
   it('Meltdown (1) at 1 Stress left: meltdown at the end of the next turn', () => {
-    const { e } = overheat(2, [3, 3, 1])
-    expect(e.meltdownTurns).toBeGreaterThan(0)
+    const { e, b } = overheat(2, [3, 3, 1])
+    expect(e.stress).toBe(1)
+    expect(log(b)).toMatch(/MELTDOWN result/)
+    expect(log(b)).not.toMatch(/IRREVERSIBLE/)
+    expect(e.meltdownTurns).toBe(1) // not its turn: at the end of its next one
+    expect(b.has(e, 'exposed')).toBe(false)
   })
-  it('Irreversible Meltdown (multiple 1s)', () => {
-    const { e } = overheat(3, [1, 1])
-    expect(e.meltdownTurns).toBeGreaterThan(0)
+  it('Irreversible Meltdown (multiple 1s): a meltdown however much Stress is left, with no Engineering check', () => {
+    const { e, b } = overheat(3, [1, 1])
+    expect(e.stress).toBe(2) // a single 1 at 2 Stress would call for an Engineering check (Exposed, or 1d6 turns)
+    expect(log(b)).toMatch(/IRREVERSIBLE MELTDOWN/)
+    expect(log(b)).not.toMatch(/MELTDOWN result/)
+    expect(e.meltdownTurns).toBe(1)
+    expect(b.has(e, 'exposed')).toBe(false)
   })
   it('reaching 0 Stress melts the reactor down at the end of the next turn', () => {
     const { e } = overheat(1, [])
@@ -632,7 +628,7 @@ describe('audit: reactions, grapples and the rest of the action list', () => {
     const { a, e, b } = duel(undefined, { x: 5, y: 5 }, { x: 6, y: 5 })
     e.stats.evasion = 1
     b.beginTurn(a)
-    rig(b, 20, 15)
+    rigDice(b, 20, 15)
     b.grapple(a, e)
     expect(b.grapples.length).toBe(1)
     const third = pregenUnit('Vanguard')
@@ -645,11 +641,11 @@ describe('audit: reactions, grapples and the rest of the action list', () => {
     const { a, e, b } = duel(undefined, { x: 5, y: 5 }, { x: 6, y: 5 })
     e.stats.evasion = 1
     b.beginTurn(a)
-    rig(b, 20, 15)
+    rigDice(b, 20, 15)
     b.grapple(a, e)
     b.endTurn(a)
     b.beginTurn(e)
-    rig(b, 20, 20, 1) // defender 20, attacker 1
+    rigDice(b, 20, 20, 1) // defender 20, attacker 1
     b.breakGrapple(e)
     expect(b.grapples.length).toBe(0)
   })
@@ -664,7 +660,8 @@ describe('audit: reactions, grapples and the rest of the action list', () => {
     const { a, e, b } = duel(undefined, { x: 0, y: 0 }, { x: 13, y: 13 })
     const w = firstRanged(a)
     const range = Math.max(...w.profiles[0].range.filter(r => r.type === 'Range').map(r => Number(r.val)))
-    if (range < 13) expect(b.validTarget(a, w, e)).not.toBe(true)
+    expect(range).toBeLessThan(13)
+    expect(b.validTarget(a, w, e)).not.toBe(true)
     a.stats.sensors = 5
     b.beginTurn(a)
     expect(() => b.lockOn(a, e)).toThrow()
@@ -699,7 +696,7 @@ describe('audit: reactions, grapples and the rest of the action list', () => {
     const { a, e, b } = duel()
     b.addStatus(e, 'hidden')
     b.beginTurn(a)
-    rig(b, 20, 18, 2)
+    rigDice(b, 20, 18, 2)
     b.search(a)
     expect(b.has(e, 'hidden')).toBe(false)
   })
@@ -707,7 +704,7 @@ describe('audit: reactions, grapples and the rest of the action list', () => {
   it('a structure hit resets HP to full before the excess damage lands', () => {
     const { e, b } = duel()
     e.stats.armor = 0
-    rig(b, 6, 6)
+    rigDice(b, 6, 6)
     e.hp = 3
     b.applyDamage(e, [{ type: 'Kinetic', amount: 5 }], { ap: true })
     expect(e.hp).toBe(e.stats.hp - 2)

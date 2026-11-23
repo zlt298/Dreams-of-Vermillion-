@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { validateTeam } from '../src/enemies/validate'
-import { buildTeam } from '../src/enemies/build'
-import { baselineStats, teamBudget } from '../src/enemies/ruleset'
-import { autoBattle } from '../src/ai/ai'
-import { Battle } from '../src/rules/battle'
-import { flatMap, pregenUnit } from './helpers'
+import { validateTeam } from '../../src/enemies/validate'
+import { buildTeam } from '../../src/enemies/build'
+import { baselineStats, teamBudget } from '../../src/enemies/ruleset'
+import { autoBattle } from '../../src/ai/ai'
+import { Battle } from '../../src/rules/battle'
+import { flatMap, pregenUnit } from '../support'
 
-const dir = join(__dirname, '../../data/enemies')
+const dir = join(__dirname, '../../../data/enemies')
 const teams = readdirSync(dir).filter(f => f.endsWith('.json')).map(f => JSON.parse(readFileSync(join(dir, f), 'utf8')))
 
 describe('enemy ruleset', () => {

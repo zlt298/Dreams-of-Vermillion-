@@ -133,7 +133,7 @@ TOTAL 392/392 (100%) fully executed by the engine, 0 partially
 - **partial**: a script that approximates part of the item.
 - **manual**: actions that aren't executed yet. They still appear in the action bar marked `*`, and using one logs its rules text for you to resolve by hand.
 
-To add fidelity, register a script keyed by the item id in `game/src/rules/effects/scripts/`. The hooks are listed in `registry.ts`. `tests/scripts.test.ts` builds every frame, system, talent and core bonus into mechs and auto-battles them to catch runtime errors.
+To add fidelity, register a script keyed by the item id in `game/src/rules/effects/scripts/`. The hooks are listed in `registry.ts`. `tests/integration/stress-every-frame.test.ts` builds every frame, system, talent and core bonus into mechs and auto-battles them to catch runtime errors.
 
 ### Known deviations and house rules
 - Square grid with diagonals counting as 1. Range and threat include the vertical gap.
@@ -150,7 +150,7 @@ To add fidelity, register a script keyed by the item id in `game/src/rules/effec
 ### Saving, undo and checks
 - **Battles save as you play.** The battle in progress is saved after every action, so closing the tab or reloading doesn't lose it: **Continue run** goes straight back into the fight, exactly where it was.
 - **Undo** (the ↶ button or Ctrl+Z) takes back your last action, however far it went (moves, attacks, systems, ending your turn and the enemy turns that followed). It isn't available while the enemy is acting or once the battle is over. Dice are seeded, so repeating the same action gives the same roll.
-- **Golden battles:** six pinned AI-vs-AI fights (`tests/golden/`). If a change alters how they play out, the test fails; if that was intended, re-pin with `npm run golden` and commit `tests/golden/battles.json`.
+- **Golden battles:** six pinned AI-vs-AI fights (`tests/integration/golden/`). If a change alters how they play out, the test fails; if that was intended, re-pin with `npm run golden` and commit `tests/integration/golden/battles.json`.
 - **CI** (`.github/workflows/ci.yml`) runs the typecheck, all tests, the build and the end-to-end campaign run on every push and pull request.
 - The battle screen and Three.js load with the first battle, so the title and hangar open faster.
 

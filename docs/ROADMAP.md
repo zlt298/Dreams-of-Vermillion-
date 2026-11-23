@@ -293,7 +293,7 @@ Out of the 392 items in lancer-data, all 392 are fully executed. The rest show a
 ---
 
 ### Rules audit (core book, Mech Combat chapter)
-`game/tests/audit.test.ts` has 69 scenario checks with rigged dice. They cover:
+`game/tests/rules/audit.test.ts` has 69 scenario checks with rigged dice. They cover:
 - turns and actions
 - movement, engagement, falling
 - attacks and cover

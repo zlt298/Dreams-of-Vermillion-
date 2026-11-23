@@ -2,12 +2,12 @@
 // Each test starts from a legal build and breaks exactly one rule, so an error that stops firing
 // (or fires for the wrong reason) is caught.
 import { describe, expect, it } from 'vitest'
-import { Lancer } from '../src/data/lancer'
-import type { PilotBuild } from '../src/import/compcon'
-import { validateBuild, slotSizes, modFits, coreBonusAllowed, expectedMounts, manufacturerRanks, licensed } from '../src/rules/legality'
-import { deriveMechStats, collectBonuses, mechSP } from '../src/rules/stats'
-import { newDraft, setFrame } from '../src/ui/builder'
-import './helpers'
+import { Lancer } from '../../src/data/lancer'
+import type { PilotBuild } from '../../src/import/compcon'
+import { validateBuild, slotSizes, modFits, coreBonusAllowed, expectedMounts, manufacturerRanks, licensed } from '../../src/rules/legality'
+import { deriveMechStats, collectBonuses, mechSP } from '../../src/rules/stats'
+import { newDraft, setFrame } from '../../src/ui/builder'
+import '../support'
 
 const EVEREST = 'mf_standard_pattern_i_everest'
 /** Everest mounts are [Main, Flex, Heavy]. */
@@ -109,7 +109,8 @@ describe('core bonuses', () => {
   it('Improved Armament adds a Flex mount only to frames with fewer than 3 mounts', () => {
     expect(expectedMounts(EVEREST, ['cb_improved_armament'])).toEqual(['Main', 'Flex', 'Heavy'])
     const two = [...Lancer.frames.values()].find(f => f.mounts.length === 2)
-    if (two) expect(expectedMounts(two.id, ['cb_improved_armament'])).toEqual([...two.mounts, 'Flex'])
+    expect(two).toBeDefined()
+    expect(expectedMounts(two!.id, ['cb_improved_armament'])).toEqual([...two!.mounts, 'Flex'])
   })
   it('Integrated Weapon requires its CB-Integrated mount and vice versa', () => {
     const p = draft(3)
@@ -157,12 +158,11 @@ describe('mounts and weapons', () => {
     expect(errs(p)).toMatch(/mod is fitted to an empty slot/)
     const melee = [...Lancer.weapons.values()].find(w => w.type === 'Melee' && w.mount === 'Main' && w.source === 'GMS')!
     const rangedOnly = [...Lancer.mods.values()].find(m => m.allowed_types && !m.allowed_types.includes('Melee'))
-    if (rangedOnly) {
-      expect(modFits(rangedOnly, melee)).toBe(false)
-      const q = draft()
-      put(q, 0, 0, melee.id, rangedOnly.id)
-      expect(errs(q)).toMatch(/can't be fitted to/)
-    }
+    expect(rangedOnly).toBeDefined()
+    expect(modFits(rangedOnly!, melee)).toBe(false)
+    const q = draft()
+    put(q, 0, 0, melee.id, rangedOnly!.id)
+    expect(errs(q)).toMatch(/can't be fitted to/)
     expect(modFits(undefined, melee)).toBe(false)
   })
   it('Unique gear can only be taken once', () => {

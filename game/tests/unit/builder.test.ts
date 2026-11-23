@@ -1,16 +1,16 @@
 // The in-game pilot builder: legality budgets and what each picker offers.
 import { describe, expect, it } from 'vitest'
-import { Lancer } from '../src/data/lancer'
-import { importPilots } from '../src/import/compcon'
-import { validateBuild } from '../src/rules/legality'
+import { Lancer } from '../../src/data/lancer'
+import { importPilots } from '../../src/import/compcon'
+import { validateBuild } from '../../src/rules/legality'
 import {
   newDraft, editable, setFrame, setWeapon, weaponOptions, systemOptions, frameOptions, setLicenseRank, toggleCoreBonus,
   setMountBonus, setTalentRank, coreBonusOptions, pruneCoreBonuses, modOptions,
-} from '../src/ui/builder'
-import { newRun, refitPilot } from '../src/run/run'
-import pregens from '../src/data/pregens/pregens.json'
-import v3 from './fixtures/V3_FIXTURE.json'
-import './helpers'
+} from '../../src/ui/builder'
+import { newRun, refitPilot } from '../../src/run/run'
+import pregens from '../../src/data/pregens/pregens.json'
+import v3 from '../fixtures/V3_FIXTURE.json'
+import '../support'
 
 const pregen = (name: string) => importPilots((pregens as any[]).find(p => p.name === name))[0]
 const ids = <T extends { id: string }>(xs: T[]) => xs.map(x => x.id)

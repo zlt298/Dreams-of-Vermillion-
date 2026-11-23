@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   tileAt, footprint, distanceBetween, distanceFootprints, distanceToTile, chebyshev, hasLineOfSight,
   hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles, unitsOnTiles, key,
-} from '../src/rules/grid'
-import { flatMap, pregenUnit } from './helpers'
+} from '../../src/rules/grid'
+import { flatMap, pregenUnit } from '../support'
 
 const at = (name: string, x: number, y: number, side: 'player' | 'enemy' = 'player') => {
   const u = pregenUnit(name, side)

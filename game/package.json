@@ -17,7 +17,7 @@
     "bench": "tsx scripts/bench-ai.ts",
     "replay": "tsx scripts/replay.ts",
     "golden": "tsx scripts/golden.ts",
-    "test:fast": "vitest run --exclude 'tests/integration/**' --exclude 'tests/golden.test.ts'"
+    "test:fast": "vitest run --exclude 'tests/integration/**'"
   },
   "dependencies": {
     "@massif/lancer-data": "4.0.12",
