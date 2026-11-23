@@ -26,7 +26,10 @@ interface PilotSpec {
   /** Items never to pick for this pilot. */
   avoid?: string[]
 }
-interface SquadSpec { id: string; name: string; theme: Theme; blurb: string; pilots: PilotSpec[] }
+/** How hard the squad plays, from AI-vs-AI sims over every enemy team at its act level (target overall player
+ *  wins: Easy ~90%, Medium ~80%, Hard ~70%, Very hard ~60%). Re-check with the balance sim after changing a squad. */
+export type Difficulty = 'Easy' | 'Medium' | 'Hard' | 'Very hard'
+interface SquadSpec { id: string; name: string; theme: Theme; difficulty: Difficulty; blurb: string; pilots: PilotSpec[] }
 
 const text = (x: { effect?: string; description?: string }) => `${x.effect ?? ''} ${(x as any).description ?? ''}`.toLowerCase()
 const maxRange = (w: WeaponData) => Math.max(0, ...((w.range ?? []) as any[]).map(r => (r.type === 'Range' || r.type === 'Line' || r.type === 'Cone' ? r.val : r.val * 0.5) ?? 0))
@@ -114,7 +117,7 @@ const H = (h: number, a: number, s: number, e: number): Hase => [h, a, s, e]
 
 const SQUADS: SquadSpec[] = [
   {
-    id: 'brawlers', name: 'Brawlers', theme: 'brawl', blurb: 'Close the distance and hit hard: melee and shotguns, heavy armour.',
+    id: 'brawlers', name: 'Brawlers', theme: 'brawl', difficulty: 'Easy', blurb: 'Close the distance and hit hard: melee and shotguns, heavy armour.',
     pilots: [
       { callsign: 'Anvil', prefer: ['mw_heavy_melee_weapon', 'mw_shotgun', 'ms_stable_structure'], name: 'Teodor Brask', frame: 'mf_blackbeard', extra: ['mf_drake', 'mf_vlad', 'mf_tortuga'], talents: ['t_brawler', 't_juggernaut', 't_vanguard', 't_brutal', 't_executioner'],
         hase: { 0: H(1, 0, 0, 1), 5: H(3, 1, 0, 3), 10: H(5, 2, 1, 4) }, cbs: { 5: ['cb_reinforced_frame'], 10: ['cb_reinforced_frame', 'cb_sloped_plating', 'cb_overpower_caliber'] } },
@@ -127,7 +130,7 @@ const SQUADS: SquadSpec[] = [
     ],
   },
   {
-    id: 'longguns', name: 'Long Guns', theme: 'long', blurb: 'Hold the back line: rifles, cannons and missiles at long range.',
+    id: 'longguns', name: 'Long Guns', theme: 'long', difficulty: 'Medium', blurb: 'Hold the back line: rifles, cannons and missiles at long range.',
     pilots: [
       { callsign: 'Plumb', prefer: ['mw_anti_materiel_rifle', 'mw_assault_rifle', 'ms_manipulators'], name: 'Aster Vey', frame: 'mf_metalmark', extra: ['mf_monarch', 'mf_deaths_head', 'mf_swallowtail'], talents: ['t_crack_shot', 't_spotter', 't_ace', 't_gunslinger', 't_tactician'],
         hase: { 0: H(0, 1, 1, 0), 5: H(1, 3, 2, 1), 10: H(2, 4, 4, 2) }, cbs: { 5: ['cb_neurolink_targeting'], 10: ['cb_neurolink_targeting', 'cb_all_theater_movement_suite', 'cb_auto_stabilizing_hardpoints'] } },
@@ -140,7 +143,7 @@ const SQUADS: SquadSpec[] = [
     ],
   },
   {
-    id: 'ghosts', name: 'Ghosts', theme: 'ghost', blurb: 'Tech and stealth: invasions, invisibility and slipping through the lines.',
+    id: 'ghosts', name: 'Ghosts', theme: 'ghost', difficulty: 'Very hard', blurb: 'Tech and stealth: invasions, invisibility and slipping through the lines.',
     pilots: [
       { callsign: 'Wisp', prefer: ['mw_tactical_knife', 'mw_charged_blade', 'ms_pattern_a_smoke_charges', 'ms_rapid_burst_jump_jet_system'], name: 'Noor Calloway', frame: 'mf_mourning_cloak', extra: ['mf_swallowtail', 'mf_dusk_wing', 'mf_black_witch'], talents: ['t_infiltrator', 't_skirmisher', 't_duelist', 't_ace', 't_hunter'],
         hase: { 0: H(0, 1, 1, 0), 5: H(1, 3, 2, 1), 10: H(1, 5, 4, 2) }, cbs: { 5: ['cb_ghostweave'], 10: ['cb_ghostweave', 'cb_all_theater_movement_suite', 'cb_auto_stabilizing_hardpoints'] } },
@@ -153,7 +156,7 @@ const SQUADS: SquadSpec[] = [
     ],
   },
   {
-    id: 'dronewing', name: 'Drone Wing', theme: 'drone', blurb: 'Fight by proxy: drones, turrets, nexuses and deployables.',
+    id: 'dronewing', name: 'Drone Wing', theme: 'drone', difficulty: 'Hard', blurb: 'Fight by proxy: drones, turrets, nexuses and deployables.',
     pilots: [
       { callsign: 'Hive', prefer: ['ms_turret_drones', 'mw_nexus_hunter_killer', 'mw_nexus_light'], name: 'Ada Kestrel', frame: 'mf_hydra', extra: ['mf_goblin', 'mf_pegasus', 'mf_manticore'], talents: ['t_drone_commander', 't_technophile', 't_tactician', 't_engineer', 't_leader'],
         hase: { 0: H(0, 0, 1, 1), 5: H(1, 1, 3, 2), 10: H(2, 2, 5, 3) }, cbs: { 5: ['cb_the_lesson_of_shaping'], 10: ['cb_the_lesson_of_shaping', 'cb_the_lesson_of_thinking_tomorrows_thought', 'cb_improved_armament'] } },
@@ -168,7 +171,7 @@ const SQUADS: SquadSpec[] = [
 ]
 
 let bad = 0
-const out: { id: string; name: string; theme: string; blurb: string; level: number; pilots: PilotBuild[] }[] = []
+const out: { id: string; name: string; theme: string; difficulty: Difficulty; blurb: string; level: number; pilots: PilotBuild[] }[] = []
 for (const sq of SQUADS) for (const level of [0, 5, 10] as const) {
   const pilots = sq.pilots.map((spec, i) => build(sq, spec, level, i))
   for (const p of pilots) {
@@ -180,7 +183,7 @@ for (const sq of SQUADS) for (const level of [0, 5, 10] as const) {
     const ss = p.mech.systems.map(id => Lancer.systems.get(id)?.name)
     if (process.argv.includes('-v')) console.log(`${sq.name} LL${level} ${p.callsign} [${Lancer.frames.get(p.mech.frameId)?.name}] SP ${sp.used}/${sp.max}\n   W: ${ws.join(', ')}\n   S: ${ss.join(', ')}`)
   }
-  out.push({ id: `${sq.id}-ll${level}`, name: sq.name, theme: sq.id, blurb: sq.blurb, level, pilots })
+  out.push({ id: `${sq.id}-ll${level}`, name: sq.name, theme: sq.id, difficulty: sq.difficulty, blurb: sq.blurb, level, pilots })
 }
 if (bad) { console.error(`${bad} build(s) not legal and fully spent — not written`); process.exit(1) }
 writeFileSync(new URL('../src/data/squads/themed.json', import.meta.url), JSON.stringify(out, null, 1) + '\n')

@@ -37,7 +37,7 @@ const MAX_SQUAD = 4
 /** The hangar's squad picker: themed squads per act level, plus the COMP/CON pregens and the sample squads. */
 function squadOptions(): string {
   const presets = squadPresets()
-  const group = (level: number, act: number, extra: string) => `<optgroup label="LL${level} — act ${act}">${presets.filter(s => s.level === level).map(s => `<option value="${esc(s.id)}">${esc(s.name)} (LL${level}) — ${esc(s.pilots.map(p => p.callsign).join(', '))}</option>`).join('')}${extra}</optgroup>`
+  const group = (level: number, act: number, extra: string) => `<optgroup label="LL${level} — act ${act}">${presets.filter(s => s.level === level).map(s => `<option value="${esc(s.id)}" title="${esc(s.blurb)}">${esc(s.name)} [${esc(s.difficulty)}] (LL${level}) — ${esc(s.pilots.map(p => p.callsign).join(', '))}</option>`).join('')}${extra}</optgroup>`
   return `<option value="">Add a pre-built squad…</option>${group(0, 1, '<option value="pregens">COMP/CON pregens (LL0)</option>')}${group(5, 2, '<option value="ll5">Sample squad (LL5) — Drake, Monarch, Saladin, Blackbeard</option>')}${group(10, 3, '<option value="ll10">Sample squad (LL10) — Drake, Monarch, Saladin, Blackbeard</option>')}`
 }
 function squadPilots(id: string): PilotBuild[] {

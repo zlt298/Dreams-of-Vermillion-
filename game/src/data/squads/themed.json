@@ -3,6 +3,7 @@
   "id": "brawlers-ll0",
   "name": "Brawlers",
   "theme": "brawlers",
+  "difficulty": "Easy",
   "blurb": "Close the distance and hit hard: melee and shotguns, heavy armour.",
   "level": 0,
   "pilots": [
@@ -337,6 +338,7 @@
   "id": "brawlers-ll5",
   "name": "Brawlers",
   "theme": "brawlers",
+  "difficulty": "Easy",
   "blurb": "Close the distance and hit hard: melee and shotguns, heavy armour.",
   "level": 5,
   "pilots": [
@@ -714,6 +716,7 @@
   "id": "brawlers-ll10",
   "name": "Brawlers",
   "theme": "brawlers",
+  "difficulty": "Easy",
   "blurb": "Close the distance and hit hard: melee and shotguns, heavy armour.",
   "level": 10,
   "pilots": [
@@ -1169,6 +1172,7 @@
   "id": "longguns-ll0",
   "name": "Long Guns",
   "theme": "longguns",
+  "difficulty": "Medium",
   "blurb": "Hold the back line: rifles, cannons and missiles at long range.",
   "level": 0,
   "pilots": [
@@ -1507,6 +1511,7 @@
   "id": "longguns-ll5",
   "name": "Long Guns",
   "theme": "longguns",
+  "difficulty": "Medium",
   "blurb": "Hold the back line: rifles, cannons and missiles at long range.",
   "level": 5,
   "pilots": [
@@ -1885,6 +1890,7 @@
   "id": "longguns-ll10",
   "name": "Long Guns",
   "theme": "longguns",
+  "difficulty": "Medium",
   "blurb": "Hold the back line: rifles, cannons and missiles at long range.",
   "level": 10,
   "pilots": [
@@ -2325,6 +2331,7 @@
   "id": "ghosts-ll0",
   "name": "Ghosts",
   "theme": "ghosts",
+  "difficulty": "Very hard",
   "blurb": "Tech and stealth: invasions, invisibility and slipping through the lines.",
   "level": 0,
   "pilots": [
@@ -2665,6 +2672,7 @@
   "id": "ghosts-ll5",
   "name": "Ghosts",
   "theme": "ghosts",
+  "difficulty": "Very hard",
   "blurb": "Tech and stealth: invasions, invisibility and slipping through the lines.",
   "level": 5,
   "pilots": [
@@ -3030,6 +3038,7 @@
   "id": "ghosts-ll10",
   "name": "Ghosts",
   "theme": "ghosts",
+  "difficulty": "Very hard",
   "blurb": "Tech and stealth: invasions, invisibility and slipping through the lines.",
   "level": 10,
   "pilots": [
@@ -3469,6 +3478,7 @@
   "id": "dronewing-ll0",
   "name": "Drone Wing",
   "theme": "dronewing",
+  "difficulty": "Hard",
   "blurb": "Fight by proxy: drones, turrets, nexuses and deployables.",
   "level": 0,
   "pilots": [
@@ -3805,6 +3815,7 @@
   "id": "dronewing-ll5",
   "name": "Drone Wing",
   "theme": "dronewing",
+  "difficulty": "Hard",
   "blurb": "Fight by proxy: drones, turrets, nexuses and deployables.",
   "level": 5,
   "pilots": [
@@ -4162,6 +4173,7 @@
   "id": "dronewing-ll10",
   "name": "Drone Wing",
   "theme": "dronewing",
+  "difficulty": "Hard",
   "blurb": "Fight by proxy: drones, turrets, nexuses and deployables.",
   "level": 10,
   "pilots": [

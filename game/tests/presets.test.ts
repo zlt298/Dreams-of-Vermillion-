@@ -33,6 +33,10 @@ describe('pre-built squads', () => {
     }
   })
 
+  it('each act offers one squad per difficulty (Easy, Medium, Hard, Very hard)', () => {
+    for (const level of [0, 5, 10]) expect(presets.filter(s => s.level === level).map(s => (s as any).difficulty).sort()).toEqual(['Easy', 'Hard', 'Medium', 'Very hard'])
+  })
+
   it('squads differ: no two pilots in a squad have the same loadout, and themes use different frames', () => {
     for (const s of presets) {
       const loadouts = s.pilots.map(p => JSON.stringify([p.mech.frameId, p.mech.mounts.map(m => m.slots.map(x => x.weaponId)), p.mech.systems]))
