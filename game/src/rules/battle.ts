@@ -1316,6 +1316,11 @@ export class Battle {
     const rng = this.rng.state, logLen = this.log.length, evLen = this.events.length, evCount = this.eventCount, nUnits = this.units.length
     this.sandboxDepth++
     const areas = this.areas.slice(), mines = this.mines.slice(), lastMove = this.lastMove
+    // battle-level turn state: a simulated kill can end the round or the battle (e.g. a reaction
+    // fired from a preview's beforeAnyAttack hook), and that must not leak out of the sandbox
+    const turn = { round: this.round, currentSide: this.currentSide, activeId: this.activeId, winner: this.winner, chainTurn: this.chainTurn, sitrepScore: this.sitrepScore }
+    const grapples = this.grapples.map(g => ({ ...g })), losZones = this.losZones.slice(), terrainDamage = new Map(this.terrainDamage)
+    const tileMark = this.tileUndo.length
     const snap = this.units.map(u => ({
       u,
       v: {
@@ -1349,6 +1354,12 @@ export class Battle {
       this.areas = areas
       this.mines = mines
       this.lastMove = lastMove
+      Object.assign(this, turn)
+      this.grapples = grapples; this.losZones = losZones; this.terrainDamage = terrainDamage
+      if (this.tileUndo.length > tileMark) {
+        for (const x of this.tileUndo.splice(tileMark).reverse()) Object.assign(x.t, { h: x.h, kind: x.kind, indestructible: x.indestructible, owner: x.owner })
+        this.invalidateTerrain()
+      }
       this.rng.state = rng
       this.log.length = logLen
       this.events.length = evLen
@@ -1947,11 +1958,17 @@ export class Battle {
   /** Damage carried by each terrain block's top section (house rule: 10 HP per level of height, Evasion 5). */
   terrainDamage = new Map<string, number>()
   static TERRAIN_SECTION_HP = 10
+  /** tile states to restore when the current sandbox unwinds (map tiles are mutated in place) */
+  private tileUndo: { t: any; h: number; kind: any; indestructible: any; owner: any }[] = []
+  private noteTileChange(t: any) {
+    if (this.sandboxDepth) this.tileUndo.push({ t, h: t.h, kind: t.kind, indestructible: t.indestructible, owner: t.owner })
+  }
 
   /** Damage a terrain block. Every 10 damage knocks one level off; a block with no levels left becomes rubble. */
   damageTerrain(p: Pos, amount: number, opts: { source?: Unit; quiet?: boolean } = {}): boolean {
     const t = tileAt(this.map, p)
     if (!t || t.kind !== 'block' || amount <= 0 || t.indestructible) return false
+    this.noteTileChange(t)
     const k = `${p.x},${p.y}`
     let dmg = (this.terrainDamage.get(k) ?? 0) + amount
     let levels = 0
@@ -1973,6 +1990,7 @@ export class Battle {
   raiseCover(p: Pos, opts: { indestructible?: boolean; owner?: string } = {}): boolean {
     const t = tileAt(this.map, p)
     if (!t || t.kind === 'block' || this.alive().some(o => !o.flags.flat && footprint(o).some(q => q.x === p.x && q.y === p.y))) return false
+    this.noteTileChange(t)
     t.h += 1
     t.kind = 'block'
     if (opts.indestructible) t.indestructible = true

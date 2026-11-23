@@ -177,6 +177,21 @@ function threatsAgainst(b: Battle, u: Unit): Threat[] {
   }))
 }
 
+/**
+ * Rounds the fight has gone without anyone attacking, beyond a grace period for the opening
+ * approach. Long-ranged teams that hang back can otherwise freeze both sides just outside each
+ * other's reach until the round cap; the advance pull grows with this so somebody commits.
+ */
+export function stallRounds(b: Battle, grace = 3): number {
+  let last = b.log[0]?.round ?? 0
+  for (let i = b.log.length - 1; i >= 0; i--) {
+    const e = b.log[i]
+    if (e.kind === 'attack' || e.kind === 'damage') { last = e.round; break }
+  }
+  return Math.max(0, b.round - last - grace)
+}
+let stall = 0
+
 function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAgainst(b, u)): number {
   if (!threats.length) return 0
   const saved = u.pos
@@ -208,7 +223,7 @@ function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAg
     // advance pull: on long maps, units out of their own reach close the distance
     // (artillery/controllers more gently, so they settle near their preferred range)
     const myReach = Math.max(1, ...u.weapons.filter(w => !w.destroyed).map(w => b.weaponReach(u, w)))
-    const k = role === 'Artillery' || role === 'Controller' ? 0.25 : 0.35
+    const k = (role === 'Artillery' || role === 'Controller' ? 0.25 : 0.35) * (1 + stall)
     if (nearest > myReach) v -= (nearest - myReach) * k
     // sitrep objectives
     const zone = b.sitrep.zone
@@ -321,6 +336,7 @@ export function planFor(b: Battle, u: Unit): Plan {
   for (const v of all.values()) cands.push({ pos: v.pos, boost: v.cost > u.moveLeft })
   // prune candidates for speed: keep the most promising ones by position value
   const threats = threatsAgainst(b, u)
+  stall = stallRounds(b)
   let scored = cands.map(c => ({ ...c, pv: positionValue(b, u, c.pos, threats) }))
   if (scored.length > 70) {
     scored.sort((a, b2) => b2.pv - a.pv)
