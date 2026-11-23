@@ -10,7 +10,7 @@ import { catalog, teamsFor, validTeams } from '../enemies/catalog'
 import { generateMap, themeForAct } from '../run/mapgen'
 import {
   type RunState, type RunNode, newRun, availableNodes, nodeTier, sitrepFor, squadUnits, recordBattle, fullRepair,
-  repairOptions, applyRepair, rollRewards, applyReward, levelUp, replacePilots, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
+  repairOptions, applyRepair, rollRewards, applyReward, levelUp, replacePilots, refitPilot, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
 } from '../run/run'
 import { BattleScreen } from './battle-ui'
 import { rangeChip, tagChip } from './tags'
@@ -23,6 +23,8 @@ import { rollEvent, type RunEvent } from '../run/events'
 import { playInterlude } from './interlude'
 import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad } from './roster'
 import { esc } from './dom'
+import { builderScreen } from './builder-screen'
+import { validateBuild } from '../rules/legality'
 import { classify } from '../rules/effects/coverage'
 
 const MAX_SQUAD = 4
@@ -142,14 +144,14 @@ export class App {
     const cards = this.roster.map(p => pilotCard(p, this.squadPick.has(p.id))).join('')
     this.root.innerHTML = `<div class="screen hangar">
       <div class="hhead"><h2>${purpose === 'reimport' ? 'Re-import updated pilots' : 'Hangar'}</h2>
-        <div><a class="filebtn linkbtn" href="https://compcon.app" target="_blank" rel="noopener noreferrer" title="Opens the official COMP/CON web app in a new tab">Open COMP/CON ↗</a><label class="filebtn">Import COMP/CON .json<input type="file" accept=".json,application/json" multiple></label>
+        <div><button data-go="new" title="Build a pilot and mech here, without COMP/CON">New pilot</button><a class="filebtn linkbtn" href="https://compcon.app" target="_blank" rel="noopener noreferrer" title="Opens the official COMP/CON web app in a new tab">Open COMP/CON ↗</a><label class="filebtn">Import COMP/CON .json<input type="file" accept=".json,application/json" multiple></label>
         <button data-go="pregens">Add COMP/CON pregens</button>
         <button data-go="ll5" title="Legal LL5 builds (act 2 level): Drake, Monarch, Saladin, Blackbeard">Add sample LL5 squad</button>
         <button data-go="ll10" title="Legal LL10 builds (act 3 level): Drake, Monarch, Saladin, Blackbeard">Add sample LL10 squad</button>
         ${purpose !== 'reimport' ? `<button data-go="start" class="primary">${purpose === 'run' ? 'Begin run' : 'Choose enemies'} (${this.squadPick.size}/${MAX_SQUAD})</button>` : '<button data-go="done" class="primary">Done</button>'}
         <button data-go="back">Back</button></div></div>
       <div class="drop">Drop COMP/CON pilot exports here</div>
-      <p class="muted small">Build or level up pilots in COMP/CON, then open the pilot → <i>Export</i> → <i>Save as file (.json)</i>, and drop the file here.</p>
+      <p class="muted small">Build pilots here with <i>New pilot</i> or <i>Edit</i>, or in COMP/CON: open the pilot → <i>Export</i> → <i>Save as file (.json)</i>, and drop the file here.</p>
       <div class="errors"></div>
       <div class="pilots">${cards || '<p class="muted">No pilots yet.</p>'}</div></div>`
     const input = this.root.querySelector('input[type=file]') as HTMLInputElement
@@ -184,6 +186,13 @@ export class App {
       else if (this.squadPick.size < MAX_SQUAD) this.squadPick.add(id)
       this.hangar(purpose)
     })
+    this.on('[data-edit]', el => {
+      const orig = this.roster.find(p => p.id === el.dataset.edit)
+      if (orig) this.openBuilder(orig, `Edit ${orig.callsign}`, () => this.hangar(purpose), p => {
+        // during a run, editing a squad pilot from here refits it like a re-import does
+        if (purpose === 'reimport' && this.run) { refitPilot(this.run, p); saveRun(this.run) }
+      })
+    })
     this.on('[data-remove]', el => {
       this.roster = this.roster.filter(p => p.id !== el.dataset.remove)
       this.squadPick.delete(el.dataset.remove!)
@@ -194,6 +203,7 @@ export class App {
       const g = el.dataset.go
       if (g === 'back') this.title()
       if (g === 'done') this.runMap()
+      if (g === 'new') this.openBuilder(undefined, 'New pilot', () => this.hangar(purpose), p => { if (this.squadPick.size < MAX_SQUAD) this.squadPick.add(p.id) })
       if (g === 'pregens') { this.roster = addToRoster(this.roster, pregenBuilds()); this.hangar(purpose) }
       if (g === 'll5' || g === 'll10') { this.roster = addToRoster(this.roster, sampleSquad(g === 'll5' ? 5 : 10)); this.hangar(purpose) }
       if (g === 'start') {
@@ -202,6 +212,15 @@ export class App {
         if (purpose === 'run') { this.run = newRun(squad.map(p => structuredClone(p))); saveRun(this.run); this.story('opening', () => this.runMap()) }
         else this.skirmishSetup(squad)
       }
+    })
+  }
+
+  /** Open the in-game builder; the saved pilot goes into the roster, then `after` runs and we go `back`. */
+  openBuilder(build: PilotBuild | undefined, title: string, back: () => void, after?: (p: PilotBuild) => void, lockLevel = false) {
+    this.clear()
+    builderScreen(this.root, {
+      build, title, lockLevel, onCancel: back,
+      onSave: p => { this.roster = addToRoster(this.roster, [p]); after?.(p); back() },
     })
   }
 
@@ -254,12 +273,17 @@ export class App {
     const squad = run.squad.map(p => {
       const c = run.condition[p.id]
       const u = buildMechUnit(p)
-      return `<div class="sq ${c.destroyed ? 'dead' : ''}"><b>${esc(p.callsign)}</b> <span class="muted">LL${p.level} ${esc(Lancer.frames.get(p.mech.frameId)?.name ?? '')}</span><br>${c.destroyed ? '<span class="bad">DESTROYED — reprint at a rest</span>' : `HP ${c.hp}/${u.stats.hp} · S ${c.structure}/${u.stats.structure} · R ${c.stress}/${u.stats.stress} · Repairs ${c.repairs}${c.coreAvailable ? ' · CORE ready' : ''}`}</div>`
+      const unspent = validateBuild(p).warnings.some(w => /unspent|unchosen/.test(w))
+      return `<div class="sq ${c.destroyed ? 'dead' : ''}"><b>${esc(p.callsign)}</b> <span class="muted">LL${p.level} ${esc(Lancer.frames.get(p.mech.frameId)?.name ?? '')}</span> <button class="small ${unspent ? 'primary' : ''}" data-refit="${esc(p.id)}" title="Spend points and change the loadout. Damage and spent Repairs carry over.">${unspent ? 'Level up' : 'Edit build'}</button><br>${c.destroyed ? '<span class="bad">DESTROYED — reprint at a rest</span>' : `HP ${c.hp}/${u.stats.hp} · S ${c.structure}/${u.stats.structure} · R ${c.stress}/${u.stats.stress} · Repairs ${c.repairs}${c.coreAvailable ? ' · CORE ready' : ''}`}</div>`
     }).join('')
     this.root.innerHTML = `<div class="screen runmap"><div class="hhead"><h2>Campaign — Act ${run.act}</h2><div><button data-go="repairs">Field repairs</button><button data-go="reimport">Re-import pilots</button><button data-go="abandon" class="warn">Abandon run</button><button data-go="title">Title</button></div></div>
       <div class="squad">${squad}</div>${acts}
       <p class="muted small">⚔ combat · ☠ elite · ⬢ supply · ⛺ rest (full repair) · ♛ act boss</p></div>`
     this.on('[data-node]', el => this.enterNode(run.nodes.find(n => n.id === el.dataset.node)!))
+    this.on('[data-refit]', el => {
+      const p = run.squad.find(x => x.id === el.dataset.refit)
+      if (p) this.openBuilder(p, `Refit ${p.callsign} (LL${p.level})`, () => this.runMap(), b => { refitPilot(run, b); saveRun(run) }, true)
+    })
     this.on('[data-go]', el => {
       const g = el.dataset.go
       if (g === 'title') this.title()
@@ -398,7 +422,7 @@ export class App {
     this.clear()
     this.root.innerHTML = `<div class="screen center"><h2>Act ${run.act - 1} complete!</h2>
       <p>Your pilots advance to <b>License Level ${Math.min(12, run.squad[0].level + LL_PER_ACT)}</b>. Grit and HP increase automatically.</p>
-      <p>To spend the new talent, license and core bonus points, level the pilots up in COMP/CON, export them, and use <i>Re-import pilots</i> on the campaign map (they're matched by id or callsign).</p>
+      <p>To spend the new talent, license and core bonus points, use <b>Level up</b> on each pilot on the campaign map. You can also level them up in COMP/CON and use <i>Re-import pilots</i> (matched by id or callsign).</p>
       <button data-go="ok" class="primary">Continue to Act ${run.act}</button></div>`
     this.on('[data-go]', () => { levelUp(run); saveRun(run); this.runMap() })
   }
@@ -464,7 +488,7 @@ function pilotCard(p: PilotBuild, picked: boolean): string {
   const cov = u ? classify(u) : { manual: [] as string[] }
   return `<div class="pilot ${picked ? 'picked' : ''}">
     <div class="ph"><b>${esc(p.callsign)}</b> <span class="muted">${esc(p.name)} · LL${p.level}</span>
-      <span><button data-pick="${esc(p.id)}" class="${picked ? 'primary' : ''}">${picked ? '✓ In squad' : 'Add to squad'}</button><button data-remove="${esc(p.id)}" class="warn small">✕</button></span></div>
+      <span><button data-pick="${esc(p.id)}" class="${picked ? 'primary' : ''}">${picked ? '✓ In squad' : 'Add to squad'}</button><button data-edit="${esc(p.id)}" class="small">Edit</button><button data-remove="${esc(p.id)}" class="warn small">✕</button></span></div>
     <div><b>${esc(p.mech.name)}</b> — ${esc(f ? `${f.source} ${f.name}` : p.mech.frameId)} · HASE ${p.mechSkills.join('/')} · SP ${sp.used}/${sp.max}</div>
     ${u ? `<div class="muted small">HP ${u.stats.hp} · ARM ${u.stats.armor} · EVA ${u.stats.evasion} · E-DEF ${u.stats.edef} · HEAT ${u.stats.heatcap} · SPD ${u.stats.speed} · Structure ${u.stats.structure} · Stress ${u.stats.stress}</div>
     <div class="small">⚔ ${u.weapons.map(w => weaponLine(w)).join(' · ')}</div><div class="small">⚙ ${u.systems.map(s => esc(s.name)).join(', ') || '—'}</div>

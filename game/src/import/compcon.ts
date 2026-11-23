@@ -23,6 +23,8 @@ export interface PilotBuild {
   mechSkills: [number, number, number, number] // HASE
   talents: { id: string; rank: number }[]
   coreBonuses: string[]
+  /** license ranks the pilot holds (frame id → rank); items' own licenses are implied on top of these */
+  licenses?: { id: string; rank: number }[]
   mech: MechBuild
   /** ids the importer could not resolve against lancer-data (e.g. LCP content) */
   unknown: string[]
@@ -67,6 +69,9 @@ function convertPilotData(d: any, mechIndex?: number): PilotBuild {
   const ms = d.mechSkills ?? [0, 0, 0, 0]
   const talents = (d.talents ?? []).map((t: any) => (typeof t === 'string' ? { id: t, rank: 1 } : { id: t.id, rank: t.rank ?? 1 }))
   const coreBonuses = (d.core_bonuses ?? []).map(asId).filter(Boolean)
+  const licenses = (d.licenses ?? [])
+    .map((l: any) => ({ id: l?.id ?? l?.stub?.id ?? l?.license?.id, rank: Number(l?.rank) || 0 }))
+    .filter((l: any) => typeof l.id === 'string' && l.rank > 0)
   return finish({
     id: d.id ?? crypto.randomUUID(),
     callsign: d.callsign ?? d.name ?? 'Lancer',
@@ -75,6 +80,7 @@ function convertPilotData(d: any, mechIndex?: number): PilotBuild {
     mechSkills: [ms[0] ?? 0, ms[1] ?? 0, ms[2] ?? 0, ms[3] ?? 0],
     talents,
     coreBonuses,
+    licenses,
     mech: { name: mech.name ?? 'Mech', frameId: mech.frame, mounts, systems },
     unknown: [],
   })
@@ -105,6 +111,12 @@ function convertPregen(p: any): PilotBuild {
 }
 
 function finish(p: PilotBuild): PilotBuild {
+  p.unknown = resolveUnknown(p)
+  return p
+}
+
+/** Ids in the build that lancer-data doesn't know (LCP content). */
+export function resolveUnknown(p: PilotBuild): string[] {
   const unknown: string[] = []
   if (!Lancer.frames.has(p.mech.frameId)) unknown.push(p.mech.frameId)
   for (const m of p.mech.mounts) for (const s of m.slots) {
@@ -114,8 +126,7 @@ function finish(p: PilotBuild): PilotBuild {
   for (const s of p.mech.systems) if (!Lancer.systems.has(s)) unknown.push(s)
   for (const t of p.talents) if (!Lancer.talents.has(t.id)) unknown.push(t.id)
   for (const c of p.coreBonuses) if (!Lancer.coreBonuses.has(c)) unknown.push(c)
-  p.unknown = unknown
-  return p
+  return unknown
 }
 
 /** Accepts any supported JSON shape; returns one or more pilots. */
