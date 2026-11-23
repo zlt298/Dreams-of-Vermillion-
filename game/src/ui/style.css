@@ -236,3 +236,16 @@ code { background: #1d222c; padding: 1px 4px; }
 .event.pact .evtag { color: var(--bad); border-color: var(--bad); }
 .event .evtext { max-width: 560px; font-style: italic; }
 .event .eveffect { max-width: 560px; color: var(--accent2); }
+
+/* in-HUD decision picker (Battle.choose) */
+.picker { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 4, 4, 0.45); z-index: 20; }
+.picker-box { background: #1b0d0b; border: 1px solid var(--accent); padding: 14px 18px; max-width: min(460px, calc(100vw - 32px)); box-shadow: 0 0 24px rgba(0, 0, 0, 0.6); }
+.picker-box h3 { margin: 2px 0 8px; }
+.picker-box p { margin: 0 0 10px; opacity: 0.9; font-size: 0.92em; }
+.picker-unit { font-size: 0.8em; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; }
+.picker-opts { display: flex; flex-direction: column; gap: 6px; }
+.picker-opts button { text-align: left; padding: 6px 10px; }
+.picker-opts button.default { border-color: var(--accent); }
+.picker-opts button b { opacity: 0.6; margin-right: 6px; }
+.picker-opts button small { display: block; opacity: 0.7; font-size: 0.82em; }
+.picker-foot { margin-top: 8px; font-size: 0.78em; opacity: 0.6; }

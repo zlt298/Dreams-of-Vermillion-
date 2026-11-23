@@ -302,16 +302,17 @@ describe('rulings cross-checked against COMP/CON', () => {
 })
 
 describe('reaction policies', () => {
-  it("'ask' brace consults Battle.decide; 'off' never braces", () => {
+  it("'ask' brace consults Battle.choose for player units; enemies take the default", () => {
     const { a, e, b } = duel()
     const asked: string[] = []
-    b.decide = q => { asked.push(q.kind); return true }
+    b.chooser = q => { asked.push(q.kind); return 0 }
+    e.side = 'player'; a.side = 'enemy'; b.currentSide = 'enemy'
     e.policies.brace = 'ask'
     e.hp = 3
     const rifle = a.weapons.find(w => w.dataId === 'mw_assault_rifle')!
     b.beginTurn(a)
     a.stats.attackBonus = 40
-    b.skirmish(a, rifle, { targetId: e.id })
+    b.transaction(() => b.skirmish(a, rifle, { targetId: e.id }))
     expect(asked).toContain('brace')
     expect(b.has(e, 'braced')).toBe(true)
   })

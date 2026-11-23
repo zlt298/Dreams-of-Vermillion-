@@ -1,6 +1,6 @@
 // Utility-based tactical AI. Evaluates reachable positions × available actions and executes the
 // best plan through the normal Battle API, so the AI obeys exactly the same rules as players.
-import type { Battle } from '../rules/battle'
+import { PendingChoice, type Battle } from '../rules/battle'
 import { Lancer } from '../data/lancer'
 import { blastTiles, lineTiles, coneTiles, burstTiles, key, unitsOnTiles } from '../rules/grid'
 import type { Effect, Pos, Unit, Weapon } from '../rules/types'
@@ -359,12 +359,18 @@ function execute(b: Battle, u: Unit, o: Option) {
 
 /** Take a complete turn for `u` (begin → act → end). */
 export function runAiTurn(b: Battle, u: Unit) {
+  // an AI-driven player unit (Auto, SEKHMET) answers its own side's questions with the defaults
+  const prevSide = b.aiSide
+  if (u.side === 'player') b.aiSide = 'player'
+  try { runAiTurnInner(b, u) } finally { b.aiSide = prevSide }
+}
+function runAiTurnInner(b: Battle, u: Unit) {
   if (b.activeId !== u.id) b.beginTurn(u)
   try {
     if (!u.destroyed && !b.has(u, 'stunned')) {
       if (b.has(u, 'shutdown')) { b.bootUp(u); return }
       if (b.has(u, 'prone') && !b.has(u, 'immobilized')) b.standUp(u)
-      if (b.has(u, 'grappled') && u.statuses.find(s => s.id === 'grappled')?.data?.by !== u.id) { try { b.breakGrapple(u) } catch {} }
+      if (b.has(u, 'grappled') && u.statuses.find(s => s.id === 'grappled')?.data?.by !== u.id) { try { b.breakGrapple(u) } catch (e) { if (e instanceof PendingChoice) throw e } }
       const plan = planFor(b, u)
       // protocols first
       for (const o of plan.actions.filter(o => o.cost === 'protocol')) safe(() => execute(b, u, o))
@@ -390,6 +396,7 @@ export const aiErrors: unknown[] = []
 
 function safe(f: () => unknown) {
   try { f() } catch (e) {
+    if (e instanceof PendingChoice) throw e
     // invalid in the new situation: skip; but keep genuine bugs visible
     if (e instanceof TypeError || e instanceof ReferenceError || e instanceof RangeError) { aiErrors.push(e); console.error(e) }
   }

@@ -3,7 +3,7 @@
 import { Lancer } from '../data/lancer'
 import { pickNextUnit, runAiTurn } from '../ai/ai'
 import { annotateTags, rangeChip, tagChip, tagInfo } from './tags'
-import { type Battle, stripHtml } from '../rules/battle'
+import { type Battle, type ChoiceQuestion, stripHtml } from '../rules/battle'
 import { blastTiles, burstTiles, coneTiles, key, lineTiles, footprint } from '../rules/grid'
 import type { CustomAction } from '../rules/effects/registry'
 import { hasTag, tagVal } from '../rules/stats'
@@ -59,8 +59,8 @@ export class BattleScreen {
       this.hoverTile = p
       this.updateHover()
     }
-    // 'ask' reaction policies: the engine needs a synchronous answer mid-attack
-    b.decide = q => window.confirm(q.text)
+    // player decisions: defer, so the command is rolled back, the HUD asks, and it is replayed
+    b.chooser = () => undefined
     this.hud.addEventListener('click', e => this.onHudClick(e))
     this.hud.addEventListener('mouseover', e => this.onHudHover(e))
     window.addEventListener('keydown', this.onKey)
@@ -72,7 +72,8 @@ export class BattleScreen {
 
   dispose() {
     window.removeEventListener('keydown', this.onKey)
-    this.b.decide = undefined
+    this.b.chooser = undefined
+    this.picker?.remove()
     this.previewCache.clear()
     this.view.dispose()
   }
@@ -116,7 +117,13 @@ export class BattleScreen {
         this.view.focus(u.pos)
         this.render()
         await sleep(250)
-        runAiTurn(this.b, u)
+        let answers: number[] = []
+        for (;;) {
+          const r = this.b.transaction(() => runAiTurn(this.b, u), answers)
+          if ('pending' in r) { this.render(); answers = [...answers, await this.ask(r.pending)]; continue }
+          if (r.error) console.error(r.error)
+          break
+        }
         this.render()
         await this.view.idle()
         await sleep(200)
@@ -140,12 +147,14 @@ export class BattleScreen {
     this.render()
   }
 
-  private cmd(f: () => void, thenAdvance = false) {
-    try {
-      f()
-    } catch (err) {
-      this.toast((err as Error).message)
+  private cmd(f: () => void, thenAdvance = false, answers: number[] = []) {
+    const r = this.b.transaction(f, answers)
+    if ('pending' in r) {
+      this.render()
+      void this.ask(r.pending).then(i => this.cmd(f, thenAdvance, [...answers, i]))
+      return
     }
+    if (r.error) this.toast(r.error.message)
     this.view.syncUnits()
     if (this.b.active?.side === 'player' && this.mode.k === 'idle') this.mode = { k: 'move' }
     this.render()
@@ -160,6 +169,28 @@ export class BattleScreen {
     const [aux, ...rest] = usable
     this.mode = { k: 'attack', action: 'aux', weapon: aux, via, queue: rest }
     this.toast(`Optional: fire ${aux.name} (auxiliary on a mount you fired, no bonus damage) — Esc to skip`)
+  }
+  private picker: HTMLDivElement | null = null
+  /** Show a decision in the HUD; number keys pick, Esc takes the default. */
+  ask(q: ChoiceQuestion): Promise<number> {
+    this.picker?.remove()
+    return new Promise(resolve => {
+      const el = document.createElement('div')
+      el.className = 'picker'
+      const esc = (t: string) => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
+      el.innerHTML = `<div class="picker-box"><div class="picker-unit">${esc(q.unit.name)}</div><h3>${esc(q.title)}</h3>${q.text ? `<p>${esc(q.text).replace(/\n/g, '<br>')}</p>` : ''}<div class="picker-opts">${q.options.map((o, i) => `<button data-i="${i}" class="${i === q.defaultIndex ? 'default' : ''}"><b>${i + 1}</b> ${esc(o.label)}${o.hint ? `<small>${esc(o.hint)}</small>` : ''}</button>`).join('')}</div><div class="picker-foot">Keys 1–${q.options.length} · Esc: ${esc(q.options[q.defaultIndex]?.label ?? '')}</div></div>`
+      const done = (i: number) => { window.removeEventListener('keydown', key, true); el.remove(); this.picker = null; resolve(i) }
+      const key = (e: KeyboardEvent) => {
+        const n = parseInt(e.key, 10)
+        if (n >= 1 && n <= q.options.length) { e.preventDefault(); e.stopPropagation(); done(n - 1) }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(q.defaultIndex) }
+      }
+      el.addEventListener('click', e => { const b = (e.target as HTMLElement).closest('button[data-i]') as HTMLElement | null; if (b) done(+b.dataset.i!) })
+      window.addEventListener('keydown', key, true)
+      this.root.querySelector('.battle')!.appendChild(el)
+      this.picker = el
+      this.view.focus(q.unit.pos)
+    })
   }
   toast(msg: string) {
     const t = document.createElement('div')
@@ -288,9 +319,9 @@ export class BattleScreen {
       case 'speed': { const order = [1, 2, 4, 0]; this.view.setSpeed(order[(order.indexOf(this.view.speed) + 1) % order.length]); this.render(); return }
       case 'finish': if (this.b.winner && !this.ended) { this.ended = true; this.onEnd(this.b.winner as 'player' | 'enemy') } return
       case 'policy':
-        if (sel && (arg === 'brace' || arg === 'overwatch')) {
+        if (sel && (arg === 'brace' || arg === 'overwatch' || arg === 'reactions')) {
           const order = ['auto', 'ask', 'off'] as const
-          sel.policies[arg] = order[(order.indexOf(sel.policies[arg]) + 1) % order.length]
+          sel.policies[arg] = order[(order.indexOf(sel.policies[arg] ?? 'ask') + 1) % order.length]
           this.render()
         }
         return
@@ -513,7 +544,7 @@ export class BattleScreen {
     let head = `<div class="uhead"><div><b>${esc(u.name)}</b> ${f ? `<span class="muted">${esc(u.pilotName ?? '')} · ${esc(f.source)} ${esc(f.name)}</span>` : `<span class="muted">${u.kind === 'npc' ? `Tier ${u.tier} ${esc(u.role ?? '')} ${esc((u.templates ?? []).join(' '))}` : esc(u.kind)}</span>`}
       <div class="stats">HP ${u.hp}/${st.hp} · ARM ${st.armor} · EVA ${st.evasion} · E-DEF ${st.edef} · HEAT ${u.heat}/${st.heatcap} · SPD ${st.speed} · SENS ${st.sensors} · SAVE ${st.save}${u.kind === 'mech' ? ` · TECH +${st.techAttack} · GRIT +${st.grit} · REP ${u.repairs}` : ` · ATK +${st.attackBonus}`} · H${st.hull} A${st.agi} S${st.sys} E${st.eng}</div>
       ${statusTxt.length ? `<div class="statuses">${statusTxt.map(s => `<span class="status">${esc(s)}</span>`).join('')}</div>` : ''}</div>`
-    if (mine) head += `<div class="policies" title="Reaction policy (click to cycle): auto = decided for you, ask = prompt when it matters, off = never">${(['brace', 'overwatch'] as const).map(k => `<label class="${u.policies[k]}" data-act="policy" data-arg="${k}">${k === 'brace' ? 'Brace' : 'Overwatch'}: ${u.policies[k]}</label>`).join('')}</div>`
+    if (mine) head += `<div class="policies" title="Reaction policy (click to cycle): auto = decided for you, ask = the HUD asks you, off = never">${(['brace', 'overwatch', 'reactions'] as const).map(k => `<label class="${u.policies[k] ?? 'ask'}" data-act="policy" data-arg="${k}">${({ brace: 'Brace', overwatch: 'Overwatch', reactions: 'Other reactions' })[k]}: ${u.policies[k] ?? 'ask'}</label>`).join('')}</div>`
     head += '</div>'
     const wcards = u.weapons.map(w => this.weaponCard(u, w, isActive)).join('')
     let actions = ''

@@ -168,7 +168,7 @@ export function mechSP(p: PilotBuild): { used: number; max: number } {
 }
 
 export function defaultPolicies() {
-  return { brace: 'auto' as const, overwatch: 'auto' as const }
+  return { brace: 'auto' as const, overwatch: 'auto' as const, reactions: 'ask' as const }
 }
 
 export function blankTurnState() {

@@ -126,12 +126,14 @@ export interface Stats {
   activations: number
 }
 
-/** auto = engine decides, ask = prompt the player (via Battle.decide), off = never */
+/** auto = engine decides, ask = prompt the player (via Battle.choose), off = never */
 export type ReactionPolicy = 'auto' | 'ask' | 'off'
 
 export interface UnitPolicies {
   brace: ReactionPolicy
   overwatch: ReactionPolicy
+  /** scripted reactions from systems, weapons and talents (Vorpal Gun, Intercede...); unset = ask */
+  reactions?: ReactionPolicy
 }
 
 export type UnitKind = 'mech' | 'npc' | 'deployable' | 'drone'

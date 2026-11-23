@@ -8,7 +8,7 @@ import {
 } from './grid'
 import { parseDice, Rng, rollDice, rollAccuracy, averageDice } from './rng'
 import { hasTag, tagVal, nextUid } from './stats'
-import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, Weapon } from './types'
+import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from './types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from './effects/registry'
 import { genericActionsFor } from './effects/generic'
 
@@ -26,11 +26,30 @@ export type BattleEvent =
   | { type: 'end'; winner: Side }
   | { type: 'text'; unitId?: string; text: string }
 
-export interface ReactionQuestion {
-  kind: 'brace' | 'overwatch'
+/** A decision for a player-controlled unit (reaction, firing mode, ...). See Battle.choose. */
+export interface ChoiceQuestion {
+  /** short key, e.g. 'brace', 'vorpal', 'siege_mode' */
+  kind: string
   unit: Unit
-  other: Unit
-  text: string
+  title: string
+  text?: string
+  options: { label: string; hint?: string }[]
+  /** what the AI, autoplay and tests pick */
+  defaultIndex: number
+  /** the reaction policy that governs this question (undefined: always ask) */
+  policy?: keyof UnitPolicies
+  other?: Unit
+}
+/** @deprecated use ChoiceQuestion */
+export type ReactionQuestion = ChoiceQuestion
+
+/**
+ * Thrown by Battle.choose when the player has to answer and no answer is queued yet. The UI
+ * restores the command's checkpoint, asks, and replays the command with the answer queued
+ * (the seeded RNG makes the replay exact).
+ */
+export class PendingChoice extends Error {
+  constructor(public q: ChoiceQuestion) { super('Waiting for a decision') }
 }
 
 export interface Sitrep {
@@ -89,8 +108,16 @@ export class Battle {
   winner: Side | null = null
   sitrep: Sitrep
   listeners: ((e: BattleEvent) => void)[] = []
-  /** UI hook for reactions whose policy is 'ask'. Must answer synchronously. */
-  decide?: (q: ReactionQuestion) => boolean
+  /**
+   * UI hook for player decisions. Return an option index, or undefined to defer: the engine then
+   * throws PendingChoice and the UI replays the command with the answer in `answers`.
+   */
+  chooser?: (q: ChoiceQuestion) => number | undefined
+  /** answers queued for a replay, consumed in question order */
+  answers: number[] = []
+  /** while the AI drives a unit of this side, its side's questions take the default */
+  aiSide: Side | null = null
+  private txDepth = 0
   /** set while resolving a Blast attack: cover is measured from here */
   private blastCentre: Pos | null = null
   /** prevents infinite reaction chains */
@@ -1218,6 +1245,78 @@ export class Battle {
     }
   }
 
+  /**
+   * Deep snapshot of all mutable battle state; the returned function restores it in place (unit,
+   * weapon and system objects keep their identity so the UI's references stay valid). Render
+   * listeners are not involved: use `transaction` to hold events back until a command succeeds.
+   */
+  checkpoint(): () => void {
+    const anchors = new Set<object>(this.units)
+    for (const u of this.units) { for (const w of u.weapons) anchors.add(w); for (const x of u.systems) anchors.add(x) }
+    anchors.add(this.map)
+    const dc = (v: any): any => {
+      if (v === null || typeof v !== 'object' || anchors.has(v)) return v
+      if (Array.isArray(v)) return v.map(dc)
+      if (v instanceof Map) return new Map([...v].map(([k, x]) => [k, dc(x)]))
+      if (v instanceof Set) return new Set([...v].map(dc))
+      if (Object.getPrototypeOf(v) !== Object.prototype) return v
+      const o: any = {}
+      for (const k of Object.keys(v)) o[k] = dc(v[k])
+      return o
+    }
+    const fields = (o: any, skip: string[] = []) => { const r: any = {}; for (const k of Object.keys(o)) if (!skip.includes(k)) r[k] = dc(o[k]); return r }
+    const units = this.units.map(u => ({ u, f: fields(u, ['weapons', 'systems']), weapons: u.weapons.slice(), systems: u.systems.slice(), w: u.weapons.map(w => fields(w)), s: u.systems.map(x => fields(x)) }))
+    const tiles = this.map.tiles.map(t => ({ ...t }))
+    const SKIP = new Set(['units', 'map', 'rng', 'log', 'events', 'listeners', 'chooser', 'answers', 'txDepth', 'mapCache', 'losCache', 'coverCache', 'cacheVersion', 'terrainVersion'])
+    const self = this as any
+    const rest: Record<string, any> = {}
+    for (const k of Object.keys(self)) if (!SKIP.has(k) && typeof self[k] !== 'function') rest[k] = dc(self[k])
+    const rng = this.rng.state, log = this.log.slice(), events = this.events.slice()
+    const assign = (o: any, f: any) => { for (const k of Object.keys(o)) if (!(k in f)) delete o[k]; Object.assign(o, dc(f)) }
+    return () => {
+      for (const x of units) {
+        assign(x.u, { ...x.f, weapons: x.u.weapons, systems: x.u.systems })
+        x.u.weapons.splice(0, x.u.weapons.length, ...x.weapons)
+        x.u.systems.splice(0, x.u.systems.length, ...x.systems)
+        x.weapons.forEach((w, i) => assign(w, x.w[i]))
+        x.systems.forEach((sy, i) => assign(sy, x.s[i]))
+      }
+      this.units.splice(0, this.units.length, ...units.map(x => x.u))
+      tiles.forEach((t, i) => { const cur = this.map.tiles[i] as any; for (const k of Object.keys(cur)) if (!(k in t)) delete cur[k]; Object.assign(cur, t) })
+      for (const k of Object.keys(rest)) self[k] = dc(rest[k])
+      this.rng.state = rng
+      this.log.splice(0, this.log.length, ...log)
+      this.events.splice(0, this.events.length, ...events)
+      this.invalidateTerrain()
+    }
+  }
+  /**
+   * Run a player or AI command so it can be suspended for a decision: render events are held back
+   * until it finishes; on PendingChoice the battle is rolled back and the question returned.
+   */
+  transaction(fn: () => void, answers: number[] = []): { pending: ChoiceQuestion } | { error?: Error } {
+    const restore = this.checkpoint()
+    const listeners = this.listeners
+    const held: BattleEvent[] = []
+    this.listeners = [e => held.push(e)]
+    this.answers = answers.slice()
+    let out: { pending: ChoiceQuestion } | { error?: Error } = {}
+    this.txDepth++
+    try {
+      fn()
+    } catch (e) {
+      if (e instanceof PendingChoice) out = { pending: e.q }
+      else out = { error: e as Error }
+    } finally {
+      this.txDepth--
+      this.listeners = listeners
+      this.answers = []
+    }
+    if ('pending' in out) { restore(); return out }
+    for (const e of held) for (const l of this.listeners) l(e)
+    return out
+  }
+
   /** Compute accuracy/difficulty and the to-hit chance for previews and the AI (no state is changed). */
   previewAttack(attacker: Unit, w: Weapon, target: Unit, from: Pos = attacker.pos, mode: AttackCtx['mode'] = 'skirmish'): { ctx: AttackCtx; chance: number; cover: Cover; expectedDamage: number } {
     return this.sandbox(() => this.previewAttackRaw(attacker, w, target, from, mode))
@@ -1586,11 +1685,31 @@ export class Battle {
     return this.shouldBrace(t, parts)
   }
   /** Resolve a reaction decision under the unit's policy. */
-  wantsReaction(u: Unit, kind: ReactionQuestion['kind'], heuristic: boolean, other: Unit, text: string): boolean {
+  wantsReaction(u: Unit, kind: 'brace' | 'overwatch', heuristic: boolean, other: Unit, text: string): boolean {
     const p = u.policies[kind]
     if (p === 'off') return false
-    if (p === 'ask' && this.decide) return this.decide({ kind, unit: u, other, text })
-    return heuristic
+    return this.choose({ kind, unit: u, other, policy: kind, title: kind === 'brace' ? 'Brace?' : 'Overwatch?', text, options: [{ label: 'Yes' }, { label: 'No' }], defaultIndex: heuristic ? 0 : 1 }) === 0
+  }
+  /**
+   * Ask a player-controlled unit a question. Enemies, AI-driven turns, sandboxes, policies other
+   * than 'ask' and battles without a UI take `defaultIndex`.
+   */
+  choose(q: ChoiceQuestion): number {
+    const clamp = (i: number) => Math.max(0, Math.min(q.options.length - 1, Math.floor(i)))
+    const def = clamp(q.defaultIndex)
+    if (q.options.length <= 1 || this.sandboxDepth || q.unit.side !== 'player' || this.aiSide === q.unit.side) return def
+    const pol = q.policy ? (q.unit.policies[q.policy] ?? 'ask') : 'ask'
+    if (pol !== 'ask') return def
+    if (this.answers.length) return clamp(this.answers.shift()!)
+    if (!this.chooser || !this.txDepth) return def // outside a transaction there is no way to suspend
+    const r = this.chooser(q)
+    if (r === undefined) throw new PendingChoice(q)
+    return clamp(r)
+  }
+  /** Yes/no scripted reaction for a player unit (policy 'reactions'); the AI answers `heuristic`. */
+  offerReaction(u: Unit, kind: string, title: string, text: string, heuristic = true): boolean {
+    if ((u.policies.reactions ?? 'ask') === 'off' && u.side === 'player') return false
+    return this.choose({ kind, unit: u, policy: 'reactions', title, text, options: [{ label: 'Yes' }, { label: 'No' }], defaultIndex: heuristic ? 0 : 1 }) === 0
   }
   brace(t: Unit): boolean {
     if (this.canSpend(t, 'reaction', 'brace') !== true) return false
