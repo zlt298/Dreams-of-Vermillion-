@@ -11,7 +11,7 @@
     "round": 7,
     "winner": null,
     "commands": 69,
-    "hash": "8f5d3f36"
+    "hash": "710b26c0"
   },
   {
     "id": "t2-standard",
@@ -38,7 +38,7 @@
     "id": "t3-boss",
     "round": 7,
     "winner": null,
-    "commands": 64,
-    "hash": "478154b3"
+    "commands": 57,
+    "hash": "b7d5020d"
   }
 ]
