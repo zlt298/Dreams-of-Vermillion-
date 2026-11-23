@@ -76,9 +76,6 @@
     {
       "name": "Detachment Duelist",
       "role": "Striker",
-      "templates": [
-        "Elite"
-      ],
       "color": "#e74c3c",
       "features": [
         {
@@ -142,7 +139,7 @@
       "name": "Detachment Hexer",
       "role": "Controller",
       "templates": [
-        "Elite"
+        "Veteran"
       ],
       "color": "#8e44ad",
       "features": [
@@ -211,7 +208,8 @@
             }
           ]
         }
-      ]
+      ],
+      "veteranTrait": "deadly"
     },
     {
       "name": "Detachment Bastion",
@@ -289,7 +287,7 @@
       "templates": [
         "Grunt"
       ],
-      "count": 6,
+      "count": 1,
       "color": "#c0392b",
       "features": [
         {

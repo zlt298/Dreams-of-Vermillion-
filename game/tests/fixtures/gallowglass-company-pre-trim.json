@@ -1,0 +1,198 @@
+{
+  "id": "t2-gallowglass-company",
+  "name": "Gallowglass Company",
+  "faction": "Choir-paid mercenaries",
+  "theme": "Professional killers the Choir pays in Annex-printed hardware. They do not sing.",
+  "tier": 2,
+  "designedFor": 4,
+  "kind": "standard",
+  "sitrep": "control",
+  "description": "Identity: overlapping fields of fire anchored by a sergeant who keeps everyone shielded.",
+  "units": [
+    {
+      "name": "Gallowglass Sergeant",
+      "role": "Striker",
+      "templates": [
+        "Commander"
+      ],
+      "color": "#c0392b",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Battle Carbine",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 10
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+4"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Shock Baton",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+2"
+            }
+          ],
+          "onHit": [
+            {
+              "do": "status",
+              "status": "impaired",
+              "save": "hull",
+              "duration": "next_turn_end_target"
+            }
+          ]
+        },
+        {
+          "type": "system",
+          "name": "Rally Cry",
+          "activation": "quick",
+          "target": "self_burst",
+          "radius": 3,
+          "effects": [
+            {
+              "do": "overshield",
+              "val": 3
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "reaction",
+          "name": "Covering Fire",
+          "trigger": "ally_attacked_adjacent",
+          "frequency": "1/round",
+          "attackWith": "Battle Carbine"
+        }
+      ]
+    },
+    {
+      "name": "Gallowglass Gunner",
+      "role": "Artillery",
+      "templates": [
+        "Mercenary"
+      ],
+      "color": "#d68910",
+      "mechWeapons": [
+        "mw_heavy_machine_gun"
+      ],
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Frag Launcher",
+          "weaponType": "Launcher",
+          "range": [
+            {
+              "type": "Range",
+              "val": 10
+            },
+            {
+              "type": "Blast",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Explosive",
+              "val": "1d6+2"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_arcing"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Bipod Brace",
+          "stats": {
+            "armor": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "Gallowglass Lance",
+      "role": "Striker",
+      "templates": [
+        "Mercenary"
+      ],
+      "count": 3,
+      "color": "#b03a2e",
+      "mechWeapons": [
+        "mw_assault_rifle"
+      ],
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Combat Knife",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+3"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Drilled Footwork",
+          "stats": {
+            "evasion": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "Gallowglass Recruit",
+      "role": "Striker",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 2,
+      "color": "#a93226",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Surplus Rifle",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 10
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+3"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

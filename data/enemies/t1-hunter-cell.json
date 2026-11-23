@@ -74,9 +74,6 @@
     {
       "name": "Sun-Eye Hound",
       "role": "Striker",
-      "templates": [
-        "Veteran"
-      ],
       "color": "#c0392b",
       "features": [
         {
@@ -129,8 +126,7 @@
           }
         }
       ],
-      "count": 2,
-      "veteranTrait": "deadly"
+      "count": 1
     },
     {
       "name": "Sun-Eye Overseer",
@@ -185,7 +181,7 @@
           ]
         }
       ],
-      "count": 2
+      "count": 1
     },
     {
       "name": "Printed Seeker",
@@ -193,7 +189,7 @@
       "templates": [
         "Grunt"
       ],
-      "count": 2,
+      "count": 1,
       "description": "Expendable hunter-killer drones that run ahead of the cell.",
       "features": [
         {

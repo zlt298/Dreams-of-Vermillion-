@@ -14,7 +14,7 @@
       "templates": [
         "Elite"
       ],
-      "count": 2,
+      "count": 1,
       "color": "#b3122e",
       "description": "It steps out of a shadow it was never in.",
       "features": [
@@ -82,7 +82,7 @@
       "name": "Forecast Breacher",
       "role": "Striker",
       "templates": [
-        "Elite"
+        "Veteran"
       ],
       "count": 1,
       "color": "#d9534f",
@@ -160,7 +160,8 @@
             }
           ]
         }
-      ]
+      ],
+      "veteranTrait": "deadly"
     },
     {
       "name": "Forecast Archer",
@@ -296,7 +297,7 @@
       "templates": [
         "Grunt"
       ],
-      "count": 4,
+      "count": 1,
       "color": "#d9534f",
       "description": "Converts in cheap prints, singing on the open channel.",
       "features": [

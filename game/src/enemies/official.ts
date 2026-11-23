@@ -4,9 +4,8 @@
 // the hand-made teams.
 import { Rng } from '../rules/rng'
 import type { OfficialClass } from '../import/lcp'
-import { BUDGET_PER_PC, VETERAN_TRAITS, type EnemyTeam, type EnemyUnitDef, type Template, type Tier, unitBudget } from './ruleset'
+import { BUDGET_PER_PC, KIND_MULT, VETERAN_TRAITS, type EnemyTeam, type EnemyUnitDef, type Template, type Tier, unitBudget } from './ruleset'
 
-const KIND_MULT = { standard: 1, elite: 1.5, boss: 2 } as const
 /** Official classes are stronger per budget point at tier 3 and weaker at tiers 1–2 than the hand-made teams
  *  (tuned with the balance sim against the LL0/LL5/LL10 sample squads). */
 const OFFICIAL_SCALE: Record<Tier, Record<'standard' | 'elite' | 'boss', number>> = {

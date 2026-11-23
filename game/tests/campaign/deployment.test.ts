@@ -2,12 +2,12 @@
 import { describe, expect, it } from 'vitest'
 import themed from '../../src/data/squads/themed.json'
 import { buildMechUnit } from '../../src/rules/stats'
-import { validTeams } from '../../src/enemies/catalog'
 import { buildTeam } from '../../src/enemies/build'
 import { generateMap, placeUnits, themeForAct } from '../../src/run/mapgen'
 import { footprint, tileAt } from '../../src/rules/grid'
 import type { Unit } from '../../src/rules/types'
 import '../support'
+import redWardenPreTrim from '../fixtures/red-warden-pre-trim.json'
 
 describe('deployment (placeUnits)', () => {
   const offOrOverlap = (map: ReturnType<typeof generateMap>, units: Unit[]) => {
@@ -33,7 +33,8 @@ describe('deployment (placeUnits)', () => {
   })
   // regression: deployment ignored footprints, so a size-2 enemy overlapped its team mates
   it('the act 1 boss team at 4 pilots: the size-2 Choir Bulwark does not overlap other enemies', () => {
-    const t = validTeams().find(x => x.id === 't1-boss-red-warden')!
+    // the roster as it was when this was found (the attrition trim later removed the Bulwark)
+    const t = redWardenPreTrim as any
     const map = generateMap(123, { theme: themeForAct(1) })
     const enemies = buildTeam(t, 4)
     enemies.forEach((u, i) => (u.pos = map.deployEnemy[i % map.deployEnemy.length])) // the old placement was broken

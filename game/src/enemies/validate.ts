@@ -5,7 +5,7 @@ import { averageDice } from '../rules/rng'
 import type { Effect } from '../rules/types'
 import {
   type EnemyTeam, type EnemyUnitDef, type Feature, type NpcStats, type Tier,
-  ROLES, TEMPLATES, VETERAN_TRAITS, DAMAGE_BAND, DAMAGE_TOLERANCE, STAT_TOLERANCE, baselineStats, featureSlots, teamBudget, BUDGET_PER_PC,
+  ROLES, TEMPLATES, VETERAN_TRAITS, DAMAGE_BAND, DAMAGE_TOLERANCE, STAT_TOLERANCE, baselineStats, featureSlots, teamBudget, BUDGET_PER_PC, KIND_MULT,
 } from './ruleset'
 
 export interface ValidationResult { ok: boolean; errors: string[]; warnings: string[]; budget: number }
@@ -157,7 +157,8 @@ export function validateTeam(t: EnemyTeam): ValidationResult {
     if (u.color && !/^#[0-9a-fA-F]{6}$/.test(u.color)) errors.push(`${u.name}: color must be #rrggbb`)
   }
   const budget = teamBudget(t)
-  const target = BUDGET_PER_PC[tier] * (t.designedFor ?? 4) * (t.kind === 'boss' ? 2 : t.kind === 'elite' ? 1.5 : 1)
+  const target = BUDGET_PER_PC[tier] * (t.designedFor ?? 4) * KIND_MULT[t.kind ?? 'standard']
+  if (t.kind === 'elite' && !t.units.some(u => u.templates?.includes('Elite'))) errors.push('an elite team needs at least one Elite')
   if (budget > target * 1.25) errors.push(`budget ${budget} exceeds ${(target * 1.25).toFixed(2)} (target ${target} for ${t.designedFor} PCs at T${tier}${t.kind ? ' ' + t.kind : ''})`)
   if (budget < target * 0.6) warnings.push(`budget ${budget} is well under the target ${target}`)
   if (t.kind === 'boss' && !t.units.some(u => (u.templates ?? []).includes('Ultra'))) warnings.push('boss teams should include an Ultra')

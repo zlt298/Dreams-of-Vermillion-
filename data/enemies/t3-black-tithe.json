@@ -107,10 +107,7 @@
     {
       "name": "Eye Templar",
       "role": "Striker",
-      "templates": [
-        "Veteran"
-      ],
-      "count": 2,
+      "count": 1,
       "color": "#922b21",
       "features": [
         {
@@ -174,94 +171,7 @@
           "frequency": "1/round",
           "attackWith": "Penitent Blade"
         }
-      ],
-      "veteranTrait": "deadly"
-    },
-    {
-      "name": "Eye Inquisitor",
-      "role": "Controller",
-      "templates": [
-        "Elite"
-      ],
-      "color": "#6c3483",
-      "features": [
-        {
-          "type": "tech",
-          "name": "Excommunicate",
-          "kind": "quick",
-          "onHit": [
-            {
-              "do": "status",
-              "status": "jammed",
-              "save": "sys",
-              "duration": "next_turn_end_target"
-            },
-            {
-              "do": "heat",
-              "val": 3
-            }
-          ],
-          "recharge": 5
-        },
-        {
-          "type": "tech",
-          "name": "Pinning Edict",
-          "kind": "quick",
-          "onHit": [
-            {
-              "do": "status",
-              "status": "immobilized",
-              "save": "hull",
-              "duration": "next_turn_end_target"
-            }
-          ]
-        },
-        {
-          "type": "tech",
-          "name": "Judgement",
-          "kind": "full",
-          "onHit": [
-            {
-              "do": "status",
-              "status": "stunned",
-              "save": "sys",
-              "duration": "next_turn_end_target"
-            }
-          ],
-          "recharge": 6
-        },
-        {
-          "type": "weapon",
-          "name": "Censure Pistol",
-          "weaponType": "CQB",
-          "range": [
-            {
-              "type": "Range",
-              "val": 6
-            }
-          ],
-          "damage": [
-            {
-              "type": "Kinetic",
-              "val": "1d6+3"
-            }
-          ],
-          "smart": true
-        },
-        {
-          "type": "reaction",
-          "name": "Feedback Loop",
-          "trigger": "attacked_and_missed",
-          "frequency": "1/round",
-          "effects": [
-            {
-              "do": "heat",
-              "val": 3
-            }
-          ]
-        }
-      ],
-      "count": 1
+      ]
     },
     {
       "name": "Eye Penitent",
@@ -269,7 +179,7 @@
       "templates": [
         "Grunt"
       ],
-      "count": 3,
+      "count": 1,
       "color": "#7b241c",
       "features": [
         {

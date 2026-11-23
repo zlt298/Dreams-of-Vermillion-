@@ -185,7 +185,7 @@
       "templates": [
         "Grunt"
       ],
-      "count": 6,
+      "count": 1,
       "color": "#8e2a2a",
       "description": "Annex coveralls. Eyes open. Singing.",
       "features": [
@@ -212,7 +212,7 @@
       "name": "Cantor of the Second Dawn",
       "role": "Support",
       "color": "#c0392b",
-      "count": 2,
+      "count": 1,
       "description": "Choir mechanics in red-eyed hoods. They keep the Voice whole and never stop singing.",
       "features": [
         {

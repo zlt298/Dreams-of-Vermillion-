@@ -11,9 +11,6 @@
     {
       "name": "Witch-Cantor",
       "role": "Controller",
-      "templates": [
-        "Veteran"
-      ],
       "count": 1,
       "color": "#9b59b6",
       "description": "Her verses get into your firmware.",
@@ -91,8 +88,7 @@
             }
           ]
         }
-      ],
-      "veteranTrait": "hardened_target"
+      ]
     },
     {
       "name": "Assault Cantor",
@@ -191,10 +187,6 @@
     {
       "name": "Frenzy Blade",
       "role": "Striker",
-      "templates": [
-        "Veteran"
-      ],
-      "veteranTrait": "feign_death",
       "count": 1,
       "color": "#b3122e",
       "description": "It sang through its own destruction once already.",
@@ -265,177 +257,12 @@
       ]
     },
     {
-      "name": "Eye Marksman",
-      "role": "Artillery",
-      "templates": [
-        "Veteran"
-      ],
-      "veteranTrait": "deadly",
-      "count": 1,
-      "color": "#e08e2b",
-      "description": "A red eye on the scope. Another on the trigger finger.",
-      "features": [
-        {
-          "type": "weapon",
-          "name": "Anti-Frame Rifle",
-          "weaponType": "Rifle",
-          "range": [
-            {
-              "type": "Range",
-              "val": 20
-            }
-          ],
-          "damage": [
-            {
-              "type": "Kinetic",
-              "val": "2d6+4"
-            }
-          ],
-          "tags": [
-            {
-              "id": "tg_ap"
-            },
-            {
-              "id": "tg_loading"
-            }
-          ]
-        },
-        {
-          "type": "weapon",
-          "name": "Sidearm",
-          "weaponType": "CQB",
-          "range": [
-            {
-              "type": "Range",
-              "val": 6
-            }
-          ],
-          "damage": [
-            {
-              "type": "Kinetic",
-              "val": "1d6+2"
-            }
-          ]
-        },
-        {
-          "type": "trait",
-          "name": "Ridgeline Optics",
-          "stats": {
-            "sensors": 3
-          }
-        },
-        {
-          "type": "tech",
-          "name": "Spot",
-          "kind": "quick",
-          "onHit": [
-            {
-              "do": "status",
-              "status": "lockon",
-              "duration": "until_cleared"
-            }
-          ]
-        },
-        {
-          "type": "reaction",
-          "name": "Displace",
-          "trigger": "enemy_moves_adjacent",
-          "frequency": "1/round",
-          "effects": [
-            {
-              "do": "push",
-              "val": 2,
-              "save": "hull"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Choir Precentor",
-      "role": "Support",
-      "templates": [],
-      "count": 1,
-      "color": "#27ae60",
-      "description": "Leads the hymn. Its verses mend what the lance breaks.",
-      "features": [
-        {
-          "type": "system",
-          "name": "Antiphon",
-          "activation": "quick",
-          "target": "ally",
-          "range": 8,
-          "effects": [
-            {
-              "do": "heal",
-              "val": "1d6+3"
-            },
-            {
-              "do": "clear_status",
-              "status": "any_negative"
-            }
-          ],
-          "recharge": 6
-        },
-        {
-          "type": "system",
-          "name": "Sanctus Ward",
-          "activation": "quick",
-          "target": "ally",
-          "range": 8,
-          "effects": [
-            {
-              "do": "overshield",
-              "val": 5
-            }
-          ],
-          "recharge": 5
-        },
-        {
-          "type": "weapon",
-          "name": "Censer Mace",
-          "weaponType": "Melee",
-          "range": [
-            {
-              "type": "Threat",
-              "val": 2
-            }
-          ],
-          "damage": [
-            {
-              "type": "Energy",
-              "val": "1d6+3"
-            }
-          ]
-        },
-        {
-          "type": "trait",
-          "name": "Cantor's Plate",
-          "stats": {
-            "armor": 1
-          }
-        },
-        {
-          "type": "reaction",
-          "name": "Rally the Hymn",
-          "trigger": "ally_attacked_adjacent",
-          "frequency": "1/round",
-          "effects": [
-            {
-              "do": "overshield",
-              "val": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "Choir Skirmisher",
       "role": "Striker",
       "templates": [
         "Grunt"
       ],
-      "count": 3,
+      "count": 1,
       "color": "#d9534f",
       "description": "Converts in cheap prints, singing on the open channel.",
       "features": [

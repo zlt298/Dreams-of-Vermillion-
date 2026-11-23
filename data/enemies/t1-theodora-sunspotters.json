@@ -12,7 +12,7 @@
     {
       "name": "Sunspotter Longrifle",
       "role": "Artillery",
-      "count": 2,
+      "count": 1,
       "color": "#e08e2b",
       "description": "A long-barrelled print with a red eye painted on the scope.",
       "features": [

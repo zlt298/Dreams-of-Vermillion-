@@ -44,9 +44,9 @@ describe('enemy ruleset', () => {
 
   it('builds units and scales to squad size', () => {
     const t = teams.find(t => t.id === 't1-scrapjaw-raiders')
-    expect(buildTeam(t, 4).length).toBe(11)
-    expect(buildTeam(t, 2).length).toBeLessThan(11)
-    expect(teamBudget(t)).toBe(5)
+    expect(buildTeam(t, 4).length).toBe(7)
+    expect(buildTeam(t, 2).length).toBeLessThan(7)
+    expect(teamBudget(t)).toBe(4)
   })
 })
 

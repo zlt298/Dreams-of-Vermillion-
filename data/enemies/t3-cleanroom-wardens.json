@@ -11,10 +11,6 @@
     {
       "name": "Sterile Bastion",
       "role": "Defender",
-      "templates": [
-        "Veteran"
-      ],
-      "veteranTrait": "shock_armor",
       "count": 1,
       "color": "#bdc3c7",
       "description": "Its hull is so white it hurts to look at.",
@@ -102,7 +98,7 @@
     {
       "name": "Laminar Sniper",
       "role": "Artillery",
-      "count": 2,
+      "count": 1,
       "color": "#e08e2b",
       "description": "Fires along the airflow lines. The rounds do not wobble.",
       "features": [
@@ -185,7 +181,7 @@
     {
       "name": "Partition Breacher",
       "role": "Striker",
-      "count": 2,
+      "count": 1,
       "color": "#d9534f",
       "description": "Built to cut through glass walls. And whoever is behind them.",
       "features": [
@@ -337,7 +333,7 @@
       "templates": [
         "Grunt"
       ],
-      "count": 4,
+      "count": 1,
       "color": "#ecf0f1",
       "description": "Cleaning drones with the safeties removed.",
       "features": [

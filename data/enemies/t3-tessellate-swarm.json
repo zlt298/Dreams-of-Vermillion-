@@ -14,7 +14,7 @@
       "templates": [
         "Grunt"
       ],
-      "count": 6,
+      "count": 1,
       "color": "#5fb3a1",
       "features": [
         {
@@ -46,7 +46,7 @@
     {
       "name": "Regolith Spitter",
       "role": "Biological",
-      "count": 2,
+      "count": 1,
       "color": "#3e9c7c",
       "features": [
         {

@@ -48,15 +48,17 @@ Multiple non-Grunt templates cost the most expensive one, plus 0.5 for each extr
 
 | tier | per-PC rate |
 |---|---|
-| 1 | 1.0 |
-| 2 | 1.5 |
-| 3 | 2.0 |
+| 1 | 0.8 |
+| 2 | 1.2 |
+| 3 | 1.0 |
 
-The kind multiplier is 1 for standard, 1.5 for elite and 2 for boss.
+The kind multiplier is 1 for standard, 1.5 for elite and 1.75 for boss.
+
+These rates were set on **attrition**, not win rate: in a run, damage carries over, so a fight the squad wins while losing a mech is a bad fight. Targets with a typical squad: about 0.2 mechs lost per standard fight, 0.5 per elite and 1 per boss (act 1 a little easier, act 3 a little harder). Tier-3 units are individually much stronger, which is why the tier-3 rate is below tier 2's. Every elite team keeps at least one Elite.
 
 A team **may not exceed the target by more than 25%**. Going under 60% of the target produces a warning.
 
-Example: a tier-1 standard team for 4 PCs targets a budget of 4, with a maximum of 5.
+Example: a tier-1 standard team for 4 PCs targets a budget of 3.2, with a maximum of 4.
 
 ---
 

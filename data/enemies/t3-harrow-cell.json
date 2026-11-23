@@ -90,7 +90,7 @@
     {
       "name": "Anomaly Reaver",
       "role": "Striker",
-      "count": 3,
+      "count": 1,
       "color": "#c0392b",
       "features": [
         {
@@ -229,7 +229,7 @@
       "templates": [
         "Grunt"
       ],
-      "count": 4,
+      "count": 2,
       "color": "#a93226",
       "features": [
         {

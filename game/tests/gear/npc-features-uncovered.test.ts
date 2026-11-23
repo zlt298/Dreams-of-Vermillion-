@@ -75,7 +75,9 @@ describe('templates and Veteran traits used by the shipped teams', () => {
     expect(b.buildWeaponCtx(a, w(a, 'mw_heavy_machine_gun'), bulwark, 'free', false).resistAll).toBeFalsy()
   })
   it('hardened_target (Witch-Cantor): tech attacks against it get +1 difficulty; +1 accuracy on its Systems saves', () => {
-    const cantor = shipped('t3-burning-eye-cantors', 'Witch-Cantor')
+    // the shipped Witch-Cantor as a Veteran with Hardened Target (the roster trim made her a standard unit)
+    const def = teamFile('t3-burning-eye-cantors').units.find((u: any) => u.name === 'Witch-Cantor')
+    const cantor = buildTeam({ ...teamFile('t3-burning-eye-cantors'), units: [{ ...def, templates: ['Veteran'], veteranTrait: 'hardened_target' }] })[0]
     expect(cantor.traits).toContain('hardened_target')
     const { a, b } = versus(cantor)
     expect(b.techAttackRoll(a, cantor, 'probe').difficulty).toBe(1)

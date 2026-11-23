@@ -42,7 +42,8 @@ describe('AI found by the balance sim', () => {
     // the fight where it was found: Ghosts (LL5) vs Gallowglass Company, seed 1, Wisp's round-2 turn
     const dest = (core: boolean) => {
       const squad = (themed as any[]).find(s => s.theme === 'ghosts' && s.level === 5).pilots.map((p: any) => buildMechUnit(structuredClone(p)))
-      const foes = buildTeam(team('t2-gallowglass-company'), 4)
+      // the roster as it was when this was found (before the attrition roster trim)
+      const foes = buildTeam(JSON.parse(readFileSync(join(import.meta.dirname, '../fixtures/gallowglass-company-pre-trim.json'), 'utf8')), 4)
       const map = generateMap(977)
       squad.forEach((u: any, i: number) => (u.pos = map.deployPlayer[i]))
       foes.forEach((u, i) => (u.pos = map.deployEnemy[i % map.deployEnemy.length]))

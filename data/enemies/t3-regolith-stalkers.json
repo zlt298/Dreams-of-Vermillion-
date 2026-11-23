@@ -11,7 +11,7 @@
     {
       "name": "Dust Stalker",
       "role": "Biological",
-      "count": 3,
+      "count": 1,
       "color": "#a0522d",
       "description": "Rust-coloured, too many joints, and quiet.",
       "features": [
@@ -155,7 +155,7 @@
     {
       "name": "Dune Spitter",
       "role": "Biological",
-      "count": 2,
+      "count": 1,
       "color": "#c0392b",
       "description": "Lobs corrosive regolith from behind the dunes.",
       "features": [

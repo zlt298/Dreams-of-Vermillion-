@@ -124,7 +124,10 @@ export type SkillStat = 'hull' | 'agi' | 'sys' | 'eng'
 export const BASE_FEATURE_SLOTS: Record<Tier, number> = { 1: 3, 2: 4, 3: 5 }
 
 /** Encounter budget per player mech, by act (run depth). Elite nodes x1.5, boss nodes x2. */
-export const BUDGET_PER_PC: Record<Tier, number> = { 1: 1.0, 2: 1.5, 3: 2.0 }
+/** Per-player budget rate by tier (tuned on attrition: mechs and Structure lost per fight, not win rate). */
+export const BUDGET_PER_PC: Record<Tier, number> = { 1: 0.8, 2: 1.2, 3: 1.0 }
+/** Budget multiplier by encounter kind. */
+export const KIND_MULT = { standard: 1, elite: 1.5, boss: 1.75 } as const
 
 // ------------------------------------------------------------------ feature schema
 export interface WeaponFeature {
