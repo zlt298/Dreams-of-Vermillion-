@@ -36,6 +36,15 @@ export function sampleSquad(level: 5 | 10): PilotBuild[] {
   return ((level === 5 ? ll5 : ll10) as any[]).map(p => importPilots(p)[0])
 }
 
+import themed from '../data/squads/themed.json'
+
+/** A pre-built player squad: a theme at one License Level (act 1 = LL0, act 2 = LL5, act 3 = LL10). */
+export interface SquadPreset { id: string; name: string; theme: string; blurb: string; level: number; pilots: PilotBuild[] }
+/** The themed squads (generated and validated by scripts/make-squads.ts). */
+export function squadPresets(): SquadPreset[] {
+  return structuredClone(themed as unknown as SquadPreset[])
+}
+
 export function pregenBuilds(): PilotBuild[] {
   return (pregens as any[]).map(p => importPilots(p)[0])
 }

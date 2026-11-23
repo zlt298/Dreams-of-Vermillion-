@@ -1,0 +1,4624 @@
+[
+ {
+  "id": "brawlers-ll0",
+  "name": "Brawlers",
+  "theme": "brawlers",
+  "blurb": "Close the distance and hit hard: melee and shotguns, heavy armour.",
+  "level": 0,
+  "pilots": [
+   {
+    "id": "sq-brawlers-1-ll0",
+    "callsign": "Anvil",
+    "name": "Teodor Brask",
+    "level": 0,
+    "mechSkills": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_brawler",
+      "rank": 1
+     },
+     {
+      "id": "t_juggernaut",
+      "rank": 1
+     },
+     {
+      "id": "t_vanguard",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Anvil's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_shotgun",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_shotgun",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_heavy_melee_weapon",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_stable_structure",
+      "ms_type_3_projected_shield",
+      "ms_comp_con_class_assistant_unit"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-brawlers-2-ll0",
+    "callsign": "Gaff",
+    "name": "Ines Maro",
+    "level": 0,
+    "mechSkills": [
+     1,
+     1,
+     0,
+     0
+    ],
+    "talents": [
+     {
+      "id": "t_duelist",
+      "rank": 1
+     },
+     {
+      "id": "t_hunter",
+      "rank": 1
+     },
+     {
+      "id": "t_brawler",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Gaff's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_charged_blade",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_tactical_knife",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_pistol",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_charged_blade",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_rapid_burst_jump_jet_system",
+      "ms_stable_structure",
+      "ms_type_3_projected_shield"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-brawlers-3-ll0",
+    "callsign": "Cinder",
+    "name": "Ruth Okafor",
+    "level": 0,
+    "mechSkills": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_heavy_gunner",
+      "rank": 1
+     },
+     {
+      "id": "t_walking_armory",
+      "rank": 1
+     },
+     {
+      "id": "t_brutal",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Cinder's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_thermal_pistol",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_thermal_rifle",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_thermal_lance",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_pattern_a_smoke_charges",
+      "ms_stable_structure",
+      "ms_type_3_projected_shield"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-brawlers-4-ll0",
+    "callsign": "Bulwark",
+    "name": "Sefa Lindqvist",
+    "level": 0,
+    "mechSkills": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_vanguard",
+      "rank": 1
+     },
+     {
+      "id": "t_juggernaut",
+      "rank": 1
+     },
+     {
+      "id": "t_combined_arms",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Bulwark's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_tactical_melee_weapon",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_tactical_melee_weapon",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_heavy_machine_gun",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_type_3_projected_shield",
+      "ms_pattern_a_jericho_deployable_cover",
+      "ms_stable_structure"
+     ]
+    },
+    "unknown": []
+   }
+  ]
+ },
+ {
+  "id": "brawlers-ll5",
+  "name": "Brawlers",
+  "theme": "brawlers",
+  "blurb": "Close the distance and hit hard: melee and shotguns, heavy armour.",
+  "level": 5,
+  "pilots": [
+   {
+    "id": "sq-brawlers-1-ll5",
+    "callsign": "Anvil",
+    "name": "Teodor Brask",
+    "level": 5,
+    "mechSkills": [
+     3,
+     1,
+     0,
+     3
+    ],
+    "talents": [
+     {
+      "id": "t_brawler",
+      "rank": 3
+     },
+     {
+      "id": "t_juggernaut",
+      "rank": 2
+     },
+     {
+      "id": "t_vanguard",
+      "rank": 2
+     },
+     {
+      "id": "t_brutal",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_reinforced_frame"
+    ],
+    "licenses": [
+     {
+      "id": "mf_blackbeard",
+      "rank": 3
+     },
+     {
+      "id": "mf_drake",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Anvil's Blackbeard",
+     "frameId": "mf_blackbeard",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_chain_axe",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_charged_blade",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_nanocarbon_sword",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_reinforced_cabling",
+      "ms_synthetic_muscle_netting",
+      "ms_aegis_shield_generator",
+      "ms_stable_structure"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-brawlers-2-ll5",
+    "callsign": "Gaff",
+    "name": "Ines Maro",
+    "level": 5,
+    "mechSkills": [
+     3,
+     3,
+     0,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_duelist",
+      "rank": 3
+     },
+     {
+      "id": "t_hunter",
+      "rank": 2
+     },
+     {
+      "id": "t_brawler",
+      "rank": 2
+     },
+     {
+      "id": "t_skirmisher",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_sloped_plating"
+    ],
+    "licenses": [
+     {
+      "id": "mf_vlad",
+      "rank": 3
+     },
+     {
+      "id": "mf_blackbeard",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Gaff's Vlad",
+     "frameId": "mf_vlad",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_impact_lance",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_charged_blade",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_nanocarbon_sword",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_charged_stake",
+      "ms_synthetic_muscle_netting",
+      "ms_caltrop_launcher",
+      "ms_stable_structure",
+      "ms_webjaw_snare"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-brawlers-3-ll5",
+    "callsign": "Cinder",
+    "name": "Ruth Okafor",
+    "level": 5,
+    "mechSkills": [
+     3,
+     0,
+     1,
+     3
+    ],
+    "talents": [
+     {
+      "id": "t_heavy_gunner",
+      "rank": 3
+     },
+     {
+      "id": "t_walking_armory",
+      "rank": 2
+     },
+     {
+      "id": "t_brutal",
+      "rank": 2
+     },
+     {
+      "id": "t_juggernaut",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_heatfall_coolant_system"
+    ],
+    "licenses": [
+     {
+      "id": "mf_genghis",
+      "rank": 3
+     },
+     {
+      "id": "mf_barbarossa",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Cinder's Genghis",
+     "frameId": "mf_genghis",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_charged_blade",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_segment_knife",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_heavy_charged_blade",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_agni_class_nhp",
+      "ms_auto_cooler",
+      "ms_flak_launcher",
+      "ms_siege_stabilizers"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-brawlers-4-ll5",
+    "callsign": "Bulwark",
+    "name": "Sefa Lindqvist",
+    "level": 5,
+    "mechSkills": [
+     4,
+     0,
+     1,
+     2
+    ],
+    "talents": [
+     {
+      "id": "t_vanguard",
+      "rank": 3
+     },
+     {
+      "id": "t_juggernaut",
+      "rank": 2
+     },
+     {
+      "id": "t_combined_arms",
+      "rank": 2
+     },
+     {
+      "id": "t_leader",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_titanomachy_mesh"
+    ],
+    "licenses": [
+     {
+      "id": "mf_tortuga",
+      "rank": 3
+     },
+     {
+      "id": "mf_lancaster",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Bulwark's Tortuga",
+     "frameId": "mf_tortuga",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_catalytic_hammer",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_tactical_melee_weapon",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_hyperdense_armor",
+      "ms_type_3_projected_shield",
+      "ms_stable_structure",
+      "ms_siege_ram"
+     ]
+    },
+    "unknown": []
+   }
+  ]
+ },
+ {
+  "id": "brawlers-ll10",
+  "name": "Brawlers",
+  "theme": "brawlers",
+  "blurb": "Close the distance and hit hard: melee and shotguns, heavy armour.",
+  "level": 10,
+  "pilots": [
+   {
+    "id": "sq-brawlers-1-ll10",
+    "callsign": "Anvil",
+    "name": "Teodor Brask",
+    "level": 10,
+    "mechSkills": [
+     5,
+     2,
+     1,
+     4
+    ],
+    "talents": [
+     {
+      "id": "t_brawler",
+      "rank": 3
+     },
+     {
+      "id": "t_juggernaut",
+      "rank": 3
+     },
+     {
+      "id": "t_vanguard",
+      "rank": 3
+     },
+     {
+      "id": "t_brutal",
+      "rank": 2
+     },
+     {
+      "id": "t_executioner",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_reinforced_frame",
+     "cb_sloped_plating",
+     "cb_overpower_caliber"
+    ],
+    "licenses": [
+     {
+      "id": "mf_blackbeard",
+      "rank": 3
+     },
+     {
+      "id": "mf_drake",
+      "rank": 3
+     },
+     {
+      "id": "mf_vlad",
+      "rank": 3
+     },
+     {
+      "id": "mf_tortuga",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Anvil's Blackbeard",
+     "frameId": "mf_blackbeard",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_chain_axe",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_impact_lance",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_nanocarbon_sword",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_reinforced_cabling",
+      "ms_synthetic_muscle_netting",
+      "ms_charged_stake",
+      "ms_portable_bunker",
+      "ms_aegis_shield_generator"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-brawlers-2-ll10",
+    "callsign": "Gaff",
+    "name": "Ines Maro",
+    "level": 10,
+    "mechSkills": [
+     4,
+     5,
+     1,
+     2
+    ],
+    "talents": [
+     {
+      "id": "t_duelist",
+      "rank": 3
+     },
+     {
+      "id": "t_hunter",
+      "rank": 3
+     },
+     {
+      "id": "t_brawler",
+      "rank": 3
+     },
+     {
+      "id": "t_skirmisher",
+      "rank": 2
+     },
+     {
+      "id": "t_juggernaut",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_sloped_plating",
+     "cb_reinforced_frame",
+     "cb_auto_stabilizing_hardpoints"
+    ],
+    "licenses": [
+     {
+      "id": "mf_vlad",
+      "rank": 3
+     },
+     {
+      "id": "mf_blackbeard",
+      "rank": 3
+     },
+     {
+      "id": "mf_lancaster",
+      "rank": 3
+     },
+     {
+      "id": "mf_nelson",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Gaff's Vlad",
+     "frameId": "mf_vlad",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_impact_lance",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_cutter_mkii_plasma_torch",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_nanocarbon_sword",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_charged_stake",
+      "ms_reinforced_cabling",
+      "ms_bulwark_mods",
+      "ms_synthetic_muscle_netting",
+      "ms_caltrop_launcher",
+      "ms_stable_structure"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-brawlers-3-ll10",
+    "callsign": "Cinder",
+    "name": "Ruth Okafor",
+    "level": 10,
+    "mechSkills": [
+     4,
+     1,
+     2,
+     5
+    ],
+    "talents": [
+     {
+      "id": "t_heavy_gunner",
+      "rank": 3
+     },
+     {
+      "id": "t_walking_armory",
+      "rank": 3
+     },
+     {
+      "id": "t_brutal",
+      "rank": 3
+     },
+     {
+      "id": "t_juggernaut",
+      "rank": 2
+     },
+     {
+      "id": "t_vanguard",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_heatfall_coolant_system",
+     "cb_adaptive_reactor",
+     "cb_improved_armament"
+    ],
+    "licenses": [
+     {
+      "id": "mf_genghis",
+      "rank": 3
+     },
+     {
+      "id": "mf_barbarossa",
+      "rank": 3
+     },
+     {
+      "id": "mf_sherman",
+      "rank": 3
+     },
+     {
+      "id": "mf_tokugawa",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Cinder's Genghis",
+     "frameId": "mf_genghis",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_charged_blade",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_segment_knife",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_heavy_charged_blade",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_agni_class_nhp",
+      "ms_auto_cooler",
+      "ms_flak_launcher",
+      "ms_roller_directed_payload_charges",
+      "ms_external_batteries"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-brawlers-4-ll10",
+    "callsign": "Bulwark",
+    "name": "Sefa Lindqvist",
+    "level": 10,
+    "mechSkills": [
+     6,
+     1,
+     2,
+     3
+    ],
+    "talents": [
+     {
+      "id": "t_vanguard",
+      "rank": 3
+     },
+     {
+      "id": "t_juggernaut",
+      "rank": 3
+     },
+     {
+      "id": "t_combined_arms",
+      "rank": 3
+     },
+     {
+      "id": "t_leader",
+      "rank": 2
+     },
+     {
+      "id": "t_brawler",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_titanomachy_mesh",
+     "cb_gyges_frame",
+     "cb_improved_armament"
+    ],
+    "licenses": [
+     {
+      "id": "mf_tortuga",
+      "rank": 3
+     },
+     {
+      "id": "mf_lancaster",
+      "rank": 3
+     },
+     {
+      "id": "mf_drake",
+      "rank": 3
+     },
+     {
+      "id": "mf_raleigh",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Bulwark's Tortuga",
+     "frameId": "mf_tortuga",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_catalytic_hammer",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_cutter_mkii_plasma_torch",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_tactical_melee_weapon",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_hyperdense_armor",
+      "ms_portable_bunker",
+      "ms_aegis_shield_generator",
+      "ms_type_3_projected_shield",
+      "ms_argonaut_shield",
+      "ms_cable_winch_system"
+     ]
+    },
+    "unknown": []
+   }
+  ]
+ },
+ {
+  "id": "longguns-ll0",
+  "name": "Long Guns",
+  "theme": "longguns",
+  "blurb": "Hold the back line: rifles, cannons and missiles at long range.",
+  "level": 0,
+  "pilots": [
+   {
+    "id": "sq-longguns-1-ll0",
+    "callsign": "Plumb",
+    "name": "Aster Vey",
+    "level": 0,
+    "mechSkills": [
+     0,
+     1,
+     1,
+     0
+    ],
+    "talents": [
+     {
+      "id": "t_crack_shot",
+      "rank": 1
+     },
+     {
+      "id": "t_spotter",
+      "rank": 1
+     },
+     {
+      "id": "t_ace",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Plumb's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_assault_rifle",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_assault_rifle",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_anti_materiel_rifle",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_manipulators",
+      "ms_comp_con_class_assistant_unit",
+      "ms_stable_structure",
+      "ms_personalizations"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-longguns-2-ll0",
+    "callsign": "Thresh",
+    "name": "Corin Hale",
+    "level": 0,
+    "mechSkills": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_heavy_gunner",
+      "rank": 1
+     },
+     {
+      "id": "t_siege_specialist",
+      "rank": 1
+     },
+     {
+      "id": "t_spotter",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Thresh's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_mortar",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_mortar",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_howitzer",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_stable_structure",
+      "ms_comp_con_class_assistant_unit",
+      "ms_manipulators",
+      "ms_personalizations"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-longguns-3-ll0",
+    "callsign": "Salvo",
+    "name": "Mira Duenas",
+    "level": 0,
+    "mechSkills": [
+     0,
+     1,
+     1,
+     0
+    ],
+    "talents": [
+     {
+      "id": "t_siege_specialist",
+      "rank": 1
+     },
+     {
+      "id": "t_combined_arms",
+      "rank": 1
+     },
+     {
+      "id": "t_spotter",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Salvo's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_assault_rifle",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_missile_rack",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_missile_rack",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_rocket_propelled_grenade",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_turret_drones",
+      "ms_comp_con_class_assistant_unit",
+      "ms_manipulators",
+      "ms_personalizations"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-longguns-4-ll0",
+    "callsign": "Longwatch",
+    "name": "Pell Ansari",
+    "level": 0,
+    "mechSkills": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_heavy_gunner",
+      "rank": 1
+     },
+     {
+      "id": "t_walking_armory",
+      "rank": 1
+     },
+     {
+      "id": "t_siege_specialist",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Longwatch's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_thermal_rifle",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_thermal_rifle",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_heavy_machine_gun",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_pattern_a_jericho_deployable_cover",
+      "ms_comp_con_class_assistant_unit",
+      "ms_manipulators",
+      "ms_personalizations"
+     ]
+    },
+    "unknown": []
+   }
+  ]
+ },
+ {
+  "id": "longguns-ll5",
+  "name": "Long Guns",
+  "theme": "longguns",
+  "blurb": "Hold the back line: rifles, cannons and missiles at long range.",
+  "level": 5,
+  "pilots": [
+   {
+    "id": "sq-longguns-1-ll5",
+    "callsign": "Plumb",
+    "name": "Aster Vey",
+    "level": 5,
+    "mechSkills": [
+     1,
+     3,
+     2,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_crack_shot",
+      "rank": 3
+     },
+     {
+      "id": "t_spotter",
+      "rank": 2
+     },
+     {
+      "id": "t_ace",
+      "rank": 2
+     },
+     {
+      "id": "t_gunslinger",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_neurolink_targeting"
+    ],
+    "licenses": [
+     {
+      "id": "mf_deaths_head",
+      "rank": 3
+     },
+     {
+      "id": "mf_monarch",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Plumb's Death’s Head",
+     "frameId": "mf_deaths_head",
+     "mounts": [
+      {
+       "type": "Main/Aux",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_vulture_dmr",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_missile_rack",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_railgun",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_kinetic_compensator",
+      "ms_manipulators",
+      "ms_comp_con_class_assistant_unit",
+      "ms_core_siphon",
+      "ms_stable_structure",
+      "ms_high_stress_mag_clamps"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-longguns-2-ll5",
+    "callsign": "Thresh",
+    "name": "Corin Hale",
+    "level": 5,
+    "mechSkills": [
+     2,
+     0,
+     2,
+     3
+    ],
+    "talents": [
+     {
+      "id": "t_heavy_gunner",
+      "rank": 3
+     },
+     {
+      "id": "t_siege_specialist",
+      "rank": 2
+     },
+     {
+      "id": "t_spotter",
+      "rank": 2
+     },
+     {
+      "id": "t_crack_shot",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_adaptive_reactor"
+    ],
+    "licenses": [
+     {
+      "id": "mf_sherman",
+      "rank": 3
+     },
+     {
+      "id": "mf_barbarossa",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Thresh's Sherman",
+     "frameId": "mf_sherman",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_mortar",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_sol_pattern_laser_rifle",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_howitzer",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_stable_structure",
+      "ms_asura_class_nhp",
+      "ms_manipulators",
+      "ms_redundant_systems_upgrade"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-longguns-3-ll5",
+    "callsign": "Salvo",
+    "name": "Mira Duenas",
+    "level": 5,
+    "mechSkills": [
+     2,
+     2,
+     2,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_siege_specialist",
+      "rank": 3
+     },
+     {
+      "id": "t_combined_arms",
+      "rank": 2
+     },
+     {
+      "id": "t_spotter",
+      "rank": 2
+     },
+     {
+      "id": "t_tactician",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_neurolink_targeting"
+    ],
+    "licenses": [
+     {
+      "id": "mf_monarch",
+      "rank": 3
+     },
+     {
+      "id": "mf_deaths_head",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Salvo's Monarch",
+     "frameId": "mf_monarch",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_sharanga_missiles",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_vulture_dmr",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_gandiva_missiles",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_turret_drones",
+      "ms_tlaloc_class_nhp",
+      "ms_manipulators",
+      "ms_stable_structure"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-longguns-4-ll5",
+    "callsign": "Longwatch",
+    "name": "Pell Ansari",
+    "level": 5,
+    "mechSkills": [
+     3,
+     0,
+     1,
+     3
+    ],
+    "talents": [
+     {
+      "id": "t_heavy_gunner",
+      "rank": 3
+     },
+     {
+      "id": "t_walking_armory",
+      "rank": 2
+     },
+     {
+      "id": "t_siege_specialist",
+      "rank": 2
+     },
+     {
+      "id": "t_spotter",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_armory_sculpted_chassis"
+    ],
+    "licenses": [
+     {
+      "id": "mf_barbarossa",
+      "rank": 3
+     },
+     {
+      "id": "mf_sherman",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Longwatch's Barbarossa",
+     "frameId": "mf_barbarossa",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_mortar",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_assault_rifle",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_anti_materiel_rifle",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_external_ammo_feed",
+      "ms_autoloader_drone",
+      "ms_comp_con_class_assistant_unit",
+      "ms_manipulators"
+     ]
+    },
+    "unknown": []
+   }
+  ]
+ },
+ {
+  "id": "longguns-ll10",
+  "name": "Long Guns",
+  "theme": "longguns",
+  "blurb": "Hold the back line: rifles, cannons and missiles at long range.",
+  "level": 10,
+  "pilots": [
+   {
+    "id": "sq-longguns-1-ll10",
+    "callsign": "Plumb",
+    "name": "Aster Vey",
+    "level": 10,
+    "mechSkills": [
+     2,
+     4,
+     4,
+     2
+    ],
+    "talents": [
+     {
+      "id": "t_crack_shot",
+      "rank": 3
+     },
+     {
+      "id": "t_spotter",
+      "rank": 3
+     },
+     {
+      "id": "t_ace",
+      "rank": 3
+     },
+     {
+      "id": "t_gunslinger",
+      "rank": 2
+     },
+     {
+      "id": "t_tactician",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_neurolink_targeting",
+     "cb_all_theater_movement_suite",
+     "cb_auto_stabilizing_hardpoints"
+    ],
+    "licenses": [
+     {
+      "id": "mf_deaths_head",
+      "rank": 3
+     },
+     {
+      "id": "mf_monarch",
+      "rank": 3
+     },
+     {
+      "id": "mf_swallowtail",
+      "rank": 3
+     },
+     {
+      "id": "mf_mourning_cloak",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Plumb's Death’s Head",
+     "frameId": "mf_deaths_head",
+     "mounts": [
+      {
+       "type": "Main/Aux",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_vulture_dmr",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_oracle_lmg_i",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_railgun",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_kinetic_compensator",
+      "ms_lb_oc_cloaking_field",
+      "ms_manipulators",
+      "ms_lotus_projector",
+      "ms_comp_con_class_assistant_unit",
+      "ms_high_stress_mag_clamps"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-longguns-2-ll10",
+    "callsign": "Thresh",
+    "name": "Corin Hale",
+    "level": 10,
+    "mechSkills": [
+     3,
+     1,
+     3,
+     5
+    ],
+    "talents": [
+     {
+      "id": "t_heavy_gunner",
+      "rank": 3
+     },
+     {
+      "id": "t_siege_specialist",
+      "rank": 3
+     },
+     {
+      "id": "t_spotter",
+      "rank": 3
+     },
+     {
+      "id": "t_crack_shot",
+      "rank": 2
+     },
+     {
+      "id": "t_engineer",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_adaptive_reactor",
+     "cb_heatfall_coolant_system",
+     "cb_overpower_caliber"
+    ],
+    "licenses": [
+     {
+      "id": "mf_sherman",
+      "rank": 3
+     },
+     {
+      "id": "mf_barbarossa",
+      "rank": 3
+     },
+     {
+      "id": "mf_napoleon",
+      "rank": 3
+     },
+     {
+      "id": "mf_saladin",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Thresh's Sherman",
+     "frameId": "mf_sherman",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_mortar",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_shatterhead_colony_missiles",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_howitzer",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_stable_structure",
+      "ms_asura_class_nhp",
+      "ms_manipulators",
+      "ms_redundant_systems_upgrade",
+      "ms_siege_stabilizers"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-longguns-3-ll10",
+    "callsign": "Salvo",
+    "name": "Mira Duenas",
+    "level": 10,
+    "mechSkills": [
+     3,
+     3,
+     3,
+     3
+    ],
+    "talents": [
+     {
+      "id": "t_siege_specialist",
+      "rank": 3
+     },
+     {
+      "id": "t_combined_arms",
+      "rank": 3
+     },
+     {
+      "id": "t_spotter",
+      "rank": 3
+     },
+     {
+      "id": "t_tactician",
+      "rank": 2
+     },
+     {
+      "id": "t_crack_shot",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_neurolink_targeting",
+     "cb_integrated_nerveweave",
+     "cb_improved_armament"
+    ],
+    "licenses": [
+     {
+      "id": "mf_monarch",
+      "rank": 3
+     },
+     {
+      "id": "mf_deaths_head",
+      "rank": 3
+     },
+     {
+      "id": "mf_metalmark",
+      "rank": 3
+     },
+     {
+      "id": "mf_white_witch",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Salvo's Monarch",
+     "frameId": "mf_monarch",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_sharanga_missiles",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_vulture_dmr",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_railgun",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_kinetic_compensator",
+      "ms_turret_drones",
+      "ms_flash_charges",
+      "ms_tlaloc_class_nhp",
+      "ms_manipulators",
+      "ms_high_stress_mag_clamps"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-longguns-4-ll10",
+    "callsign": "Longwatch",
+    "name": "Pell Ansari",
+    "level": 10,
+    "mechSkills": [
+     5,
+     0,
+     2,
+     5
+    ],
+    "talents": [
+     {
+      "id": "t_heavy_gunner",
+      "rank": 3
+     },
+     {
+      "id": "t_walking_armory",
+      "rank": 3
+     },
+     {
+      "id": "t_siege_specialist",
+      "rank": 3
+     },
+     {
+      "id": "t_spotter",
+      "rank": 2
+     },
+     {
+      "id": "t_juggernaut",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_armory_sculpted_chassis",
+     "cb_superior_by_design",
+     "cb_overpower_caliber"
+    ],
+    "licenses": [
+     {
+      "id": "mf_barbarossa",
+      "rank": 3
+     },
+     {
+      "id": "mf_sherman",
+      "rank": 3
+     },
+     {
+      "id": "mf_iskander",
+      "rank": 3
+     },
+     {
+      "id": "mf_genghis",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Longwatch's Barbarossa",
+     "frameId": "mf_barbarossa",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_mortar",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_assault_rifle",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_anti_materiel_rifle",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_external_ammo_feed",
+      "ms_autoloader_drone",
+      "ms_comp_con_class_assistant_unit",
+      "ms_flak_launcher",
+      "ms_manipulators",
+      "ms_siege_stabilizers"
+     ]
+    },
+    "unknown": []
+   }
+  ]
+ },
+ {
+  "id": "ghosts-ll0",
+  "name": "Ghosts",
+  "theme": "ghosts",
+  "blurb": "Tech and stealth: invasions, invisibility and slipping through the lines.",
+  "level": 0,
+  "pilots": [
+   {
+    "id": "sq-ghosts-1-ll0",
+    "callsign": "Wisp",
+    "name": "Noor Calloway",
+    "level": 0,
+    "mechSkills": [
+     0,
+     1,
+     1,
+     0
+    ],
+    "talents": [
+     {
+      "id": "t_infiltrator",
+      "rank": 1
+     },
+     {
+      "id": "t_skirmisher",
+      "rank": 1
+     },
+     {
+      "id": "t_duelist",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Wisp's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_charged_blade",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_tactical_knife",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_tactical_knife",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_charged_blade",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_pattern_a_smoke_charges",
+      "ms_rapid_burst_jump_jet_system",
+      "ms_comp_con_class_assistant_unit"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-ghosts-2-ll0",
+    "callsign": "Glitch",
+    "name": "Oren Sato",
+    "level": 0,
+    "mechSkills": [
+     0,
+     0,
+     2,
+     0
+    ],
+    "talents": [
+     {
+      "id": "t_hacker",
+      "rank": 1
+     },
+     {
+      "id": "t_technophile",
+      "rank": 1
+     },
+     {
+      "id": "t_tactician",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Glitch's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_pistol",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_pistol",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_pattern_b_hex_charges",
+      "ms_comp_con_class_assistant_unit",
+      "ms_manipulators",
+      "ms_pattern_a_jericho_deployable_cover"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-ghosts-3-ll0",
+    "callsign": "Snare",
+    "name": "Ilse Varga",
+    "level": 0,
+    "mechSkills": [
+     0,
+     0,
+     1,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_hacker",
+      "rank": 1
+     },
+     {
+      "id": "t_tactician",
+      "rank": 1
+     },
+     {
+      "id": "t_technophile",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Snare's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_hunter_killer",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_segment_knife",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_segment_knife",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_nexus_hunter_killer",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_pattern_a_smoke_charges",
+      "ms_comp_con_class_assistant_unit",
+      "ms_manipulators",
+      "ms_custom_paint_job"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-ghosts-4-ll0",
+    "callsign": "Shade",
+    "name": "Juno Reyes",
+    "level": 0,
+    "mechSkills": [
+     0,
+     1,
+     1,
+     0
+    ],
+    "talents": [
+     {
+      "id": "t_infiltrator",
+      "rank": 1
+     },
+     {
+      "id": "t_spotter",
+      "rank": 1
+     },
+     {
+      "id": "t_skirmisher",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Shade's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_pistol",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_assault_rifle",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_pistol",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_rapid_burst_jump_jet_system",
+      "ms_comp_con_class_assistant_unit",
+      "ms_manipulators",
+      "ms_custom_paint_job"
+     ]
+    },
+    "unknown": []
+   }
+  ]
+ },
+ {
+  "id": "ghosts-ll5",
+  "name": "Ghosts",
+  "theme": "ghosts",
+  "blurb": "Tech and stealth: invasions, invisibility and slipping through the lines.",
+  "level": 5,
+  "pilots": [
+   {
+    "id": "sq-ghosts-1-ll5",
+    "callsign": "Wisp",
+    "name": "Noor Calloway",
+    "level": 5,
+    "mechSkills": [
+     1,
+     3,
+     2,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_infiltrator",
+      "rank": 3
+     },
+     {
+      "id": "t_skirmisher",
+      "rank": 2
+     },
+     {
+      "id": "t_duelist",
+      "rank": 2
+     },
+     {
+      "id": "t_ace",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_ghostweave"
+    ],
+    "licenses": [
+     {
+      "id": "mf_mourning_cloak",
+      "rank": 3
+     },
+     {
+      "id": "mf_swallowtail",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Wisp's Mourning Cloak",
+     "frameId": "mf_mourning_cloak",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_hunter_killer",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main/Aux",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_fold_knife",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_hunter_logic_suite",
+      "ms_retractable_profile",
+      "ms_markerlight",
+      "ms_lotus_projector",
+      "ms_fade_cloak",
+      "ms_manipulators"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-ghosts-2-ll5",
+    "callsign": "Glitch",
+    "name": "Oren Sato",
+    "level": 5,
+    "mechSkills": [
+     0,
+     2,
+     4,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_hacker",
+      "rank": 3
+     },
+     {
+      "id": "t_technophile",
+      "rank": 2
+     },
+     {
+      "id": "t_tactician",
+      "rank": 2
+     },
+     {
+      "id": "t_infiltrator",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_the_lesson_of_the_open_door"
+    ],
+    "licenses": [
+     {
+      "id": "mf_goblin",
+      "rank": 3
+     },
+     {
+      "id": "mf_minotaur",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Glitch's Goblin",
+     "frameId": "mf_goblin",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_pistol",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_h0r_os_system_upgrade_iii",
+      "ms_h0r_os_system_upgrade_ii",
+      "ms_metahook",
+      "ms_h0r_os_system_upgrade_i",
+      "ms_aggressive_system_sync",
+      "ms_metafold_carver",
+      "ms_manipulators"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-ghosts-3-ll5",
+    "callsign": "Snare",
+    "name": "Ilse Varga",
+    "level": 5,
+    "mechSkills": [
+     1,
+     1,
+     3,
+     2
+    ],
+    "talents": [
+     {
+      "id": "t_hacker",
+      "rank": 3
+     },
+     {
+      "id": "t_tactician",
+      "rank": 2
+     },
+     {
+      "id": "t_technophile",
+      "rank": 2
+     },
+     {
+      "id": "t_leader",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_the_lesson_of_disbelief"
+    ],
+    "licenses": [
+     {
+      "id": "mf_minotaur",
+      "rank": 3
+     },
+     {
+      "id": "mf_goblin",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Snare's Minotaur",
+     "frameId": "mf_minotaur",
+     "mounts": [
+      {
+       "type": "Main/Aux",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_hunter_killer",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_law_of_blades",
+      "ms_aggressive_system_sync",
+      "ms_metafold_carver",
+      "ms_viral_logic_suite",
+      "ms_h0r_os_system_upgrade_ii",
+      "ms_metahook"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-ghosts-4-ll5",
+    "callsign": "Shade",
+    "name": "Juno Reyes",
+    "level": 5,
+    "mechSkills": [
+     0,
+     3,
+     3,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_infiltrator",
+      "rank": 3
+     },
+     {
+      "id": "t_spotter",
+      "rank": 2
+     },
+     {
+      "id": "t_skirmisher",
+      "rank": 2
+     },
+     {
+      "id": "t_hacker",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_all_theater_movement_suite"
+    ],
+    "licenses": [
+     {
+      "id": "mf_swallowtail",
+      "rank": 3
+     },
+     {
+      "id": "mf_mourning_cloak",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Shade's Swallowtail",
+     "frameId": "mf_swallowtail",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_oracle_lmg_i",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Aux/Aux",
+       "slots": [
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_pistol",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_thermal_pistol",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_retractable_profile",
+      "ms_markerlight",
+      "ms_lotus_projector",
+      "ms_hunter_logic_suite",
+      "ms_singularity_motivator"
+     ]
+    },
+    "unknown": []
+   }
+  ]
+ },
+ {
+  "id": "ghosts-ll10",
+  "name": "Ghosts",
+  "theme": "ghosts",
+  "blurb": "Tech and stealth: invasions, invisibility and slipping through the lines.",
+  "level": 10,
+  "pilots": [
+   {
+    "id": "sq-ghosts-1-ll10",
+    "callsign": "Wisp",
+    "name": "Noor Calloway",
+    "level": 10,
+    "mechSkills": [
+     1,
+     5,
+     4,
+     2
+    ],
+    "talents": [
+     {
+      "id": "t_infiltrator",
+      "rank": 3
+     },
+     {
+      "id": "t_skirmisher",
+      "rank": 3
+     },
+     {
+      "id": "t_duelist",
+      "rank": 3
+     },
+     {
+      "id": "t_ace",
+      "rank": 2
+     },
+     {
+      "id": "t_hunter",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_ghostweave",
+     "cb_all_theater_movement_suite",
+     "cb_auto_stabilizing_hardpoints"
+    ],
+    "licenses": [
+     {
+      "id": "mf_mourning_cloak",
+      "rank": 3
+     },
+     {
+      "id": "mf_swallowtail",
+      "rank": 3
+     },
+     {
+      "id": "mf_dusk_wing",
+      "rank": 3
+     },
+     {
+      "id": "mf_black_witch",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Wisp's Mourning Cloak",
+     "frameId": "mf_mourning_cloak",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_hunter_killer",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Main/Aux",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_fold_knife",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_hunter_logic_suite",
+      "ms_retractable_profile",
+      "ms_markerlight",
+      "ms_neurospike",
+      "ms_flicker_field_projector",
+      "ms_lotus_projector",
+      "ms_fade_cloak",
+      "ms_manipulators"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-ghosts-2-ll10",
+    "callsign": "Glitch",
+    "name": "Oren Sato",
+    "level": 10,
+    "mechSkills": [
+     1,
+     3,
+     6,
+     2
+    ],
+    "talents": [
+     {
+      "id": "t_hacker",
+      "rank": 3
+     },
+     {
+      "id": "t_technophile",
+      "rank": 3
+     },
+     {
+      "id": "t_tactician",
+      "rank": 3
+     },
+     {
+      "id": "t_infiltrator",
+      "rank": 2
+     },
+     {
+      "id": "t_skirmisher",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_the_lesson_of_the_open_door",
+     "cb_the_lesson_of_disbelief",
+     "cb_integrated_weapon"
+    ],
+    "licenses": [
+     {
+      "id": "mf_goblin",
+      "rank": 3
+     },
+     {
+      "id": "mf_minotaur",
+      "rank": 3
+     },
+     {
+      "id": "mf_hydra",
+      "rank": 3
+     },
+     {
+      "id": "mf_manticore",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Glitch's Goblin",
+     "frameId": "mf_goblin",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_pistol",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "CB-Integrated",
+       "slots": [
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_catalyst_pistol",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_h0r_os_system_upgrade_iii",
+      "ms_h0r_os_system_upgrade_ii",
+      "ms_metahook",
+      "ms_h0r_os_system_upgrade_i",
+      "ms_law_of_blades",
+      "ms_aggressive_system_sync",
+      "ms_metafold_carver",
+      "ms_beckoner"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-ghosts-3-ll10",
+    "callsign": "Snare",
+    "name": "Ilse Varga",
+    "level": 10,
+    "mechSkills": [
+     2,
+     2,
+     5,
+     3
+    ],
+    "talents": [
+     {
+      "id": "t_hacker",
+      "rank": 3
+     },
+     {
+      "id": "t_tactician",
+      "rank": 3
+     },
+     {
+      "id": "t_technophile",
+      "rank": 3
+     },
+     {
+      "id": "t_leader",
+      "rank": 2
+     },
+     {
+      "id": "t_infiltrator",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_the_lesson_of_disbelief",
+     "cb_the_lesson_of_the_held_image",
+     "cb_improved_armament"
+    ],
+    "licenses": [
+     {
+      "id": "mf_minotaur",
+      "rank": 3
+     },
+     {
+      "id": "mf_goblin",
+      "rank": 3
+     },
+     {
+      "id": "mf_balor",
+      "rank": 3
+     },
+     {
+      "id": "mf_gorgon",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Snare's Minotaur",
+     "frameId": "mf_minotaur",
+     "mounts": [
+      {
+       "type": "Main/Aux",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_swarm_hive_nanites",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_hunter_killer",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_law_of_blades",
+      "ms_aggressive_system_sync",
+      "ms_metafold_carver",
+      "ms_viral_logic_suite",
+      "ms_h0r_os_system_upgrade_iii",
+      "ms_h0r_os_system_upgrade_ii",
+      "ms_metahook",
+      "ms_scanner_swarm"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-ghosts-4-ll10",
+    "callsign": "Shade",
+    "name": "Juno Reyes",
+    "level": 10,
+    "mechSkills": [
+     1,
+     5,
+     4,
+     2
+    ],
+    "talents": [
+     {
+      "id": "t_infiltrator",
+      "rank": 3
+     },
+     {
+      "id": "t_spotter",
+      "rank": 3
+     },
+     {
+      "id": "t_skirmisher",
+      "rank": 3
+     },
+     {
+      "id": "t_hacker",
+      "rank": 2
+     },
+     {
+      "id": "t_ace",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_all_theater_movement_suite",
+     "cb_ghostweave",
+     "cb_universal_compatibility"
+    ],
+    "licenses": [
+     {
+      "id": "mf_swallowtail",
+      "rank": 3
+     },
+     {
+      "id": "mf_mourning_cloak",
+      "rank": 3
+     },
+     {
+      "id": "mf_white_witch",
+      "rank": 3
+     },
+     {
+      "id": "mf_dusk_wing",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Shade's Swallowtail",
+     "frameId": "mf_swallowtail",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_oracle_lmg_i",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Aux/Aux",
+       "slots": [
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_pistol",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_thermal_pistol",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_retractable_profile",
+      "ms_markerlight",
+      "ms_lotus_projector",
+      "ms_hunter_logic_suite",
+      "ms_neurospike",
+      "ms_athena_class_nhp"
+     ]
+    },
+    "unknown": []
+   }
+  ]
+ },
+ {
+  "id": "dronewing-ll0",
+  "name": "Drone Wing",
+  "theme": "dronewing",
+  "blurb": "Fight by proxy: drones, turrets, nexuses and deployables.",
+  "level": 0,
+  "pilots": [
+   {
+    "id": "sq-dronewing-1-ll0",
+    "callsign": "Hive",
+    "name": "Ada Kestrel",
+    "level": 0,
+    "mechSkills": [
+     0,
+     0,
+     1,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_drone_commander",
+      "rank": 1
+     },
+     {
+      "id": "t_technophile",
+      "rank": 1
+     },
+     {
+      "id": "t_tactician",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Hive's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_hunter_killer",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_nexus_hunter_killer",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_turret_drones",
+      "ms_pattern_a_jericho_deployable_cover",
+      "ms_pattern_a_smoke_charges"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-dronewing-2-ll0",
+    "callsign": "Minefield",
+    "name": "Bram Okoye",
+    "level": 0,
+    "mechSkills": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_engineer",
+      "rank": 1
+     },
+     {
+      "id": "t_drone_commander",
+      "rank": 1
+     },
+     {
+      "id": "t_grease_monkey",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Minefield's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_mortar",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_mortar",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_heavy_machine_gun",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_pattern_b_hex_charges",
+      "ms_turret_drones",
+      "ms_pattern_a_jericho_deployable_cover"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-dronewing-3-ll0",
+    "callsign": "Aegis",
+    "name": "Lena Fairweather",
+    "level": 0,
+    "mechSkills": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_drone_commander",
+      "rank": 1
+     },
+     {
+      "id": "t_leader",
+      "rank": 1
+     },
+     {
+      "id": "t_engineer",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Aegis's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_assault_rifle",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_turret_drones",
+      "ms_type_3_projected_shield",
+      "ms_pattern_a_jericho_deployable_cover"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-dronewing-4-ll0",
+    "callsign": "Swarm",
+    "name": "Tobiah Quint",
+    "level": 0,
+    "mechSkills": [
+     0,
+     1,
+     1,
+     0
+    ],
+    "talents": [
+     {
+      "id": "t_drone_commander",
+      "rank": 1
+     },
+     {
+      "id": "t_combined_arms",
+      "rank": 1
+     },
+     {
+      "id": "t_technophile",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [],
+    "licenses": [],
+    "mech": {
+     "name": "Swarm's Everest",
+     "frameId": "mf_standard_pattern_i_everest",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_missile_rack",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_rocket_propelled_grenade",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_turret_drones",
+      "ms_pattern_a_jericho_deployable_cover",
+      "ms_pattern_a_smoke_charges"
+     ]
+    },
+    "unknown": []
+   }
+  ]
+ },
+ {
+  "id": "dronewing-ll5",
+  "name": "Drone Wing",
+  "theme": "dronewing",
+  "blurb": "Fight by proxy: drones, turrets, nexuses and deployables.",
+  "level": 5,
+  "pilots": [
+   {
+    "id": "sq-dronewing-1-ll5",
+    "callsign": "Hive",
+    "name": "Ada Kestrel",
+    "level": 5,
+    "mechSkills": [
+     1,
+     1,
+     3,
+     2
+    ],
+    "talents": [
+     {
+      "id": "t_drone_commander",
+      "rank": 3
+     },
+     {
+      "id": "t_technophile",
+      "rank": 2
+     },
+     {
+      "id": "t_tactician",
+      "rank": 2
+     },
+     {
+      "id": "t_engineer",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_the_lesson_of_shaping"
+    ],
+    "licenses": [
+     {
+      "id": "mf_hydra",
+      "rank": 3
+     },
+     {
+      "id": "mf_goblin",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Hive's Hydra",
+     "frameId": "mf_hydra",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_ghoul_nexus",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_ghast_nexus",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_assassin_drone",
+      "ms_tempest_drone",
+      "ms_turret_drones",
+      "ms_puppetmaster",
+      "ms_pattern_a_jericho_deployable_cover",
+      "ms_pattern_a_smoke_charges"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-dronewing-2-ll5",
+    "callsign": "Minefield",
+    "name": "Bram Okoye",
+    "level": 5,
+    "mechSkills": [
+     2,
+     0,
+     2,
+     3
+    ],
+    "talents": [
+     {
+      "id": "t_engineer",
+      "rank": 3
+     },
+     {
+      "id": "t_drone_commander",
+      "rank": 2
+     },
+     {
+      "id": "t_grease_monkey",
+      "rank": 2
+     },
+     {
+      "id": "t_siege_specialist",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_superior_by_design"
+    ],
+    "licenses": [
+     {
+      "id": "mf_iskander",
+      "rank": 3
+     },
+     {
+      "id": "mf_saladin",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Minefield's Iskander",
+     "frameId": "mf_iskander",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_hunter_killer",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_turret_drones",
+      "ms_grounding_charges",
+      "ms_pattern_b_hex_charges",
+      "ms_clamp_bombs",
+      "ms_tesseract"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-dronewing-3-ll5",
+    "callsign": "Aegis",
+    "name": "Lena Fairweather",
+    "level": 5,
+    "mechSkills": [
+     2,
+     0,
+     2,
+     3
+    ],
+    "talents": [
+     {
+      "id": "t_drone_commander",
+      "rank": 3
+     },
+     {
+      "id": "t_leader",
+      "rank": 2
+     },
+     {
+      "id": "t_engineer",
+      "rank": 2
+     },
+     {
+      "id": "t_technophile",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_stasis_shielding"
+    ],
+    "licenses": [
+     {
+      "id": "mf_saladin",
+      "rank": 3
+     },
+     {
+      "id": "mf_iskander",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Aegis's Saladin",
+     "frameId": "mf_saladin",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_missile_rack",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_turret_drones",
+      "ms_noah_class_nhp",
+      "ms_grounding_charges",
+      "ms_flash_anchor",
+      "ms_hardlight_defense_system",
+      "ms_repulser_field"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-dronewing-4-ll5",
+    "callsign": "Swarm",
+    "name": "Tobiah Quint",
+    "level": 5,
+    "mechSkills": [
+     1,
+     2,
+     3,
+     1
+    ],
+    "talents": [
+     {
+      "id": "t_drone_commander",
+      "rank": 3
+     },
+     {
+      "id": "t_combined_arms",
+      "rank": 2
+     },
+     {
+      "id": "t_technophile",
+      "rank": 2
+     },
+     {
+      "id": "t_tactician",
+      "rank": 1
+     }
+    ],
+    "coreBonuses": [
+     "cb_the_lesson_of_the_held_image"
+    ],
+    "licenses": [
+     {
+      "id": "mf_pegasus",
+      "rank": 3
+     },
+     {
+      "id": "mf_hydra",
+      "rank": 2
+     }
+    ],
+    "mech": {
+     "name": "Swarm's Pegasus",
+     "frameId": "mf_pegasus",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_missile_rack",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_ghoul_nexus",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_ghast_nexus",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_tempest_drone",
+      "ms_turret_drones",
+      "ms_sisyphus_class_nhp",
+      "ms_eye_of_horus",
+      "ms_pattern_a_jericho_deployable_cover"
+     ]
+    },
+    "unknown": []
+   }
+  ]
+ },
+ {
+  "id": "dronewing-ll10",
+  "name": "Drone Wing",
+  "theme": "dronewing",
+  "blurb": "Fight by proxy: drones, turrets, nexuses and deployables.",
+  "level": 10,
+  "pilots": [
+   {
+    "id": "sq-dronewing-1-ll10",
+    "callsign": "Hive",
+    "name": "Ada Kestrel",
+    "level": 10,
+    "mechSkills": [
+     2,
+     2,
+     5,
+     3
+    ],
+    "talents": [
+     {
+      "id": "t_drone_commander",
+      "rank": 3
+     },
+     {
+      "id": "t_technophile",
+      "rank": 3
+     },
+     {
+      "id": "t_tactician",
+      "rank": 3
+     },
+     {
+      "id": "t_engineer",
+      "rank": 2
+     },
+     {
+      "id": "t_leader",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_the_lesson_of_shaping",
+     "cb_the_lesson_of_thinking_tomorrows_thought",
+     "cb_improved_armament"
+    ],
+    "licenses": [
+     {
+      "id": "mf_hydra",
+      "rank": 3
+     },
+     {
+      "id": "mf_goblin",
+      "rank": 3
+     },
+     {
+      "id": "mf_pegasus",
+      "rank": 3
+     },
+     {
+      "id": "mf_manticore",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Hive's Hydra",
+     "frameId": "mf_hydra",
+     "mounts": [
+      {
+       "type": "Main",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_ghoul_nexus",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_ghast_nexus",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_hunter_killer",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_assassin_drone",
+      "ms_tempest_drone",
+      "ms_turret_drones",
+      "ms_puppetmaster",
+      "ms_pattern_a_jericho_deployable_cover",
+      "ms_pattern_a_smoke_charges",
+      "ms_pattern_b_hex_charges",
+      "ms_manipulators"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-dronewing-2-ll10",
+    "callsign": "Minefield",
+    "name": "Bram Okoye",
+    "level": 10,
+    "mechSkills": [
+     3,
+     1,
+     3,
+     5
+    ],
+    "talents": [
+     {
+      "id": "t_engineer",
+      "rank": 3
+     },
+     {
+      "id": "t_drone_commander",
+      "rank": 3
+     },
+     {
+      "id": "t_grease_monkey",
+      "rank": 3
+     },
+     {
+      "id": "t_siege_specialist",
+      "rank": 2
+     },
+     {
+      "id": "t_tactician",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_superior_by_design",
+     "cb_stasis_shielding",
+     "cb_improved_armament"
+    ],
+    "licenses": [
+     {
+      "id": "mf_iskander",
+      "rank": 3
+     },
+     {
+      "id": "mf_saladin",
+      "rank": 3
+     },
+     {
+      "id": "mf_tokugawa",
+      "rank": 3
+     },
+     {
+      "id": "mf_sherman",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Minefield's Iskander",
+     "frameId": "mf_iskander",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_hunter_killer",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_shatterhead_colony_missiles",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_turret_drones",
+      "ms_grounding_charges",
+      "ms_pattern_b_hex_charges",
+      "ms_clamp_bombs",
+      "ms_noah_class_nhp"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-dronewing-3-ll10",
+    "callsign": "Aegis",
+    "name": "Lena Fairweather",
+    "level": 10,
+    "mechSkills": [
+     4,
+     0,
+     3,
+     5
+    ],
+    "talents": [
+     {
+      "id": "t_drone_commander",
+      "rank": 3
+     },
+     {
+      "id": "t_leader",
+      "rank": 3
+     },
+     {
+      "id": "t_engineer",
+      "rank": 3
+     },
+     {
+      "id": "t_technophile",
+      "rank": 2
+     },
+     {
+      "id": "t_grease_monkey",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_stasis_shielding",
+     "cb_superior_by_design",
+     "cb_integrated_weapon"
+    ],
+    "licenses": [
+     {
+      "id": "mf_saladin",
+      "rank": 3
+     },
+     {
+      "id": "mf_iskander",
+      "rank": 3
+     },
+     {
+      "id": "mf_napoleon",
+      "rank": 3
+     },
+     {
+      "id": "mf_genghis",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Aegis's Saladin",
+     "frameId": "mf_saladin",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_missile_rack",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "CB-Integrated",
+       "slots": [
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_turret_drones",
+      "ms_noah_class_nhp",
+      "ms_stasis_barrier",
+      "ms_grounding_charges",
+      "ms_flash_anchor",
+      "ms_hardlight_defense_system",
+      "ms_repulser_field"
+     ]
+    },
+    "unknown": []
+   },
+   {
+    "id": "sq-dronewing-4-ll10",
+    "callsign": "Swarm",
+    "name": "Tobiah Quint",
+    "level": 10,
+    "mechSkills": [
+     2,
+     3,
+     5,
+     2
+    ],
+    "talents": [
+     {
+      "id": "t_drone_commander",
+      "rank": 3
+     },
+     {
+      "id": "t_combined_arms",
+      "rank": 3
+     },
+     {
+      "id": "t_technophile",
+      "rank": 3
+     },
+     {
+      "id": "t_tactician",
+      "rank": 2
+     },
+     {
+      "id": "t_engineer",
+      "rank": 2
+     }
+    ],
+    "coreBonuses": [
+     "cb_the_lesson_of_the_held_image",
+     "cb_the_lesson_of_shaping",
+     "cb_auto_stabilizing_hardpoints"
+    ],
+    "licenses": [
+     {
+      "id": "mf_pegasus",
+      "rank": 3
+     },
+     {
+      "id": "mf_hydra",
+      "rank": 3
+     },
+     {
+      "id": "mf_balor",
+      "rank": 3
+     },
+     {
+      "id": "mf_goblin",
+      "rank": 1
+     }
+    ],
+    "mech": {
+     "name": "Swarm's Pegasus",
+     "frameId": "mf_pegasus",
+     "mounts": [
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_swarm_hive_nanites",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": null,
+         "modId": null
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Flex",
+       "slots": [
+        {
+         "size": "Main",
+         "weaponId": "mw_nexus_light",
+         "modId": null,
+         "profile": 0
+        },
+        {
+         "size": "Auxiliary",
+         "weaponId": "mw_missile_rack",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      },
+      {
+       "type": "Heavy",
+       "slots": [
+        {
+         "size": "Superheavy",
+         "weaponId": "mw_ghast_nexus",
+         "modId": null,
+         "profile": 0
+        }
+       ],
+       "bonusEffects": []
+      }
+     ],
+     "systems": [
+      "ms_assassin_drone",
+      "ms_tempest_drone",
+      "ms_turret_drones",
+      "ms_hive_drone",
+      "ms_sisyphus_class_nhp",
+      "ms_eye_of_horus",
+      "ms_scanner_swarm"
+     ]
+    },
+    "unknown": []
+   }
+  ]
+ }
+]

@@ -10,7 +10,7 @@ import { catalog, teamsFor, validTeams } from '../enemies/catalog'
 import { generateMap, themeForAct } from '../run/mapgen'
 import {
   type RunState, type RunNode, newRun, availableNodes, nodeTier, sitrepFor, squadUnits, recordBattle, fullRepair,
-  repairOptions, applyRepair, permHpBonus, rollRewards, applyReward, levelUp, replacePilots, refitPilot, chooseTeam, saveRun, loadRun, ACTS, LL_PER_ACT, lastLoadProblem,
+  repairOptions, applyRepair, permHpBonus, rollRewards, applyReward, levelUp, replacePilots, refitPilot, chooseTeam, saveRun, loadRun, ACTS, actLevel, lastLoadProblem,
 } from '../run/run'
 // the battle screen (and Three.js) load on demand: the title, hangar and campaign map don't need them
 import type { BattleScreen, UndoEntry } from './battle-ui'
@@ -25,13 +25,26 @@ import { STORY, STORY_ORDER, type StoryId, ACT_LOCATIONS, NODE_BRIEFS, failedRea
 import { iterationCount, iterLabel, nextIteration, telemetryPanel } from './forecast'
 import { rollEvent, type RunEvent } from '../run/events'
 import { playInterlude, RA_EYE_SVG } from './interlude'
-import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad } from './roster'
+import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad, squadPresets } from './roster'
 import { esc } from './dom'
 import { builderScreen } from './builder-screen'
+import { fitToLevel, readyProblems } from './builder'
 import { validateBuild } from '../rules/legality'
 import { classify } from '../rules/effects/coverage'
 
 const MAX_SQUAD = 4
+
+/** The hangar's squad picker: themed squads per act level, plus the COMP/CON pregens and the sample squads. */
+function squadOptions(): string {
+  const presets = squadPresets()
+  const group = (level: number, act: number, extra: string) => `<optgroup label="LL${level} — act ${act}">${presets.filter(s => s.level === level).map(s => `<option value="${esc(s.id)}">${esc(s.name)} (LL${level}) — ${esc(s.pilots.map(p => p.callsign).join(', '))}</option>`).join('')}${extra}</optgroup>`
+  return `<option value="">Add a pre-built squad…</option>${group(0, 1, '<option value="pregens">COMP/CON pregens (LL0)</option>')}${group(5, 2, '<option value="ll5">Sample squad (LL5) — Drake, Monarch, Saladin, Blackbeard</option>')}${group(10, 3, '<option value="ll10">Sample squad (LL10) — Drake, Monarch, Saladin, Blackbeard</option>')}`
+}
+function squadPilots(id: string): PilotBuild[] {
+  if (id === 'pregens') return pregenBuilds()
+  if (id === 'll5' || id === 'll10') return sampleSquad(id === 'll5' ? 5 : 10)
+  return squadPresets().find(s => s.id === id)?.pilots ?? []
+}
 
 export class App {
   root: HTMLElement
@@ -39,6 +52,10 @@ export class App {
   run: RunState | null = loadRun()
   battle: BattleScreen | null = null
   squadPick = new Set<string>()
+  /** Run-only copies of the chosen pilots while they're fitted to the act 1 level, before the run starts. */
+  prep: PilotBuild[] | null = null
+  /** Original License Level of each prep pilot that was fitted to the act 1 level (by id). */
+  prepFrom = new Map<string, number>()
 
   constructor(root: HTMLElement) {
     this.root = root
@@ -164,9 +181,7 @@ export class App {
     this.root.innerHTML = `<div class="screen hangar">
       <div class="hhead"><h2>${purpose === 'reimport' ? 'Re-import updated pilots' : 'Hangar'}</h2>
         <div><button data-go="new" title="Build a pilot and mech here, without COMP/CON">New pilot</button><a class="filebtn linkbtn" href="https://compcon.app" target="_blank" rel="noopener noreferrer" title="Opens the official COMP/CON web app in a new tab">Open COMP/CON ↗</a><label class="filebtn">Import COMP/CON .json<input type="file" accept=".json,application/json" multiple></label>
-        <button data-go="pregens">Add COMP/CON pregens</button>
-        <button data-go="ll5" title="Legal LL5 builds (act 2 level): Drake, Monarch, Saladin, Blackbeard">Add sample LL5 squad</button>
-        <button data-go="ll10" title="Legal LL10 builds (act 3 level): Drake, Monarch, Saladin, Blackbeard">Add sample LL10 squad</button>
+        <select data-squadsel title="Adds a ready-made squad to the roster and picks it">${squadOptions()}</select>
         ${purpose !== 'reimport' ? `<button data-go="start" class="primary">${purpose === 'run' ? 'Begin run' : 'Choose enemies'} (${this.squadPick.size}/${MAX_SQUAD})</button>` : '<button data-go="done" class="primary">Done</button>'}
         <button data-go="back">Back</button></div></div>
       <div class="drop">Drop COMP/CON pilot exports here</div>
@@ -212,6 +227,16 @@ export class App {
         if (purpose === 'reimport' && this.run) { refitPilot(this.run, p); saveRun(this.run) }
       })
     })
+    const sel = this.root.querySelector('[data-squadsel]') as HTMLSelectElement | null
+    sel?.addEventListener('change', () => {
+      const pilots = squadPilots(sel.value)
+      if (!pilots.length) return
+      // mid-run, a pre-built squad updates the run's pilots with the same callsigns, like a COMP/CON re-import
+      if (purpose === 'reimport' && this.run) { replacePilots(this.run, pilots); saveRun(this.run) }
+      this.roster = addToRoster(this.roster, pilots)
+      this.squadPick = new Set(pilots.slice(0, MAX_SQUAD).map(p => p.id))
+      this.hangar(purpose)
+    })
     this.on('[data-remove]', el => {
       this.roster = this.roster.filter(p => p.id !== el.dataset.remove)
       this.squadPick.delete(el.dataset.remove!)
@@ -223,12 +248,10 @@ export class App {
       if (g === 'back') this.title()
       if (g === 'done') this.runMap()
       if (g === 'new') this.openBuilder(undefined, 'New pilot', () => this.hangar(purpose), p => { if (this.squadPick.size < MAX_SQUAD) this.squadPick.add(p.id) })
-      if (g === 'pregens') { this.roster = addToRoster(this.roster, pregenBuilds()); this.hangar(purpose) }
-      if (g === 'll5' || g === 'll10') { this.roster = addToRoster(this.roster, sampleSquad(g === 'll5' ? 5 : 10)); this.hangar(purpose) }
       if (g === 'start') {
         const squad = this.roster.filter(p => this.squadPick.has(p.id))
         if (!squad.length) return alert('Pick at least one pilot')
-        if (purpose === 'run') { clearBattle(); this.run = newRun(squad.map(p => structuredClone(p))); this.run.iteration = nextIteration(); saveRun(this.run); this.story('opening', () => this.runMap()) }
+        if (purpose === 'run') this.prepareRun(squad)
         else this.skirmishSetup(squad)
       }
     })
@@ -283,6 +306,7 @@ export class App {
       const done = `act${run.act - 1}` as StoryId
       return STORY[done] ? this.story(done, () => this.levelUpScreen()) : this.levelUpScreen()
     }
+    if (run.squad.some(p => readyProblems(p, actLevel(run.act)).length)) return this.levelUpScreen()
     this.clear()
     this.setAct(run.act)
     const avail = new Set(availableNodes(run).map(n => n.id))
@@ -314,7 +338,7 @@ export class App {
     this.on('[data-node]', el => this.enterNode(run.nodes.find(n => n.id === el.dataset.node)!))
     this.on('[data-refit]', el => {
       const p = run.squad.find(x => x.id === el.dataset.refit)
-      if (p) this.openBuilder(p, `Refit ${p.callsign} (LL${p.level})`, () => this.runMap(), b => { refitPilot(run, b); saveRun(run) }, true)
+      if (p) this.runBuilder(p, `Refit ${p.callsign} (LL${p.level})`, () => this.runMap(), b => { refitPilot(run, b); saveRun(run) })
     })
     this.on('[data-go]', el => {
       const g = el.dataset.go
@@ -485,14 +509,99 @@ export class App {
     this.on('[data-skip]', () => { run.log.push(`Act ${run.act}: ${ev.title}: left alone.`); saveRun(run); then() })
   }
 
+  /**
+   * After an act boss (and whenever a squad pilot isn't ready for the act): every pilot is at the act's
+   * License Level, and the run can't go on until each build is legal with every point spent — in the
+   * builder here, or by re-importing a COMP/CON pilot at the right level.
+   */
   levelUpScreen() {
     const run = this.run!
+    if (run.pendingLevelUp) { levelUp(run); saveRun(run) }
+    const level = actLevel(run.act)
     this.clear()
-    this.root.innerHTML = `<div class="screen center"><h2>Act ${run.act - 1} complete!</h2>
-      <p>Your pilots advance to <b>License Level ${Math.min(12, run.squad[0].level + LL_PER_ACT)}</b>. Grit and HP increase automatically.</p>
-      <p>To spend the new talent, license and core bonus points, use <b>Level up</b> on each pilot on the campaign map. You can also level them up in COMP/CON and use <i>Re-import pilots</i> (matched by id or callsign).</p>
-      <button data-go="ok" class="primary">Continue to Act ${run.act}</button></div>`
-    this.on('[data-go]', () => { levelUp(run); saveRun(run); this.runMap() })
+    this.setAct(run.act)
+    this.root.innerHTML = this.gateHtml({
+      title: run.act > 1 ? `Act ${run.act - 1} complete — level up to LL${level}` : `Squad not ready for Act 1 (LL${level})`,
+      intro: `Act ${run.act} is fought at <b>License Level ${level}</b>. Spend each pilot's new talent, license, mech skill and core bonus points before you continue: use <b>Level up</b>, or level them in COMP/CON and <b>Re-import</b> them (matched by id or callsign). Damage and Repairs carry over.`,
+      pilots: run.squad, level,
+      extra: '<button data-go="reimport">Re-import from COMP/CON</button>',
+      go: `Continue to Act ${run.act}`,
+    })
+    this.on('[data-fit]', el => {
+      const p = run.squad.find(x => x.id === el.dataset.fit)
+      if (!p) return
+      const draft = p.level === level ? p : fitToLevel(p, level)
+      this.runBuilder(draft, `Level up ${p.callsign} (LL${level})`, () => this.levelUpScreen(), b => { refitPilot(run, b); saveRun(run) })
+    })
+    this.on('[data-go]', el => {
+      if (el.dataset.go === 'reimport') return this.hangar('reimport')
+      if (el.dataset.go === 'go' && run.squad.every(p => !readyProblems(p, level).length)) this.runMap()
+    })
+  }
+
+  /** A squad-readiness screen: each pilot's problems at `level`, a button to fix it, and the go button once all are ready. */
+  private gateHtml(o: { title: string; intro: string; pilots: PilotBuild[]; level: number; extra: string; go: string; back?: boolean; from?: Map<string, number> }): string {
+    const rows = o.pilots.map(p => {
+      const probs = readyProblems(p, o.level)
+      const label = p.level !== o.level ? `Rebuild at LL${o.level}` : probs.length ? 'Level up' : 'Edit build'
+      return `<div class="sq dossier"><div class="dh"><b>${esc(p.callsign)}</b>${probs.length ? '<span class="stamp warnc">NOT READY</span>' : '<span class="stamp good">READY</span>'}</div>
+        <span class="muted">LL${p.level} ${esc(Lancer.frames.get(p.mech.frameId)?.name ?? '')}${o.from?.has(p.id) ? ` · fitted from LL${o.from.get(p.id)}` : ''} · ${p.mech.mounts.flatMap(m => m.slots).filter(x => x.weaponId).length} weapons, ${p.mech.systems.length} systems</span>
+        <button class="small ${probs.length ? 'primary' : ''}" data-fit="${esc(p.id)}">${label}</button>
+        ${probs.length ? `<ul class="small">${probs.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>`
+    }).join('')
+    const ready = o.pilots.every(p => !readyProblems(p, o.level).length)
+    return `<div class="screen gate"><h2>${o.title}</h2><p>${o.intro}</p><div class="squad">${rows}</div>
+      <div>${o.extra}<button data-go="go" class="primary" ${ready ? '' : 'disabled'} title="${ready ? '' : 'Every pilot must be legal with all points spent'}">${o.go}</button>${o.back ? '<button data-go="back">Back</button>' : ''}</div></div>`
+  }
+
+  /** The builder for a run's pilot: the edit stays in the run (the roster copy is never changed). LL is locked. */
+  runBuilder(build: PilotBuild, title: string, back: () => void, save: (p: PilotBuild) => void) {
+    this.clear()
+    builderScreen(this.root, { build, title, lockLevel: true, onCancel: back, onSave: p => { save(p); back() } })
+  }
+
+  /**
+   * Start a run: act 1 is fought at LL0. Pilots at another level (or with unspent points) get a run-only
+   * copy fitted to LL0 that must be finished in the builder before the run begins.
+   */
+  prepareRun(squad: PilotBuild[]) {
+    const level = actLevel(1)
+    this.prep = squad.map(p => (p.level === level ? structuredClone(p) : fitToLevel(p, level)))
+    this.prepFrom = new Map(squad.filter(p => p.level !== level).map(p => [p.id, p.level]))
+    // straight in when nothing was changed; a fitted pilot is always shown so its cut-down build can be finished
+    if (!this.prepFrom.size && this.prep.every(p => !readyProblems(p, level).length)) return this.beginRun()
+    this.prepScreen()
+  }
+
+  private prepScreen() {
+    const pilots = this.prep!
+    const level = actLevel(1)
+    this.clear()
+    this.root.innerHTML = this.gateHtml({
+      title: `Squad preparation — Act 1 (LL${level})`,
+      intro: `Every run starts at <b>License Level ${level}</b> (act 2 is LL${actLevel(2)}, act 3 LL${actLevel(3)}). Pilots at another level have been fitted to LL${level} for this run, keeping what that level allows — your roster pilots are not changed. Finish each build: it must be legal with every point spent.`,
+      pilots, level, extra: '', go: 'Begin run', back: true, from: this.prepFrom,
+    })
+    this.on('[data-fit]', el => {
+      const i = pilots.findIndex(x => x.id === el.dataset.fit)
+      if (i < 0) return
+      const draft = pilots[i].level === level ? pilots[i] : fitToLevel(pilots[i], level)
+      this.runBuilder(draft, `Prepare ${pilots[i].callsign} (LL${level})`, () => this.prepScreen(), b => { pilots[i] = b })
+    })
+    this.on('[data-go]', el => {
+      if (el.dataset.go === 'back') { this.prep = null; return this.hangar('run') }
+      if (el.dataset.go === 'go' && pilots.every(p => !readyProblems(p, level).length)) this.beginRun()
+    })
+  }
+
+  private beginRun() {
+    const squad = this.prep!
+    this.prep = null
+    clearBattle()
+    this.run = newRun(squad)
+    this.run.iteration = nextIteration()
+    saveRun(this.run)
+    this.story('opening', () => this.runMap())
   }
 
   runOver() {

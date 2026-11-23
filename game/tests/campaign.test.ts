@@ -300,16 +300,18 @@ describe('rewards', () => {
 })
 
 describe('level-ups and refits', () => {
-  it('levelUp adds 5 LL (capped at 12) and fully repairs', () => {
+  it('levelUp sets the act level (LL5, then LL10) and fully repairs', () => {
     const run = newRun(squad(), 3)
     run.condition[run.squad[0].id].hp = 1
     run.pendingLevelUp = true
+    run.act = 2
     levelUp(run)
     expect(run.squad.every(p => p.level === 5)).toBe(true)
     expect(run.pendingLevelUp).toBe(false)
     expect(run.condition[run.squad[0].id].hp).toBe(buildMechUnit(run.squad[0]).stats.hp)
+    run.act = 3
     levelUp(run); levelUp(run)
-    expect(run.squad.every(p => p.level === 12)).toBe(true)
+    expect(run.squad.every(p => p.level === 10)).toBe(true)
   })
 
   it('refitPilot keeps damage taken, spent Repairs and CORE use, and refuses strangers', () => {

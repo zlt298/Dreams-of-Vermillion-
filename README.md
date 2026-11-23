@@ -33,7 +33,19 @@ In the **Hangar**, choose **New pilot**, or **Edit** on any pilot card. The buil
 
 Every change is checked live against the LANCER build rules (`game/src/rules/legality.ts`), and a budget bar shows HASE, talents, licenses, core bonuses and SP. The pickers only offer gear that fits the mount and that your license ranks allow. A build with errors can't be saved. Unspent points only trigger a warning.
 
-During a run, each pilot on the campaign map has an **Edit build** button. It becomes **Level up** when the pilot has points to spend after an act boss. A refit keeps damage, spent Repairs, destroyed gear and used Limited charges.
+During a run, each pilot on the campaign map has an **Edit build** button. Builds made during a run stay in the run; your roster pilots are not changed. A refit keeps damage, spent Repairs, destroyed gear and used Limited charges.
+
+**Act levels.** Each act is fought at a fixed License Level: act 1 at LL0, act 2 at LL5, act 3 at LL10.
+- **Starting a run.** A chosen pilot at another level gets a run-only copy fitted to LL0. The copy keeps what LL0 allows; gear its licenses no longer cover is removed. The **Squad preparation** screen then asks you to finish each fitted build in the builder. The run starts once every pilot is legal, has all points spent and has at least one weapon.
+- **After each act boss.** The squad moves to the new level, and the level-up screen holds the run until every pilot is ready again. Use **Level up** for each pilot, or re-import a COMP/CON pilot (or a pre-built squad) at the right level; these match by id or callsign.
+
+**Pre-built squads.** The hangar's squad picker adds a ready-made squad to the roster and picks it. There are four themed squads at LL0, LL5 and LL10, each with four legal pilots that have every point spent:
+- **Brawlers:** melee and armour.
+- **Long Guns:** rifles, cannons and missiles.
+- **Ghosts:** tech and stealth.
+- **Drone Wing:** drones and deployables.
+
+The picker also has the COMP/CON pregens and the LL5/LL10 sample squads. The themed squads are generated and checked by `npx tsx scripts/make-squads.ts`.
 
 ### In COMP/CON
 
@@ -75,7 +87,7 @@ It uses the pilot's favourite mech and its active loadout: frame, weapons, mods,
   - There are six of each kind, in `game/src/run/events.ts`.
 - **Persistent damage.** HP, structure, stress, repairs, destroyed gear, Limited uses and CORE power carry between fights.
 - **Recovery.** Spend Repairs at LANCER costs in field repairs. A rest is a full repair that reprints destroyed mechs.
-- **Progression.** Each act boss grants +5 License Levels (act 1 LL0, act 2 LL5, act 3 LL10, matching the core book NPC tiers), which raises grit and HP. Spend the new talent, license and core-bonus points with **Level up** on the campaign map, or re-import updated COMP/CON builds.
+- **Progression.** Each act is fought at a fixed License Level: act 1 LL0, act 2 LL5, act 3 LL10, matching the core book NPC tiers. After an act boss the squad goes up to the next level, and the run continues only once every build is legal with all points spent. Spend them with **Level up** on the level-up screen, or re-import updated COMP/CON builds.
 - **Battles:**
   - Initiative alternates between sides: pick any ready lancer to activate.
   - Every lancer action is supported. Standard move (it can be split), Boost, Skirmish (plus an aux on the same mount), Barrage, Quick/Full Tech (Invade, Lock On, Bolster, Scan), Overcharge, Stabilize, CORE power, Hide/Search, Ram/Grapple/Improvised, Disengage, Reload, Shut Down/Boot Up, Self-Destruct.
