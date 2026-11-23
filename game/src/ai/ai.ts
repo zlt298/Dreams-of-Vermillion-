@@ -91,6 +91,10 @@ function aoeValue(b: Battle, u: Unit, w: Weapon, from: Pos): { value: number; ti
   } finally { u.pos = saved }
 }
 
+function weaponReachOf(b: Battle, u: Unit): number {
+  return Math.max(1, ...u.weapons.filter(w => !w.destroyed && !w.tech).map(w => b.weaponReach(u, w)))
+}
+
 function customValue(b: Battle, u: Unit, a: CustomAction, from: Pos): { value: number; target?: Unit | Pos } | null {
   if (a.usable(b, u) !== true) return null
   const saved = u.pos
@@ -154,6 +158,8 @@ function customValue(b: Battle, u: Unit, a: CustomAction, from: Pos): { value: n
       }
       return best ? { ...best, value: best.value - heatPenalty } : null
     }
+    // untargeted actions (protocols like Active Camouflage, ASURA, Deactivate Fortress) score themselves
+    if (a.target === 'none' && a.aiScore) return { value: a.aiScore(b, u) - heatPenalty }
     return null
   } finally { u.pos = saved }
 }
@@ -187,6 +193,21 @@ function hazardCost(b: Battle, u: Unit, p: Pos): number {
   return cost
 }
 
+/**
+ * Rounds the fight has gone without anyone attacking, beyond a grace period for the opening
+ * approach. Long-ranged teams that hang back can otherwise freeze both sides just outside each
+ * other's reach until the round cap; the advance pull grows with this so somebody commits.
+ */
+export function stallRounds(b: Battle, grace = 3): number {
+  let last = b.log[0]?.round ?? 0
+  for (let i = b.log.length - 1; i >= 0; i--) {
+    const e = b.log[i]
+    if (e.kind === 'attack' || e.kind === 'damage') { last = e.round; break }
+  }
+  return Math.max(0, b.round - last - grace)
+}
+let stall = 0
+
 function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAgainst(b, u)): number {
   const hazard = hazardCost(b, u, p)
   if (!threats.length) return -hazard
@@ -219,7 +240,7 @@ function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAg
     // advance pull: on long maps, units out of their own reach close the distance
     // (artillery/controllers more gently, so they settle near their preferred range)
     const myReach = Math.max(1, ...u.weapons.filter(w => !w.destroyed).map(w => b.weaponReach(u, w)))
-    const k = role === 'Artillery' || role === 'Controller' ? 0.25 : 0.35
+    const k = (role === 'Artillery' || role === 'Controller' ? 0.25 : 0.35) * (1 + stall)
     if (nearest > myReach) v -= (nearest - myReach) * k
     // sitrep objectives
     const zone = b.sitrep.zone
@@ -298,7 +319,9 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
   if (u.kind === 'mech' && u.coreAvailable && u.frameId) {
     const act = (Lancer.frames.get(u.frameId)?.core_system.activation ?? 'Quick').toLowerCase()
     const near = hostiles.filter(h => (h.kind === 'mech' || h.kind === 'npc') && Math.max(Math.abs(h.pos.x - p.x), Math.abs(h.pos.y - p.y)) <= 10).length
-    if (near && b.round >= 2) opts.push({ kind: 'core', value: 4 + near, cost: act === 'protocol' ? 'protocol' : act === 'full' ? 'full' : act === 'free' ? 'free' : 'quick' })
+    // Drake Fortress Protocol roots the mech: only worth it with a hostile already inside its own reach
+    const rooted = u.frameId === 'mf_drake' && !hostiles.some(h => (h.kind === 'mech' || h.kind === 'npc') && Math.max(Math.abs(h.pos.x - p.x), Math.abs(h.pos.y - p.y)) <= weaponReachOf(b, u))
+    if (near && b.round >= 2 && !rooted) opts.push({ kind: 'core', value: 4 + near, cost: act === 'protocol' ? 'protocol' : act === 'full' ? 'full' : act === 'free' ? 'free' : 'quick' })
   }
   return opts
 }
@@ -332,6 +355,7 @@ export function planFor(b: Battle, u: Unit): Plan {
   for (const v of all.values()) cands.push({ pos: v.pos, boost: v.cost > u.moveLeft })
   // prune candidates for speed: keep the most promising ones by position value
   const threats = threatsAgainst(b, u)
+  stall = stallRounds(b)
   let scored = cands.map(c => ({ ...c, pv: positionValue(b, u, c.pos, threats) }))
   if (scored.length > 70) {
     scored.sort((a, b2) => b2.pv - a.pv)
