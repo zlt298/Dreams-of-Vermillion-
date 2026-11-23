@@ -105,13 +105,13 @@ It is deterministic (seeded) and has no UI code, so tests and the AI run headles
 ```
 section            scripted partial   auto  manual   done%
 Frame traits             29       0      0       0    100%
-Core systems             28       1      0       0     97%
+Core systems             29       0      0       0    100%
 Weapons                  32       0     53       0    100%
-Systems                 119       1      4       0     99%
+Systems                 120       0      4       0    100%
 Mods                      5       0      3       0    100%
 Talent ranks             81       0      6       0    100%
 Core bonuses             13       0     17       0    100%
-TOTAL 390/392 (99%) fully executed by the engine, 2 partially
+TOTAL 392/392 (100%) fully executed by the engine, 0 partially
 ```
 
 - **auto**: fully described by structured data (bonuses, damage, ranges, tags, on-hit statuses).
@@ -127,12 +127,18 @@ To add fidelity, register a script keyed by the item id in `game/src/rules/effec
 - Wreckage can be crossed (as difficult terrain) but you can't end a move on it.
 - Mines follow the core book (planted adjacent, not next to another mine; arm at the end of your turn; set off by entering an adjacent space; Hidden from the other side until found with Search for Mines, then disarmable), with one house rule: **your own side never sets off your mines** (the Smoke Mine, which is meant for allies, excepted).
 - Destructible terrain is a house rule: each level of a terrain block has 10 HP and Evasion 5, and a block with no levels left becomes rubble.
-- Two items are simplified: the Goblin's INSTINCT Rig acts right after its host's turn (not at any point during it), and PUPPETMASTER's Guide the Flock moves drones as a group toward one space.
 - Player decisions (reactions, firing modes, effect choices) appear in an in-HUD picker. Per-mech policies (auto / ask / off) cover Brace, Overwatch and other reactions; the AI and Auto turns take the default.
 - Flight altitude is abstract (one level). Flyers land when Immobilized or Stunned, or when they fail an Agility save after Structure or Stress damage.
 - Each weapon can attack once per turn via Skirmish or Barrage. Reactions and free attacks are exempt.
 - You can INVADE a willing ally: it succeeds automatically, deals no heat and isn't an attack (useful with beneficial invade options).
 - Not implemented (out of scope): pilots on foot (Eject, Mount, Jockey), and narrative skill checks and downtime.
+
+### Saving, undo and checks
+- **Battles save as you play.** The battle in progress is saved after every action, so closing the tab or reloading doesn't lose it: **Continue run** goes straight back into the fight, exactly where it was.
+- **Undo** (the ↶ button or Ctrl+Z) takes back your last action, however far it went (moves, attacks, systems, ending your turn and the enemy turns that followed). It isn't available while the enemy is acting or once the battle is over. Dice are seeded, so repeating the same action gives the same roll.
+- **Golden battles:** six pinned AI-vs-AI fights (`tests/golden/`). If a change alters how they play out, the test fails; if that was intended, re-pin with `npm run golden` and commit `tests/golden/battles.json`.
+- **CI** (`.github/workflows/ci.yml`) runs the typecheck, all tests, the build and the end-to-end campaign run on every push and pull request.
+- The battle screen and Three.js load with the first battle, so the title and hangar open faster.
 
 ### Battle replays (bug reports)
 Every battle records its seed, starting state and every top-level command: player actions, AI turns, and the decisions taken in the HUD picker. The **⤓** button in the battle header downloads it as `dov-battle-<time>.json` (with an optional note). `cd game && npm run replay -- <file> [--upto N] [--log N]` replays it headlessly, prints the log tail and checks the final state hash against the export. `--upto N` stops just before command N, to inspect the state ahead of a bug. Scripts can call `window.__dov.exportBattle()`, and `src/replay/replay.ts` exports `exportBattle`, `replayBattle` and `stateHash`.

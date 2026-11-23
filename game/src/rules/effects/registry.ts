@@ -112,6 +112,8 @@ export interface ItemScript {
   attackOrigin?(b: Battle, self: Unit, w: Weapon, aim: { targetId?: string; tile?: Pos }): Pos | null | undefined
   /** one of your tagged mines went off (return true when you handled the explosion) */
   onMineDetonate?(b: Battle, self: Unit, mine: Mine, by?: Unit): boolean
+  /** a character is about to end its turn (before any end-of-turn effects) */
+  beforeAnyTurnEnd?(b: Battle, self: Unit, unit: Unit): void
   /** any character spent an action or reaction */
   onAnyAction?(b: Battle, self: Unit, actor: Unit, cost: string): void
   /** your voluntary moves must follow straight lines (Ramjet, OASIS Wall) */

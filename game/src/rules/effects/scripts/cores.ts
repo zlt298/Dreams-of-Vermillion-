@@ -4,7 +4,8 @@ import type { Battle } from '../../battle'
 import { blastTiles, chebyshev, distanceToTile, footprint, hasLineOfSightToTile, lineTiles, tileAt, unitsOnTiles } from '../../grid'
 import { rollDice } from '../../rng'
 import type { Pos, Unit } from '../../types'
-import { registerScripts, type CustomAction, type ItemScript } from '../registry'
+import { registerScripts, scriptsFor, type CustomAction, type ItemScript } from '../registry'
+import { runAiTurn } from '../../../ai/ai'
 
 const action = (a: Omit<CustomAction, 'usable'> & { usable?: CustomAction['usable'] }): CustomAction => ({ usable: () => true, ...a })
 const weaponOf = (u: Unit, id: string) => u.weapons.find(w => w.dataId === id && !w.destroyed)
@@ -203,17 +204,47 @@ const scripts: ItemScript[] = [
   },
   // ---------------------------------------------------------------- Goblin
   {
-    id: 'core:mf_goblin', partial: true,
-    note: "Symbiosis: attach to a larger adjacent ally: move with it, hard cover; it uses your Systems, E-Defense and Tech Attack; you share its conditions and heat; from the next round you no longer take your own turns but act (no moving or Overcharge) on your host's activation — right after its turn rather than at any point during it; ends on detach (quick) or when either is Stunned",
+    id: 'core:mf_goblin',
+    note: "Symbiosis: attach to a larger adjacent ally: move with it, hard cover; it uses your Systems, E-Defense and Tech Attack; you share its conditions and heat; from the next round you no longer take your own turns but take two quick actions or one full action at any point during your host's turn (no moving or Overcharge), and your start and end of turn effects happen on its turn; ends on detach (quick) or when either is Stunned",
     onRoundStart(b, self) {
       if (self.flags.host && b.round > (self.flags.symbiosisRound ?? b.round)) { self.activationsLeft = 0; self.flags.symbiosisTurns = true }
     },
-    onAnyTurnEnd(b, self, u) {
-      if (!self.flags.host || u.id !== self.flags.host || !self.flags.symbiosisTurns || self.destroyed) return
-      self.activationsLeft = 1
-      b.chainTurn = self.id
-      b.say(`${self.name} acts on its host's turn.`)
+    // the host's turn counts as the Goblin's for start and end of turn effects
+    onAnyTurnStart(b, self, u) {
+      if (!self.flags.host) return
+      const host = b.unit(self.flags.host)
+      if (!host || host.destroyed || b.has(self, 'stunned') || b.has(host, 'stunned')) { detach(b, self); return }
+      if (u === host) { const from = self.pos; self.pos = { ...host.pos }; if (from.x !== host.pos.x || from.y !== host.pos.y) b.emit({ type: 'move', unitId: self.id, path: [from, self.pos] }) }
+      if (!self.flags.symbiosisTurns || u.id !== self.flags.host || self.destroyed) return
+      self.flags.hostTurnActed = false
+      for (const k of Object.keys(self.flags)) if (k.startsWith('turn:') || k.startsWith('react:')) delete self.flags[k]
+      b.tickStatuses(self, true)
+      for (const sc of scriptsFor(self)) sc.onTurnStart?.(b, self)
     },
+    beforeAnyTurnEnd(b, self, u) {
+      // an AI-run Goblin (an enemy's, or on Auto) acts before its host's turn ends; a player's Goblin uses "Goblin acts"
+      if (!self.flags.symbiosisTurns || u.id !== self.flags.host || self.flags.hostTurnActed || self.destroyed) return
+      if (self.side === 'player' && b.aiSide !== 'player') return
+      self.flags.hostTurnActed = true
+      b.interject(self, u)
+      runAiTurn(b, self)
+      if (b.interjection?.unit === self.id) b.endTurn(self)
+    },
+    onAnyTurnEnd(b, self, u) {
+      if (!self.flags.symbiosisTurns || u.id !== self.flags.host || self.destroyed) return
+      if (self.burn > 0) {
+        if (b.check(self, 'eng')) { b.say(`${self.name} clears burn.`); self.burn = 0 }
+        else { b.say(`${self.name} burns for ${self.burn}.`, 'damage'); b.applyDamage(self, [{ type: 'Burn-tick', amount: self.burn }], {}) }
+      }
+      if (!self.destroyed) for (const sc of scriptsFor(self)) sc.onTurnEnd?.(b, self)
+      b.tickStatuses(self, false)
+    },
+    grantActions: (b, self, other) => (self.flags.symbiosisTurns && other.id === self.flags.host && other.activeTurn && !self.flags.hostTurnActed && !self.destroyed ? [action({
+      key: `goblin_acts:${self.id}`, name: `${self.name} acts`, activation: 'free', target: 'none',
+      text: `${self.name} takes two quick actions or one full action now (no moving or Overcharge); ending its turn hands control back.`,
+      run: (bt) => { self.flags.hostTurnActed = true; bt.interject(self, other) },
+      aiScore: () => -1,
+    })] : []),
     onTurnStart(b, self) {
       if (self.flags.host && b.has(self, 'stunned')) { detach(b, self); return }
       if (self.flags.host) { self.moveLeft = 0; self.flags.noOvercharge = true } else delete self.flags.noOvercharge
@@ -251,12 +282,6 @@ const scripts: ItemScript[] = [
       const from = self.pos
       self.pos = { ...mover.pos }
       b.emit({ type: 'move', unitId: self.id, path: [from, self.pos] })
-    },
-    onAnyTurnStart(b, self, u) {
-      if (!self.flags.host) return
-      const host = b.unit(self.flags.host)
-      if (!host || host.destroyed || b.has(self, 'stunned') || b.has(host, 'stunned')) detach(b, self)
-      else if (u === host) { const from = self.pos; self.pos = { ...host.pos }; if (from.x !== host.pos.x || from.y !== host.pos.y) b.emit({ type: 'move', unitId: self.id, path: [from, self.pos] }) }
     },
     onDestroyed(b, self, v) { if (v.id === self.flags.host || v === self) { if (v === self) { const h = b.unit(self.flags.host); if (h) { h.flags.goblin = undefined; if (h.flags.symOrig) { h.stats.edef = h.flags.symOrig.edef; h.stats.techAttack = h.flags.symOrig.techAttack } } } else detach(b, self) } },
   },

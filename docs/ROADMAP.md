@@ -200,7 +200,7 @@ Every CORE system is now executed (`rules/effects/scripts/cores.ts`):
 - **Raleigh, Thunder God:** chambered Mjolnir, 4 kinetic per round; 4+ rounds are AP and Shred.
 - **Black Witch, Mag Field:** stops kinetic and explosive shots crossing its edge, then they resume; metal characters are pulled in and Immobilized.
 - **Dusk Wing, Hall of Mirrors:** hologram trail that detonates on hostiles, plus Hologram Teleport.
-- **Goblin, Symbiosis** (partial): you keep your own turns, and conditions and heat aren't shared.
+- **Goblin, Symbiosis:** shared conditions and heat; the Goblin acts inside its host's turn.
 - **Pegasus, Ushabti Omnigun:** 1 unreducible damage, 1/round or 3/round after Unshackle. The "I Know Everything" average-damage toggle is included.
 - **Barbarossa, Apocalypse Rail:** the Apocalypse Die counts down; three firing profiles leave clouds, a burning storm or a crater.
 - **Sherman, SOLIDCORE:** charges and COREBURN.
@@ -273,7 +273,7 @@ The 32 systems that used to be resolved by hand now have scripts (`scripts/syste
 - **Real objects:** the Webjaw Snare is a deployable that can't be attacked until sprung, and its Immobilized lasts until it is destroyed. Dimensional Emblems are objects an adjacent character can destroy with a Systems check.
 
 ### Rules fidelity snapshot
-Out of the 392 items in lancer-data, 390 (99%) are fully executed and 2 are approximated (Goblin INSTINCT Rig turn timing, PUPPETMASTER group moves). The rest show a `*` and log their rules text for you to resolve by hand.
+Out of the 392 items in lancer-data, all 392 are fully executed. The rest show a `*` and log their rules text for you to resolve by hand.
 
 | section | scripted | partial | auto | manual |
 |---|---|---|---|---|
@@ -307,9 +307,7 @@ Out of the 392 items in lancer-data, 390 (99%) are fully executed and 2 are appr
 
 ### 2. Player content (L, in batches, each with a test)
 Driven by `npm run coverage -- --list`.
-✅ Done: 390 of 392 items are fully executed (see Done). Two documented simplifications remain:
-- **Goblin INSTINCT Rig:** the attached Goblin acts right after its host's turn, rather than at any point during it.
-- **PUPPETMASTER Guide the Flock:** drones move as a group (yours, hostile or all) toward one chosen space, rather than each to its own space.
+✅ Done: all 392 items are fully executed (the Goblin's INSTINCT Rig now acts inside its host's turn; Guide the Flock moves each drone to its own space).
 
 ### 3. UX
 1. Minimap or overview toggle (S).
@@ -347,10 +345,11 @@ The first full pass is done (see Done → Balance pass). Remaining:
 - Between-battle event values
 
 ### 7. Tooling
-1. CI (S).
+1. ✅ CI (done: `.github/workflows/ci.yml`).
 2. ✅ Split `battle.ts` (done: `rules/battle/`).
 3. ✅ Deterministic replays (done: ⤓ export and `npm run replay`).
-4. Bundle code-splitting (S).
+4. ✅ Bundle code-splitting (done: battle screen and Three.js load with the first battle).
+5. ✅ Mid-battle save/resume, full undo and golden battles (done).
 
 ### Later or optional
 - Official NPC optional features (173 left).
