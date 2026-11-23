@@ -438,7 +438,7 @@ registerScripts([
       invade('neurospike', 'Mirage', 'The target treats you as Invisible until the end of its next turn.', (bt, self, t) => { t.flags[`mirage:${self.id}`] = bt.round + 1 })(b, u),
     ],
     beforeAnyAttack(b, self, ctx) {
-      if (ctx.attacker.flags.shrikeUntil && b.round <= ctx.attacker.flags.shrikeUntil && b.hostile(self, ctx.attacker)) b.applyDamage(ctx.attacker, [{ type: 'Heat', amount: 2 }], { source: self })
+      if (!b.previewing && ctx.attacker.flags.shrikeUntil && b.round <= ctx.attacker.flags.shrikeUntil && b.hostile(self, ctx.attacker)) b.applyDamage(ctx.attacker, [{ type: 'Heat', amount: 2 }], { source: self })
       const m = ctx.attacker.flags[`mirage:${self.id}`]
       if (m && b.round <= m && ctx.target === self) ctx.forceInvisible = true
     },

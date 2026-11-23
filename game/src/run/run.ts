@@ -116,7 +116,7 @@ export function freshCondition(p: PilotBuild): MechCondition {
 }
 
 /** A fresh condition that keeps what lasts the whole run (the Bonded talent's Bondmate). */
-function resetCondition(run: RunState, p: PilotBuild): MechCondition {
+export function resetCondition(run: RunState, p: PilotBuild): MechCondition {
   const c = freshCondition(p)
   const mate = run.condition[p.id]?.bondmate
   if (mate) c.bondmate = mate
@@ -129,6 +129,11 @@ function resetCondition(run: RunState, p: PilotBuild): MechCondition {
  */
 export function permHpBonus(run: RunState, pilotId: string): number {
   return run.boons.filter(b => b.reward === 'perm_hp2' && (!b.pilotId || b.pilotId === pilotId)).length * 2
+}
+
+/** Lowest stored HP that still means "1 HP left in battle" (stored HP doesn't include permanent HP boons). */
+export function minHp(run: RunState, pilotId: string): number {
+  return 1 - permHpBonus(run, pilotId)
 }
 
 export function availableNodes(run: RunState): RunNode[] {
@@ -303,7 +308,7 @@ export function applyReward(run: RunState, id: string, pilotId?: string) {
     case 'plating': run.boons.push({ reward: 'plating' }); break
     case 'intel': run.boons.push({ reward: 'intel' }); break
     case 'core': if (pilotId) run.condition[pilotId].coreAvailable = true; break
-    case 'reprint': if (pilotId) run.condition[pilotId] = freshCondition(run.squad.find(p => p.id === pilotId)!); break
+    case 'reprint': if (pilotId) run.condition[pilotId] = resetCondition(run, run.squad.find(p => p.id === pilotId)!); break
     case 'cool': for (const c of Object.values(run.condition)) c.overchargeLevel = 0; break
   }
 }
@@ -360,7 +365,7 @@ export function refitPilot(run: RunState, build: PilotBuild): boolean {
   const fresh = freshCondition(build)
   run.condition[old.id] = {
     ...fresh,
-    hp: c.destroyed ? fresh.hp : Math.max(1, Math.min(now.hp, now.hp - (was.hp - c.hp))),
+    hp: c.destroyed ? fresh.hp : Math.max(minHp(run, old.id), Math.min(now.hp, now.hp - (was.hp - c.hp))),
     structure: Math.min(now.structure, c.structure),
     stress: Math.min(now.stress, c.stress),
     repairs: Math.max(0, Math.min(now.repcap, now.repcap - (was.repcap - c.repairs))),

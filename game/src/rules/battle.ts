@@ -2,7 +2,7 @@
 import type { DamageData, RangeData, TagData, BonusData } from '../data/lancer'
 import { Lancer } from '../data/lancer'
 import {
-  type AreaEffect, type GridMap, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
+  type AreaEffect, type GridMap, type Tile, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
   distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from './grid'
@@ -784,9 +784,17 @@ export class Battle {
     for (const o of this.alive()) for (const s of scriptsFor(o)) s.onDestroyed?.(this, o, u)
     for (const s of scriptsFor(u)) s.onDestroyed?.(this, u, u)
     // drones/deployables persist; owned drones of destroyed mechs remain until the scene ends
-    if (u.id === this.activeId && this.endingTurnOf !== u.id) {
-      // its turn is over: statuses timed to the end of this unit's turn expire now
-      this.tickStatuses(u, false)
+    const ownTurn = u.id === this.activeId && this.endingTurnOf !== u.id
+    // its turn is over: statuses timed to the end of this unit's turn expire now
+    if (ownTurn) this.tickStatuses(u, false)
+    // statuses timed to its future turns would never tick again: they end with the current turn instead
+    // (or at the end of the affected unit's next turn, between turns). Dying during its own endTurn: that tick is about to run.
+    for (const o of this.units) for (const st of o.statuses) if (st.clockUnit === u.id && o !== u) {
+      if (this.endingTurnOf !== u.id) st.clockUnit = this.activeId && this.activeId !== u.id ? this.activeId : o.id
+      st.turnsLeft = 1
+      delete st.atStart
+    }
+    if (ownTurn) {
       u.activeTurn = false
       this.activeId = null
       this.checkVictory()
@@ -1351,6 +1359,11 @@ export class Battle {
     const listeners = this.listeners
     this.listeners = []
     const rng = this.rng.state, logLen = this.log.length, evLen = this.events.length, evCount = this.eventCount, nUnits = this.units.length
+    // battle-level state too: a hook can make a real attack inside a preview, and a kill must not end the battle or the turn
+    // tiles are saved only when a preview is about to change one (touchTile): copying the whole map per preview is too slow
+    const restoreBattle = this.snapshotBattleFields(false)
+    const outerTiles = this.sandboxTiles
+    this.sandboxTiles = new Map()
     this.sandboxDepth++
     const areas = this.areas.slice(), mines = this.mines.slice(), lastMove = this.lastMove
     const snap = this.units.map(u => ({
@@ -1387,6 +1400,14 @@ export class Battle {
         for (const s of x.systems) Object.assign(s.s, { destroyed: s.destroyed, usesLeft: s.usesLeft, charged: s.charged })
       }
       this.units.length = nUnits
+      restoreBattle()
+      if (this.sandboxTiles?.size) {
+        for (const [i, t] of this.sandboxTiles) { const cur = this.map.tiles[i] as any; for (const k of Object.keys(cur)) if (!(k in t)) delete cur[k]; Object.assign(cur, t) }
+        this.invalidateTerrain()
+      }
+      // nested preview: a tile the outer preview hadn't touched was, before the inner one, still as the outer preview found it
+      if (outerTiles && this.sandboxTiles) for (const [i, t] of this.sandboxTiles) if (!outerTiles.has(i)) outerTiles.set(i, t)
+      this.sandboxTiles = outerTiles
       this.areas = areas
       this.mines = mines
       this.lastMove = lastMove
@@ -1404,6 +1425,53 @@ export class Battle {
    * weapon and system objects keep their identity so the UI's references stay valid). Render
    * listeners are not involved: use `transaction` to hold events back until a command succeeds.
    */
+  /** True while a preview runs in sandbox(): scripts must not take real actions (reactions, attacks) then. */
+  get previewing(): boolean { return this.sandboxDepth > 0 }
+  /** Tiles changed during the current preview, as they were before it (see touchTile). */
+  private sandboxTiles: Map<number, Tile> | null = null
+  /** Call before changing a map tile: inside a preview, remember how it was so sandbox() can put it back. */
+  private touchTile(p: Pos) {
+    if (!this.sandboxTiles) return
+    const i = p.y * this.map.w + p.x
+    if (!this.sandboxTiles.has(i)) this.sandboxTiles.set(i, { ...this.map.tiles[i] })
+  }
+
+  /**
+   * Snapshot of the battle's own fields (turn, side, round, winner, grapples, areas, terrain…) and the map tiles,
+   * not the units: deep-copied, but references to units, weapons, systems and the map are kept as they are.
+   */
+  private snapshotBattleFields(withTiles = true): () => void {
+    const anchors = new Set<object>(this.units)
+    for (const u of this.units) { for (const w of u.weapons) anchors.add(w); for (const x of u.systems) anchors.add(x) }
+    anchors.add(this.map)
+    const dc = (v: any): any => {
+      if (v === null || typeof v !== 'object' || anchors.has(v)) return v
+      if (Array.isArray(v)) return v.map(dc)
+      if (v instanceof Map) return new Map([...v].map(([k, x]) => [k, dc(x)]))
+      if (v instanceof Set) return new Set([...v].map(dc))
+      if (Object.getPrototypeOf(v) !== Object.prototype) return v
+      const o: any = {}
+      for (const k of Object.keys(v)) o[k] = dc(v[k])
+      return o
+    }
+    const tiles = withTiles ? this.map.tiles.map(t => ({ ...t })) : []
+    const SKIP = new Set(['units', 'map', 'rng', 'log', 'events', 'listeners', 'chooser', 'answers', 'txDepth', 'sandboxDepth', 'sandboxTiles', 'mapCache', 'losCache', 'coverCache', 'cacheVersion', 'terrainVersion'])
+    const self = this as any
+    const rest: Record<string, any> = {}
+    for (const k of Object.keys(self)) if (!SKIP.has(k) && typeof self[k] !== 'function') rest[k] = dc(self[k])
+    return () => {
+      let terrain = false
+      tiles.forEach((t, i) => {
+        const cur = this.map.tiles[i] as any
+        if (cur.h !== t.h || cur.kind !== t.kind) terrain = true
+        for (const k of Object.keys(cur)) if (!(k in t)) delete cur[k]
+        Object.assign(cur, t)
+      })
+      for (const k of Object.keys(rest)) self[k] = dc(rest[k])
+      if (terrain) this.invalidateTerrain()
+    }
+  }
+
   checkpoint(): () => void {
     const anchors = new Set<object>(this.units)
     for (const u of this.units) { for (const w of u.weapons) anchors.add(w); for (const x of u.systems) anchors.add(x) }
@@ -2016,6 +2084,7 @@ export class Battle {
     const t = tileAt(this.map, p)
     if (!t || t.kind !== 'block' || amount <= 0 || t.indestructible) return false
     const k = `${p.x},${p.y}`
+    this.touchTile(p)
     let dmg = (this.terrainDamage.get(k) ?? 0) + amount
     let levels = 0
     while (dmg >= Battle.TERRAIN_SECTION_HP && t.h > 0) { dmg -= Battle.TERRAIN_SECTION_HP; t.h--; levels++ }
@@ -2036,6 +2105,7 @@ export class Battle {
   raiseCover(p: Pos, opts: { indestructible?: boolean; owner?: string } = {}): boolean {
     const t = tileAt(this.map, p)
     if (!t || t.kind === 'block' || this.alive().some(o => !o.flags.flat && footprint(o).some(q => q.x === p.x && q.y === p.y))) return false
+    this.touchTile(p)
     t.h += 1
     t.kind = 'block'
     if (opts.indestructible) t.indestructible = true

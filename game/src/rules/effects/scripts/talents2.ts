@@ -107,7 +107,7 @@ registerScripts([
     beforeAnyAttack(b, self, ctx) {
       const mate = bondmate(b, self)
       if (!mate || ctx.target !== mate || !b.hostile(self, ctx.attacker) || ctx.attacker.destroyed || self.destroyed || !b.los(self, ctx.attacker)) return
-      if (self.flags.coverMeBusy || ctx.mode === 'secondary' || b.canSpend(self, 'reaction', 'overwatch') !== true) return
+      if (b.previewing || self.flags.coverMeBusy || ctx.mode === 'secondary' || b.canSpend(self, 'reaction', 'overwatch') !== true) return
       const w = b.bestThreatWeapon(self, ctx.attacker) ?? self.weapons.find(x => !x.tech && b.weaponUsable(self, x, false) === true && b.validTarget(self, x, ctx.attacker) === true)
       if (!b.offerReaction(self, 'cover_me', 'Cover Me!', `${ctx.attacker.name} is about to attack ${mate.name}. Spend your Overwatch to threaten it?`)) return
       b.spend(self, 'reaction', 'overwatch')
