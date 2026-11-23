@@ -1,0 +1,44 @@
+[
+  {
+    "id": "t1-standard",
+    "round": 7,
+    "winner": null,
+    "commands": 44,
+    "hash": "0f2cc806"
+  },
+  {
+    "id": "t1-boss",
+    "round": 7,
+    "winner": null,
+    "commands": 74,
+    "hash": "8540fe55"
+  },
+  {
+    "id": "t2-standard",
+    "round": 6,
+    "winner": "player",
+    "commands": 57,
+    "hash": "f4fc7d7f"
+  },
+  {
+    "id": "t2-boss",
+    "round": 7,
+    "winner": null,
+    "commands": 59,
+    "hash": "b353926b"
+  },
+  {
+    "id": "t3-standard",
+    "round": 5,
+    "winner": "player",
+    "commands": 44,
+    "hash": "0fd3b97b"
+  },
+  {
+    "id": "t3-boss",
+    "round": 7,
+    "winner": null,
+    "commands": 66,
+    "hash": "bf1ff2a5"
+  }
+]
