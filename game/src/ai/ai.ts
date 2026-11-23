@@ -368,9 +368,9 @@ export function runAiTurn(b: Battle, u: Unit) {
 function runAiTurnInner(b: Battle, u: Unit) {
   if (b.activeId !== u.id) b.beginTurn(u)
   try {
+    if (!u.destroyed && b.has(u, 'shutdown') && !u.statuses.some(x => x.id === 'stunned') && u.actionsLeft >= 2) { b.bootUp(u); return }
     if (!u.destroyed && !b.has(u, 'stunned')) {
-      if (b.has(u, 'shutdown')) { b.bootUp(u); return }
-      if (b.has(u, 'prone') && !b.has(u, 'immobilized')) b.standUp(u)
+      if (b.has(u, 'prone') && b.canStandUp(u) === true) b.standUp(u)
       if (b.has(u, 'grappled') && u.statuses.find(s => s.id === 'grappled')?.data?.by !== u.id) { try { b.breakGrapple(u) } catch (e) { if (e instanceof PendingChoice) throw e } }
       if (u.flags.sekhmet) { sekhmetTurn(b, u); return }
       const plan = planFor(b, u)

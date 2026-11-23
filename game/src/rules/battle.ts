@@ -236,7 +236,8 @@ export class Battle {
   }
   /** Let `u` take a forced action it has no action economy for (Law of Blades): costs are paid from a temporary pool. */
   withForcedAction<T>(u: Unit, fn: () => T): T {
-    const keep = { actionsLeft: u.actionsLeft, acted: u.actedThisTurn, quick: u.flags['turn:quickUsed'], spent: u.flags['turn:spent'], bonus: u.flags.bonusQuick }
+    // copy the arrays: spend() pushes into turn:spent in place, which would leak the forced action into the turn's record
+    const keep = { actionsLeft: u.actionsLeft, acted: u.actedThisTurn, quick: u.flags['turn:quickUsed'], spent: u.flags['turn:spent'] ? [...u.flags['turn:spent']] : undefined, bonus: u.flags.bonusQuick }
     const recovering = u.statuses.filter(s => s.id === 'bracing_recovery')
     u.statuses = u.statuses.filter(s => s.id !== 'bracing_recovery')
     u.actionsLeft = 2
@@ -306,9 +307,18 @@ export class Battle {
     if (existing) {
       // keep the longer of the two
       if (!existing.clockUnit) return true
-      if (!inst.clockUnit) Object.assign(existing, inst)
-      else if (existing.clockUnit === inst.clockUnit) existing.turnsLeft = Math.max(existing.turnsLeft ?? 0, inst.turnsLeft ?? 0)
-      else Object.assign(existing, inst)
+      if (!inst.clockUnit) { Object.assign(existing, inst); delete existing.clockUnit; delete existing.turnsLeft; delete existing.atStart; return true }
+      const same = u.statuses.find(s => s.id === id && s.clockUnit === inst.clockUnit)
+      if (same) {
+        // on one clock, more turns is longer; with equal turns, ending at the end of the turn outlasts the start
+        const n = same.turnsLeft ?? 0, m = inst.turnsLeft ?? 0
+        if (m > n) { same.turnsLeft = m; same.atStart = inst.atStart }
+        else if (m === n) same.atStart = !!same.atStart && !!inst.atStart
+        if (!same.atStart) delete same.atStart
+      } else {
+        // timed on different units' turns: the two can't be compared, so keep both; the status lasts until the later one expires
+        u.statuses.push(inst)
+      }
       return true
     }
     u.statuses.push(inst)
@@ -334,7 +344,10 @@ export class Battle {
       for (const s of [...u.statuses]) {
         if (s.clockUnit !== clock.id || !!s.atStart !== atStart) continue
         s.turnsLeft = (s.turnsLeft ?? 1) - 1
-        if (s.turnsLeft <= 0) this.removeStatus(u, s.id)
+        if (s.turnsLeft > 0) continue
+        // drop just this instance; the status only ends when no other instance is left
+        if (u.statuses.some(x => x !== s && x.id === s.id)) u.statuses = u.statuses.filter(x => x !== s)
+        else this.removeStatus(u, s.id)
       }
     }
   }
@@ -450,7 +463,9 @@ export class Battle {
     this.syncZeroG(u)
     u.moveLeft = u.stats.speed
     if (this.has(u, 'bracing_recovery')) { u.actionsLeft = 1; u.moveLeft = 0 }
-    if (this.has(u, 'stunned')) { u.actionsLeft = 0; u.moveLeft = 0 }
+    // Shut Down counts as Stunned, but keeps its actions so it can Boot Up (a full action); canSpend refuses everything else
+    if (u.statuses.some(x => x.id === 'stunned')) { u.actionsLeft = 0; u.moveLeft = 0 }
+    else if (this.has(u, 'shutdown')) u.moveLeft = 0
     if (this.has(u, 'immobilized')) u.moveLeft = 0
     this.emit({ type: 'turn', unitId: u.id })
     this.say(`${u.name} activates.`, 'turn')
@@ -465,8 +480,14 @@ export class Battle {
     for (const d of this.alive().filter(d => d.ownerId === u.id)) for (const k of Object.keys(d.flags)) if (k.startsWith('turn:')) delete d.flags[k]
   }
 
+  /** Set while endTurn runs, so a unit destroyed by its own end-of-turn effects doesn't hand the turn over twice. */
+  private endingTurnOf: string | null = null
   endTurn(u: Unit = this.active!) {
     if (!u || u.id !== this.activeId) throw new Error('Not the active unit')
+    this.endingTurnOf = u.id
+    try { this.endTurnInner(u) } finally { this.endingTurnOf = null }
+  }
+  private endTurnInner(u: Unit) {
     if (this.has(u, 'hidden') && this.inRevealField(u)) this.removeStatus(u, 'hidden')
     // Prowl ends with the turn: lose Hidden if exposed now
     if (u.flags.prowl && this.has(u, 'hidden')) { u.activeTurn = false; const ok = this.canHide(u); u.activeTurn = true; if (!ok) this.removeStatus(u, 'hidden') }
@@ -480,7 +501,7 @@ export class Battle {
       if (this.check(u, 'eng')) { this.say(`${u.name} clears burn.`); u.burn = 0 }
       else { this.say(`${u.name} burns for ${u.burn}.`, 'damage'); this.applyDamage(u, [{ type: 'Burn-tick', amount: u.burn }], {}) }
     }
-    for (const s of scriptsFor(u)) s.onTurnEnd?.(this, u)
+    if (!u.destroyed) for (const s of scriptsFor(u)) s.onTurnEnd?.(this, u)
     for (const o of this.alive()) if (o !== u) for (const s of scriptsFor(o)) s.onAnyTurnEnd?.(this, o, u)
     // reactor meltdown / self destruct
     if (!u.destroyed && u.meltdownTurns != null) {
@@ -763,7 +784,9 @@ export class Battle {
     for (const o of this.alive()) for (const s of scriptsFor(o)) s.onDestroyed?.(this, o, u)
     for (const s of scriptsFor(u)) s.onDestroyed?.(this, u, u)
     // drones/deployables persist; owned drones of destroyed mechs remain until the scene ends
-    if (u.id === this.activeId) {
+    if (u.id === this.activeId && this.endingTurnOf !== u.id) {
+      // its turn is over: statuses timed to the end of this unit's turn expire now
+      this.tickStatuses(u, false)
       u.activeTurn = false
       this.activeId = null
       this.checkVictory()
@@ -953,7 +976,7 @@ export class Battle {
         const prev = dist.get(nk)
         if (prev && prev.cost <= c) continue
         let terminal = false
-        if (!opts.ignoreEngagement && u.kind !== 'deployable') {
+        if (!opts.ignoreEngagement && !u.flags['turn:disengaged'] && u.kind !== 'deployable') {
           for (const o of this.alive()) {
             if (!this.hostile(u, o) || startAdj.has(o.id) || (o.kind !== 'mech' && o.kind !== 'npc') || this.has(o, 'hidden') || u.flags.feint === o.id) continue
             if ((o.stats.size >= u.stats.size || o.flags.localizedMaze) && this.adjacent(u, o, np)) { terminal = true; break }
@@ -990,7 +1013,7 @@ export class Battle {
     if (this.has(u, 'immobilized')) return 'Immobilized'
     if (this.has(u, 'stunned')) return 'Stunned'
     if (this.grapples.some(g => g.a === u.id || g.d === u.id) && !this.grappleInfo(u).dominant) return 'Grappled (held by a larger side)'
-    if (mode !== 'standard' && this.has(u, 'slowed') && mode !== 'disengage') return 'Slowed'
+    if (mode !== 'standard' && (this.has(u, 'slowed') || this.has(u, 'prone')) && mode !== 'disengage') return this.has(u, 'slowed') ? 'Slowed' : 'Prone (Slowed)'
     return true
   }
 
@@ -998,20 +1021,28 @@ export class Battle {
   move(u: Unit, dest: Pos, opts: MoveOpts = { mode: 'standard' }): boolean {
     const ok = this.canMove(u, opts.mode)
     if (ok !== true) throw new Error(ok)
-    if (u.flags.landed && opts.mode !== 'involuntary') { u.flying = true; u.flags.landed = false; this.say(`${u.name} takes off again.`) }
-    if (this.has(u, 'prone') && opts.mode === 'standard') throw new Error('Stand up first')
     // Mesmer Beacon: voluntary movement only toward the source
     const mes = u.flags.mesmerBy ? this.unit(u.flags.mesmerBy) : undefined
     if (mes && !mes.destroyed && this.round <= u.flags.mesmerUntil && opts.mode !== 'involuntary' && chebyshev(dest, mes.pos) >= chebyshev(u.pos, mes.pos)) throw new Error(`Mesmerized: can only move toward ${mes.name}`)
     const budget = opts.mode === 'standard' ? u.moveLeft : u.flags.pendingMove ?? u.stats.speed
-    // teleporting movers (u.flags.teleportMoves) aren't held by engagement
-    let p = this.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves })
-    // Ramjet / OASIS Wall: voluntary moves must follow a straight line
-    if (opts.mode !== 'involuntary' && !u.flags.teleportMoves && scriptsFor(u).some(sc => sc.straightMovesOnly?.(this, u))) p = this.straightPath(u, dest, budget)
-    if (!p) throw new Error('Unreachable')
-    if (p.path.length <= 1) return true
-    if (opts.mode !== 'involuntary') for (const sc of scriptsFor(u)) { const v = sc.validateMove?.(this, u, dest, p.path, opts.mode); if (v && v !== true) throw new Error(v) }
-    for (const o of this.alive()) if (o !== u) for (const sc of scriptsFor(o)) { const v = sc.validateAnyMove?.(this, o, u, dest, opts.mode); if (v && v !== true) throw new Error(v) }
+    // a landed flyer takes off to move; pathing depends on it, so take off first and land again if the move is refused
+    const takeOff = !!u.flags.landed && opts.mode !== 'involuntary'
+    if (takeOff) { u.flying = true; u.flags.landed = false }
+    let p: { path: Pos[]; cost: number } | null
+    try {
+      // teleporting movers (u.flags.teleportMoves) aren't held by engagement
+      p = this.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves })
+      // Ramjet / OASIS Wall: voluntary moves must follow a straight line
+      if (opts.mode !== 'involuntary' && !u.flags.teleportMoves && scriptsFor(u).some(sc => sc.straightMovesOnly?.(this, u))) p = this.straightPath(u, dest, budget)
+      if (!p) throw new Error('Unreachable')
+      if (opts.mode !== 'involuntary' && p.path.length > 1) for (const sc of scriptsFor(u)) { const v = sc.validateMove?.(this, u, dest, p.path, opts.mode); if (v && v !== true) throw new Error(v) }
+      if (p.path.length > 1) for (const o of this.alive()) if (o !== u) for (const sc of scriptsFor(o)) { const v = sc.validateAnyMove?.(this, o, u, dest, opts.mode); if (v && v !== true) throw new Error(v) }
+    } catch (e) {
+      if (takeOff) { u.flying = false; u.flags.landed = true }
+      throw e
+    }
+    if (p.path.length <= 1) { if (takeOff) { u.flying = false; u.flags.landed = true } return true }
+    if (takeOff) this.say(`${u.name} takes off again.`)
     const snapshot = opts.mode === 'standard'
       ? { unitId: u.id, pos: { ...u.pos }, moveLeft: u.moveLeft, acted: u.actedThisTurn, moved: !!u.flags['turn:moved'], round: this.round, startEvents: this.eventCount, endEvents: -1 }
       : null
@@ -1169,7 +1200,8 @@ export class Battle {
       if (this.isAoE(pr)) continue
       const threat = this.weaponThreat(o, w)
       if (threat <= 0 || this.distance(o, target) > threat) continue
-      if (!this.los(o, target)) continue
+      // a target the attack would refuse (Hidden, intangible, no line of sight) doesn't provoke the reaction
+      if (this.validTarget(o, w, target) !== true) continue
       const avg = pr.damage.reduce((a, d) => a + averageDice(d.val), 0)
       if (avg > bestDmg) { best = w; bestDmg = avg }
     }
@@ -1237,7 +1269,8 @@ export class Battle {
     if (!w.loaded) return 'Needs reloading'
     if (w.usesLeft === 0) return 'No uses left'
     if (!w.charged) return 'Recharging'
-    if (this.has(u, 'jammed') && !(u.flags.shieldedMagazines && !this.isMelee(w))) return 'Jammed'
+    // Jammed stops weapon attacks, but Improvised Attacks, Grapple and Ram are still allowed
+    if (this.has(u, 'jammed') && w.type !== 'Improvised' && !(u.flags.shieldedMagazines && !this.isMelee(w))) return 'Jammed'
     const pr = this.profile(w)
     if (!pr.damage.length && !pr.onHit.length && !w.tech) {
       const d = w.dataId ? Lancer.weapons.get(w.dataId) : undefined
@@ -1407,7 +1440,7 @@ export class Battle {
    * Run a player or AI command so it can be suspended for a decision: render events are held back
    * until it finishes; on PendingChoice the battle is rolled back and the question returned.
    */
-  transaction(fn: () => void, answers: number[] = []): { pending: ChoiceQuestion } | { error?: Error } {
+  transaction(fn: () => void, answers: number[] = [], opts: { rollbackOnError?: boolean } = {}): { pending: ChoiceQuestion } | { error?: Error } {
     const restore = this.checkpoint()
     const listeners = this.listeners
     const held: BattleEvent[] = []
@@ -1425,7 +1458,9 @@ export class Battle {
       this.listeners = listeners
       this.answers = []
     }
-    if ('pending' in out) { restore(); return out }
+    // a pending decision is replayed later; a player command refused part-way (rollbackOnError) leaves the battle as it was.
+    // AI turns don't roll back on error: the turn has already been ended, and undoing it would hand the same unit back forever.
+    if ('pending' in out || (out.error && opts.rollbackOnError)) { restore(); return out }
     for (const e of held) for (const l of this.listeners) l(e)
     return out
   }
@@ -1461,7 +1496,7 @@ export class Battle {
         // armor once from the attack's total (largest parts first), then resistance per type
         let total = 0
         const ps = parts.filter(p => p.type !== 'Heat' && p.type !== 'Burn').map(p => ({ type: p.type, amount: exposed ? p.amount * 2 : p.amount })).sort((x, y) => y.amount - x.amount)
-        let armor = ap || irreducible ? 0 : target.stats.armor
+        let armor = ap || irreducible || this.has(target, 'shredded') ? 0 : target.stats.armor
         for (const p of ps) { const cut = Math.min(armor, p.amount); armor -= cut; p.amount -= cut; total += resists(p.type) ? Math.ceil(p.amount / 2) : p.amount }
         for (const p of parts) if (p.type === 'Burn') total += resists('Burn') ? Math.ceil(p.amount / 2) : p.amount
         return total
@@ -1506,10 +1541,22 @@ export class Battle {
       const def = this.defenseOf(target, ctx)
       const chance = hitChance(ctx.attackBonus, ctx.accuracy - ctx.difficulty, def)
       const pr = this.profile(w)
+      // same order as applyDamage: Exposed doubles, Armor comes off the total once, then Resistance halves
+      const shredded = this.has(target, 'shredded')
+      const exposed = this.has(target, 'exposed')
+      const resists = (type: string) => !shredded && (target.resist.includes(type) || target.resist.includes('all'))
+      const parts = pr.damage.filter(d => d.type !== 'Heat').map(d => {
+        const amount = averageDice(d.val) + this.flatDamageBonus(attacker, w, d.type)
+        return { type: d.type, amount: exposed && d.type !== 'Burn' ? amount * 2 : amount }
+      }).sort((x, y) => y.amount - x.amount)
+      let armor = hasTag(pr.tags, 'tg_ap') || shredded ? 0 : target.stats.armor
       let dmg = 0
-      for (const d of pr.damage) if (d.type !== 'Heat') dmg += averageDice(d.val) + this.flatDamageBonus(attacker, w, d.type)
-      dmg = Math.max(0, dmg - (hasTag(pr.tags, 'tg_ap') ? 0 : target.stats.armor))
-      if (this.has(target, 'exposed')) dmg *= 2
+      for (const p of parts) {
+        if (p.type === 'Burn') { dmg += resists('Burn') ? p.amount / 2 : p.amount; continue }
+        const cut = Math.min(armor, Math.max(0, p.amount)); armor -= cut
+        const left = Math.max(0, p.amount - cut)
+        dmg += resists(p.type) ? left / 2 : left
+      }
       let exp = dmg * chance
       const rel = tagVal(pr.tags, 'tg_reliable')
       if (rel) exp += (1 - chance) * rel
@@ -1890,9 +1937,12 @@ export class Battle {
     const pre = this.weaponUsable(u, w)
     if (pre !== true) return { ctxs: [], ok: false, reason: pre }
     if (this.firedThisTurn(u, w)) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
+    const refund = this.checkpoint()
     this.spend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish')
     this.markFired(u, w)
     const r = this.weaponAttack(u, w, aim, 'skirmish')
+    // an attack refused before anything was rolled (bad target, out of range...) costs nothing
+    if (!r.ok && !r.ctxs.length) { refund(); return r }
     if (aux && aux.weapon.size === 'Auxiliary' && aux.weapon !== w && aux.weapon.mountIndex === w.mountIndex && w.mountIndex >= 0 && !u.destroyed && !this.firedThisTurn(u, aux.weapon)) {
       this.markFired(u, aux.weapon)
       const r2 = this.weaponAttack(u, aux.weapon, aux.aim, 'skirmish', { noBonusDamage: true })
@@ -1908,6 +1958,7 @@ export class Battle {
     if (this.firedThisTurn(u, a.weapon) || (b && this.firedThisTurn(u, b.weapon))) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
     const ua = this.weaponUsable(u, a.weapon)
     if (ua !== true) return { ctxs: [], ok: false, reason: ua }
+    const refund = this.checkpoint()
     this.markFired(u, a.weapon)
     if (b) this.markFired(u, b.weapon)
     if (a.weapon.size !== 'Superheavy' && !b) {
@@ -1918,7 +1969,11 @@ export class Battle {
     if (b && a.weapon.size !== 'Superheavy' && !u.destroyed) {
       const r2 = this.weaponAttack(u, b.weapon, b.aim, 'barrage')
       r.ctxs.push(...r2.ctxs)
+      if (r2.ok) r.ok = true
+      else if (!r.ok && !r2.ok) r.reason = r.reason ?? r2.reason
     }
+    // neither weapon could attack: the Barrage costs nothing
+    if (!r.ok && !r.ctxs.length) { refund(); return r }
     // additional AUXILIARY weapon on each mount that was fired (no bonus damage)
     const mounts = new Set([a.weapon.mountIndex, b?.weapon.mountIndex].filter((m): m is number => m != null && m >= 0))
     const usedMounts = new Set<number>()
@@ -2014,6 +2069,7 @@ export class Battle {
     const c = this.canSpend(u, 'quick', 'boost')
     if (c !== true) throw new Error(c)
     if (this.has(u, 'slowed') || this.has(u, 'immobilized')) throw new Error('Cannot boost while slowed/immobilized')
+    if (this.has(u, 'prone')) throw new Error('Cannot boost while prone (stand up first)') // Prone characters are Slowed
     if (this.has(u, 'grappled')) throw new Error('Cannot boost while grappling or grappled')
     this.spend(u, 'quick', 'boost')
     const extra = u.bonuses.filter(b => b.id === 'boost').reduce((a, b) => a + Number(b.val), 0)
@@ -2025,9 +2081,19 @@ export class Battle {
     for (const o of this.alive()) for (const s of scriptsFor(o)) s.onAnyMovementAction?.(this, o, u, 'boost')
   }
 
+  /** Standing up takes the standard move: only on your own turn, before moving, and not while Stunned or Immobilized. */
+  canStandUp(u: Unit): true | string {
+    if (!this.has(u, 'prone')) return 'Not prone'
+    if (!u.activeTurn) return 'Not this unit’s turn'
+    if (this.has(u, 'stunned')) return 'Stunned'
+    if (this.has(u, 'immobilized')) return 'Immobilized'
+    if (u.flags['turn:moved'] || u.moveLeft < u.stats.speed) return 'Standard move already used'
+    return true
+  }
   standUp(u: Unit) {
     if (!this.has(u, 'prone')) return
-    if (this.has(u, 'immobilized')) throw new Error('Immobilized')
+    const ok = this.canStandUp(u)
+    if (ok !== true) throw new Error(ok)
     u.moveLeft = 0
     this.removeStatus(u, 'prone')
   }
@@ -2048,6 +2114,8 @@ export class Battle {
   stabilize(u: Unit, mode: 'cool' | 'repair', clear?: { unit: Unit; status?: StatusId | 'burn' | 'reload' }) {
     const c = this.canSpend(u, 'full')
     if (c !== true) throw new Error(c)
+    // Stabilize ends burn, reloads, or clears one condition: nothing else
+    if (clear?.status && !['burn', 'reload', 'impaired', 'slowed', 'immobilized', 'jammed', 'shredded', 'lockon'].includes(clear.status)) throw new Error(`Stabilize can't clear ${clear.status}`)
     if (mode === 'repair' && u.repairs <= 0) throw new Error('No repairs left')
     if (mode === 'repair' && u.flags.briareosZero) throw new Error("Can't regain HP until a Full Repair (Briareos Frame)")
     this.spend(u, 'full')
@@ -2121,15 +2189,32 @@ export class Battle {
     }
   }
 
+  /** Ram and Grapple are attacks: hidden, intangible or destroyed targets can't be chosen. */
+  private meleeTargetValid(u: Unit, t: Unit): true | string {
+    if (t.destroyed) return 'Destroyed'
+    if (t === u) return 'Cannot target self'
+    if (t.flags.intangible || u.flags.intangible) return 'Intangible'
+    if (this.has(t, 'hidden') && this.hostile(u, t)) return 'Hidden'
+    return true
+  }
+  /** The status modifiers every attack gets (as buildWeaponCtx applies them), for Ram and Grapple. Attacking reveals a Hidden attacker. */
+  private meleeAttackMods(u: Unit, t: Unit, ctx: AttackCtx) {
+    if (this.has(u, 'impaired')) { ctx.difficulty++; ctx.reasons.push('Impaired -1') }
+    if (this.has(t, 'prone')) { ctx.accuracy++; ctx.reasons.push('Prone target +1') }
+    if (this.has(t, 'braced')) { ctx.difficulty++; ctx.reasons.push('Braced target -1') }
+    if (this.has(t, 'lockon') && this.hostile(u, t)) { ctx.accuracy++; ctx.reasons.push('Lock On +1'); this.removeStatus(t, 'lockon'); ctx.lockOnConsumed = true }
+    if (this.has(u, 'hidden')) this.removeStatus(u, 'hidden')
+  }
   ram(u: Unit, t: Unit) {
     const c = this.canSpend(u, 'quick', 'ram')
     if (c !== true) throw new Error(c)
     if (!this.adjacent(u, t)) throw new Error('Must be adjacent')
     if (t.stats.size > u.stats.size && !u.flags.muscleNet) throw new Error('Target is too large')
+    const v = this.meleeTargetValid(u, t)
+    if (v !== true) throw new Error(v)
     this.spend(u, 'quick', 'ram')
     const ctx = this.newAttackCtx(u, t, { melee: true, ranged: false, mode: 'ram' })
-    if (this.has(u, 'impaired')) ctx.difficulty++
-    if (this.has(t, 'prone')) ctx.accuracy++
+    this.meleeAttackMods(u, t, ctx)
     for (const s of scriptsFor(u)) s.beforeAttack?.(this, u, ctx, 'attacker')
     this.say(`${u.name} RAMS ${t.name}.`, 'attack')
     this.rollToHit(ctx)
@@ -2149,9 +2234,11 @@ export class Battle {
     const c = this.canSpend(u, 'quick', 'grapple')
     if (c !== true) throw new Error(c)
     if (!this.adjacent(u, t)) throw new Error('Must be adjacent')
+    const v = this.meleeTargetValid(u, t)
+    if (v !== true) throw new Error(v)
     this.spend(u, 'quick', 'grapple')
     const ctx = this.newAttackCtx(u, t, { melee: true, ranged: false, mode: 'grapple' })
-    if (this.has(u, 'impaired')) ctx.difficulty++
+    this.meleeAttackMods(u, t, ctx)
     this.say(`${u.name} attempts to GRAPPLE ${t.name}.`, 'attack')
     this.rollToHit(ctx)
     if (ctx.hit) this.startGrapple(u, t)
@@ -2281,6 +2368,7 @@ export class Battle {
     const c = this.canSpend(u, 'full')
     if (c !== true) throw new Error(c)
     if (!this.adjacent(u, t)) throw new Error('Must be adjacent')
+    const refund = this.checkpoint()
     this.spend(u, 'full')
     const w: Weapon = {
       uid: 'improvised', name: 'Improvised Attack', mountIndex: -1, size: 'Main', type: 'Improvised', profileIndex: 0,
@@ -2289,7 +2377,8 @@ export class Battle {
     }
     const brawler = u.bonuses.find(b => b.id === 'damage' && b.weapon_types?.includes('Improvised') && typeof b.val === 'string')
     if (brawler) w.profiles[0].damage = [{ type: 'Kinetic', val: brawler.val }]
-    this.weaponAttack(u, w, { targetId: t.id }, 'improvised')
+    const r = this.weaponAttack(u, w, { targetId: t.id }, 'improvised')
+    if (!r.ok && !r.ctxs.length) { refund(); throw new Error(r.reason ?? 'Cannot attack') }
   }
 
   reload(u: Unit, w: Weapon) {
@@ -2314,6 +2403,7 @@ export class Battle {
   }
   bootUp(u: Unit) {
     if (!u.activeTurn || !this.has(u, 'shutdown')) throw new Error('Not shut down')
+    if (u.statuses.some(x => x.id === 'stunned')) throw new Error('Stunned')
     if (u.actionsLeft < 2) throw new Error('Needs a full action')
     u.actionsLeft = 0
     u.actedThisTurn = true
@@ -2408,6 +2498,15 @@ export class Battle {
     for (const s of scriptsFor(u)) s.beforeAttack?.(this, u, ctx, 'attacker')
     for (const s of scriptsFor(t)) s.beforeAttack?.(this, t, ctx, 'target')
     for (const o of this.alive()) for (const s of scriptsFor(o)) s.beforeAnyAttack?.(this, o, ctx)
+    // Prone, Braced and Lock On apply to every attack, tech included (after scripts, so Hacker's SNOW-CRASH can consume Lock On itself)
+    if (this.has(t, 'prone')) { ctx.accuracy++; ctx.reasons.push('Prone target +1') }
+    if (this.has(t, 'braced')) { ctx.difficulty++; ctx.reasons.push('Braced target -1') }
+    if (this.has(t, 'lockon') && this.hostile(u, t)) {
+      ctx.accuracy++
+      ctx.reasons.push('Lock On +1')
+      this.removeStatus(t, 'lockon')
+      ctx.lockOnConsumed = true
+    }
     this.say(`${u.name} — ${label} → ${t.name}.`, 'attack')
     if (this.has(u, 'hidden')) this.removeStatus(u, 'hidden')
     this.rollToHit(ctx)
@@ -2444,8 +2543,9 @@ export class Battle {
     const c = this.canQuickTech(u, 'bolster')
     if (c !== true) throw new Error(c)
     if (this.hostile(u, t)) throw new Error('Bolster targets allies')
-    if (this.distance(u, t) > u.stats.sensors) throw new Error('Out of sensor range')
-    if (t.role === 'Biological') throw new Error('Biological characters are immune to tech actions')
+    if (t === u) throw new Error('Bolster targets another character')
+    const v = this.techTargetValid(u, t, 'bolster')
+    if (v !== true) throw new Error(v)
     this.spendTech(u, 'bolster')
     this.say(`${u.name} BOLSTERS ${t.name}.`)
     this.addStatus(t, 'bolstered', 'next_turn_end_target', u)
