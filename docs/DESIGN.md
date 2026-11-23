@@ -70,7 +70,8 @@ Reusing the `flash()` logic from `interlude.ts` (moved into a small shared `ui/s
 
 ## Status
 - **Done:** Tier 1 (items 1–3) and Tier 2 (items 4–7). The code is in `ui/forecast.ts`, `ui/app.ts` (`title`, `runMap`, `runOver`, `setAct`) and the act-palette section of `ui/style.css`.
-- **Next:** Tiers 3–4, then NHP bleed.
+- **Also done:** from Tier 3, the round banner and the end-of-battle stamp (item 10's visuals; the topbar text stays plain).
+- **Next:** the rest of Tiers 3–4, then NHP bleed.
 - **New text:** All new in-universe text is in `data/story.ts`, below the `DRAFT — owner to rewrite` marker. It was drafted in the documents' voice and is waiting for the owner's pass.
 
 ## Guardrails
@@ -91,3 +92,22 @@ Reusing the `flash()` logic from `interlude.ts` (moved into a small shared `ui/s
 - `npm run e2e`: the campaign still completes, and the GPU-leak check passes (the sitrep card and chatter must dispose cleanly).
 - Run the `run` skill or `npm run dev` with Playwright screenshots of: the title (iteration 0 and >0), the act 1, 2 and 3 campaign maps (palette, telemetry, redacted acts), a battle start card, comms lines in the log, the defeat readout, and the archive.
 - Check `prefers-reduced-motion` (Playwright `reducedMotion: 'reduce'`): no flashes or flicker.
+
+## Graphics
+
+These graphics serve the same fiction: a war fought inside an NHP's red dream. They are render-only. Effects read `BattleEvent`s and unit state, never the battle RNG, so replays and tests are unchanged.
+
+| area | where | what |
+|---|---|---|
+| Pipeline | `render/scene.ts`, `render/post.ts` | ACES tone mapping with per-act exposure. On **high**: bloom on HDR emissives, then a display-space grade with vignette, grain, scanlines and an act 3 chromatic fringe. |
+| Atmosphere | `render/atmosphere.ts` | Gradient backdrop, ground apron, drifting particles per act (dust / steam and embers / red regolith), up to six practical lights placed from the map, contact shadows, and a pulsing active ring and hazards. |
+| Combat effects | `render/fx.ts` | Attacks styled by weapon: ballistic, cannon, missile, beam, tech, melee. Also muzzle light, sparks, crit hit-stop and shake, fireball, shockwave and debris on kills, smouldering wrecks, scorch decals, dust at footfalls. |
+| Unit state | `FX.syncUnit` | The heat glow runs from orange to white-hot. Burning shows embers, overshield shows a fresnel bubble and Lock On a reticle; Stunned and Jammed crackle. |
+| HUD | `ui/battle-ui.ts`, `ui/style.css` | Clipped-corner panels, labels with a lagging damage trail, styled float text (crits shake), round banner, end-of-battle stamp, and a camera ease-in on the last kill. |
+| Menus | `render/portrait.ts`, `ui/app.ts` | Rendered mech portraits, campaign route lines with styled nodes on a blueprint grid, and a scanline wipe between screens. |
+
+**Quality.** `dov.gfx` is `high` or `low`, toggled from the battle top bar. Software GL defaults to low. Low drops post-processing, particles and extra lights but keeps the combat effects.
+
+**Reduced motion.** It turns off shake, pulses, wipes, the crit shake and the banner sweep (the banner fades instead), and particles drift slowly.
+
+**Budgets.** Every effect is pooled or allocated once per view and freed in `dispose()`, so the e2e GPU-geometry check passes on both quality levels. Effects honour the animation speed, skip and per-turn time budget.

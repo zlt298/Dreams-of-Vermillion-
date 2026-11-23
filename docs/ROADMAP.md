@@ -315,7 +315,7 @@ Driven by `npm run coverage -- --list`.
 1. Minimap or overview toggle (S).
 2. ✅ In-HUD reaction prompts instead of `confirm()` (done: the decision picker).
 3. Threat overlay (M).
-4. Campaign map edges and hover previews (S).
+4. ✅ Campaign map edges and hover previews (route lines and node briefs).
 5. Overcharge clarity (S).
 6. Settings screen (S).
 7. Hangar quality of life (S).
@@ -335,7 +335,7 @@ Driven by `npm run coverage -- --list`.
 3. Boss arenas and more set pieces (M); the act themes are done.
 4. Campaign events (M).
 5. Story extras: ✅ failed-run readout (draft text); Choir chatter and act-boss flavour (S each). The UI direction is in [`DESIGN.md`](DESIGN.md): Tiers 1–2 are done, Tiers 3–4 are next.
-6. Model polish, effects, terrain, audio (M).
+6. Model polish, effects, terrain, audio (M). ✅ Graphics pass done (see `docs/DESIGN.md` → Graphics): tone mapping, bloom and grade, per-act atmosphere, event-driven combat effects, HUD polish, mech portraits. Audio is still to do.
 
 ### 6. Balance (after content)
 The first full pass is done (see Done → Balance pass). Remaining:
