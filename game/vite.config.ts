@@ -13,5 +13,5 @@ export default defineConfig({
     },
   },
   server: { fs: { allow: ['..'] } },
-  test: { environment: 'node' },
+  test: { environment: 'node', setupFiles: ['./tests/support/setup.ts'] },
 } as any)
