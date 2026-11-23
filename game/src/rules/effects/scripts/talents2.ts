@@ -4,6 +4,7 @@ import { isWeaponType } from '../../stats'
 import { chebyshev, footprint, tileAt } from '../../grid'
 import { rollDice } from '../../rng'
 import type { Pos, Unit } from '../../types'
+import { bondmate } from './bond'
 import { registerScripts, type CustomAction, type ItemScript } from '../registry'
 
 const action = (a: Omit<CustomAction, 'usable'> & { usable?: CustomAction['usable'] }): CustomAction => ({ usable: () => true, ...a })
@@ -15,14 +16,6 @@ const free = (b: Battle, p: Pos, except?: Unit) => !!tileAt(b.map, p) && !b.aliv
 const narrative = (id: string, note: string): ItemScript => ({ id, note: `out of combat: ${note}` })
 
 /** Bondmate: the nearest allied mech, fixed the first time it's needed this battle. */
-function bondmate(b: Battle, u: Unit): Unit | undefined {
-  let m = b.unit(u.flags.bondmate)
-  if (!m || m.destroyed) {
-    m = chars(b).filter(o => o !== u && o.kind === 'mech' && !b.hostile(u, o)).sort((x, y) => b.distance(u, x) - b.distance(u, y))[0]
-    if (m) u.flags.bondmate = m.id
-  }
-  return m
-}
 
 /** Straight-line dash (Unstoppable Force); returns characters passed through. */
 function charge(b: Battle, u: Unit, toward: Pos, max: number): Unit[] {
@@ -50,9 +43,9 @@ function charge(b: Battle, u: Unit, toward: Pos, max: number): Unit[] {
 registerScripts([
   // ---------------- Ace 3: Supersonic
   {
-    id: 't_ace:3', partial: true, note: 'Supersonic: spin up thrusters; if you end your turn flying, fly next to the nearest hostile in range when its turn ends (nominee chosen automatically)',
+    id: 't_ace:3', note: 'Supersonic: spin up your thrusters (quick); if you end your turn flying, nominate a character within your Speed and line of sight; when its turn ends you may fly to a free space next to it (reaction; there must be a path; ignores engagement and provokes nothing)',
     actions: () => [action({
-      key: 'spin_up', name: 'Spin Up Thrusters', activation: 'quick', target: 'none', text: 'If you end your turn flying, gain the Supersonic reaction against a nominated character.',
+      key: 'spin_up', name: 'Spin Up Thrusters', activation: 'quick', target: 'none', text: 'If you end your turn flying, nominate a character for the Supersonic reaction.',
       usable: (_b, u) => (u.flags['turn:spun'] ? 'Already spun up' : true),
       run: (_b, u) => { u.flags['turn:spun'] = true; u.flags.spunUp = true },
       aiTarget: (_b, u) => (u.flying ? { ...u.pos } : null),
@@ -62,34 +55,43 @@ registerScripts([
       if (!u.flags.spunUp) return
       u.flags.spunUp = false
       if (!u.flying) return
-      const t = hostiles(b, u).filter(h => b.distance(u, h) <= u.stats.speed && b.los(u, h)).sort((x, y) => b.distance(u, x) - b.distance(u, y))[0]
-      if (t) { u.flags.supersonic = t.id; b.say(`${u.name} nominates ${t.name} (Supersonic).`) }
+      const cands = chars(b).filter(h => h !== u && b.distance(u, h) <= u.stats.speed && b.los(u, h)).sort((x, y) => b.distance(u, x) - b.distance(u, y))
+      if (!cands.length) return
+      const def = Math.max(0, cands.findIndex(h => b.hostile(u, h)))
+      const i = b.choose({ kind: 'supersonic', unit: u, title: 'Supersonic: nominate a character', options: [...cands.map(h => ({ label: h.name, hint: b.hostile(u, h) ? 'hostile' : 'ally' })), { label: 'Nobody' }], defaultIndex: def })
+      if (i >= cands.length) return
+      u.flags.supersonic = cands[i].id
+      b.say(`${u.name} nominates ${cands[i].name} (Supersonic).`)
     },
     onAnyTurnEnd(b, self, u) {
       if (u.id !== self.flags.supersonic || self.destroyed) return
       self.flags.supersonic = undefined
       if (b.canSpend(self, 'reaction', 'supersonic') !== true) return
-      let best: Pos | null = null
-      for (let dy = -1; dy <= u.stats.size; dy++) for (let dx = -1; dx <= u.stats.size; dx++) {
-        const p = { x: u.pos.x + dx, y: u.pos.y + dy }
-        if (free(b, p, self) && (!best || chebyshev(p, self.pos) < chebyshev(best, self.pos))) best = p
-      }
+      const was = self.flying
+      self.flying = true
+      let best: { pos: Pos; cost: number } | null = null
+      try {
+        const r = b.reachable(self, 200, { ignoreEngagement: true })
+        for (const n of r.values()) if (footprint(self).length && chebyshev(n.pos, u.pos) <= Math.max(1, Math.ceil(u.stats.size)) && b.adjacent({ ...self, pos: n.pos } as Unit, u) && (!best || n.cost < best.cost)) best = n
+      } finally { self.flying = was }
       if (!best) return
+      if (!b.offerReaction(self, 'supersonic', 'Supersonic?', `${u.name}'s turn ended. Fly to it?`)) return
       b.spend(self, 'reaction', 'supersonic')
-      const from = self.pos
-      self.pos = best
-      b.emit({ type: 'move', unitId: self.id, path: [from, best] })
+      self.flying = true
+      const p = b.pathTo(self, best.pos, 200, { ignoreEngagement: true })
+      if (p) b.moveAlong(self, p.path)
       b.say(`${self.name} goes supersonic to ${u.name}!`)
     },
   },
   // ---------------- Bonded 2–3
   {
-    id: 't_bonded:2', partial: true, note: 'Intercede: take damage meant for your adjacent Bondmate (Bondmate: the nearest allied mech)',
+    id: 't_bonded:2', note: 'Sundance — Intercede (reaction): when your adjacent Bondmate takes damage from a source in your line of sight, you take it instead',
     modifyAnyIncoming(b, self, target, d) {
-      if (d.kind !== 'hp' || d.amount < 3 || target !== bondmate(b, self) || !b.adjacent(self, target) || self.destroyed) return
+      if (d.kind !== 'hp' || d.amount <= 0 || target !== bondmate(b, self) || !b.adjacent(self, target) || self.destroyed) return
       if (d.source && !b.los(self, d.source)) return
-      if (self.hp + self.overshield <= d.amount && self.structure <= 1) return // not suicidally
       if (b.canSpend(self, 'reaction', 'intercede') !== true) return
+      const sensible = d.amount >= 3 && !(self.hp + self.overshield <= d.amount && self.structure <= 1)
+      if (!b.offerReaction(self, 'intercede', 'Intercede?', `${target.name} is about to take ${d.amount} damage. Take it instead?`, sensible)) return
       b.spend(self, 'reaction', 'intercede')
       const amount = d.amount
       d.amount = 0
@@ -98,42 +100,52 @@ registerScripts([
     },
   },
   {
-    id: 't_bonded:3', partial: true, note: 'Cover Me!: spend Overwatch when your Bondmate is attacked; the attacker presses on and you shoot first',
+    id: 't_bonded:3', note: 'Cover Me!: when a character in your line of sight attacks your Bondmate, spend your Overwatch to threaten it — it either picks a different target (your Overwatch is spent for nothing) or attacks anyway and you attack it first with Overwatch (range and line of sight permitting)',
     beforeAnyAttack(b, self, ctx) {
       const mate = bondmate(b, self)
       if (!mate || ctx.target !== mate || !b.hostile(self, ctx.attacker) || ctx.attacker.destroyed || self.destroyed || !b.los(self, ctx.attacker)) return
-      if (self.flags.coverMeBusy || b.canSpend(self, 'reaction', 'overwatch') !== true) return
-      const w = b.bestThreatWeapon(self, ctx.attacker)
-      if (!w) return
+      if (self.flags.coverMeBusy || ctx.mode === 'secondary' || b.canSpend(self, 'reaction', 'overwatch') !== true) return
+      const w = b.bestThreatWeapon(self, ctx.attacker) ?? self.weapons.find(x => !x.tech && b.weaponUsable(self, x, false) === true && b.validTarget(self, x, ctx.attacker) === true)
+      if (!b.offerReaction(self, 'cover_me', 'Cover Me!', `${ctx.attacker.name} is about to attack ${mate.name}. Spend your Overwatch to threaten it?`)) return
       b.spend(self, 'reaction', 'overwatch')
+      const a = ctx.attacker
+      // the attacker decides: switch targets, or press on and take the shot first
+      const others = b.alive().filter(o => o !== mate && o !== a && (o.kind === 'mech' || o.kind === 'npc') && b.hostile(a, o) && (!ctx.weapon || b.validTarget(a, ctx.weapon, o) === true))
+      const opts = [{ label: 'Attack anyway', hint: w ? `${self.name} shoots first` : `${self.name} can't reach you` }, ...others.map(o => ({ label: `Switch to ${o.name}` }))]
+      const i = b.choose({ kind: 'cover_me_answer', unit: a, title: `${self.name} threatens you`, text: 'Attack anyway, or pick a different target?', options: opts, defaultIndex: !w || a.hp > a.stats.hp / 2 || !others.length ? 0 : 1 })
+      if (i > 0) { ctx.target = others[i - 1]; b.say(`  ${a.name} switches to ${others[i - 1].name}.`); return }
+      if (!w) return
       self.flags.coverMeBusy = true
-      b.say(`${self.name}: "Cover me!" — fires on ${ctx.attacker.name} first.`, 'attack')
-      try { b.weaponAttack(self, w, { targetId: ctx.attacker.id }, 'overwatch') } finally { self.flags.coverMeBusy = false }
-      if (ctx.attacker.destroyed) ctx.cancelled = true
+      b.say(`${self.name}: "Cover me!" — fires on ${a.name} first.`, 'attack')
+      try { b.weaponAttack(self, w, { targetId: a.id }, 'overwatch') } finally { self.flags.coverMeBusy = false }
+      if (a.destroyed) ctx.cancelled = true
     },
   },
   // ---------------- Centimane 3: Tidal Suppression (replaces Ten Thousand Teeth)
   {
-    id: 't_centimane:3', partial: true, note: 'Tidal Suppression: 1/round on a Nexus crit, Systems save or Harrying (Impaired + Slowed) or Virulent (Shredded, spreading) swarm — chosen automatically',
+    id: 't_centimane:3', note: 'Tidal Suppression: 1/round on a Nexus crit the target saves (Systems) or you pick, until the end of its next turn: Harrying (Impaired and Slowed), Blinding (line of sight to adjacent spaces only), Virulent (Shredded; adjacent characters you choose save or are Shredded too) or Restricting (1 burn each time it takes an action or reaction)',
     afterAttack(b, self, ctx, role) {
-      if (role !== 'attacker' || !ctx.crit || ctx.weapon?.type !== 'Nexus' || ctx.target.destroyed || !once(self, 'tidal')) return
+      if (role !== 'attacker' || !ctx.crit || !isWeaponType(ctx.weapon, 'Nexus') || ctx.target.destroyed || !once(self, 'tidal')) return
       const t = ctx.target
       if (b.save(t, 'sys', self.stats.save, 0, self)) return
-      const near = chars(b).filter(o => o !== t && o !== self && b.hostile(self, o) && b.adjacent(o, t))
-      if (near.length) {
+      const near = chars(b).filter(o => o !== t && o !== self && b.adjacent(o, t))
+      const i = b.choose({ kind: 'tidal', unit: self, title: 'Tidal Suppression', text: `${t.name} failed its save. Choose the swarm:`, options: [{ label: 'Harrying', hint: 'Impaired and Slowed' }, { label: 'Blinding', hint: 'sees only adjacent spaces' }, { label: 'Virulent', hint: `Shredded${near.length ? `; ${near.length} adjacent may be too` : ''}` }, { label: 'Restricting', hint: '1 burn per action or reaction' }], defaultIndex: near.some(o => b.hostile(self, o)) ? 2 : 0 })
+      if (i === 0) { b.addStatus(t, 'impaired', 'next_turn_end_target', self); b.addStatus(t, 'slowed', 'next_turn_end_target', self) }
+      else if (i === 1) { t.flags.blindUntil = b.round + 1; b.say(`  ${t.name} is blinded by the swarm.`, 'status') }
+      else if (i === 2) {
         b.addStatus(t, 'shredded', 'next_turn_end_target', self)
-        for (const o of near) if (!b.save(o, 'sys', self.stats.save, 0, self)) b.addStatus(o, 'shredded', 'next_turn_end_target', self)
-        b.say('  Virulent swarm!')
-      } else {
-        b.addStatus(t, 'impaired', 'next_turn_end_target', self)
-        b.addStatus(t, 'slowed', 'next_turn_end_target', self)
-        b.say('  Harrying swarm!')
-      }
+        for (const o of near) {
+          const yes = b.choose({ kind: 'virulent', unit: self, title: `Virulent swarm: spread to ${o.name}?`, options: [{ label: 'Yes' }, { label: 'No' }], defaultIndex: b.hostile(self, o) ? 0 : 1 }) === 0
+          if (yes && !b.save(o, 'sys', self.stats.save, 0, self)) b.addStatus(o, 'shredded', 'next_turn_end_target', self)
+        }
+      } else { t.flags.restricting = { by: self.id, turns: t.activeTurn ? 2 : 1 }; b.say(`  ${t.name} is wrapped in a restricting swarm.`, 'status') }
     },
+    onAnyAction(b, self, actor) { if (actor.flags.restricting?.by === self.id && !actor.destroyed) b.applyDamage(actor, [{ type: 'Burn', amount: 1 }], { source: self }) },
+    onAnyTurnEnd(b, self, u) { const r = u.flags.restricting; if (r?.by === self.id && --r.turns <= 0) delete u.flags.restricting },
   },
   // ---------------- Exemplar 3: To the Death
   {
-    id: 't_exemplar:3', partial: true, note: 'To the Death: duel your Mark: both take +3 difficulty attacking anyone else (paused for them after they attack you); no new marks (moving away is not restricted)',
+    id: 't_exemplar:3', note: 'To the Death: duel your Mark for the scene: both take +3 difficulty attacking anyone else (paused for it until your next turn after it attacks you); you can\'t voluntarily move away from it and can\'t mark anyone else',
     actions: (b, u) => {
       const mark = b.alive().find(o => o.flags.exemplarMarkBy === u.id)
       if (!mark || u.flags.duel) return []
@@ -145,6 +157,11 @@ registerScripts([
       })]
     },
     onTurnStart(b, self) { const t = b.unit(self.flags.duel); if (t) t.flags.duelPaused = false },
+    validateMove(b, self, dest) {
+      const foe = b.unit(self.flags.duel)
+      if (!foe || foe.destroyed) return true
+      return b.distance({ ...self, pos: dest } as Unit, foe) > b.distance(self, foe) ? 'To the Death: you cannot move away from your Mark' : true
+    },
     beforeAnyAttack(b, self, ctx) {
       const foe = b.unit(self.flags.duel)
       if (!foe || foe.destroyed) { self.flags.duel = undefined; return }
@@ -164,38 +181,32 @@ registerScripts([
   // ---------------- Infiltrator 1, 3
   { id: 't_infiltrator:1', note: 'Prowl: during your turn you stay Hidden in sight and out of cover, pass through enemies and can Hide in plain sight', init(u) { u.flags.prowl = true } },
   {
-    id: 't_infiltrator:3', partial: true, note: 'Mastermind: on losing Hidden, flash an adjacent character (Systems save or blinded to adjacent spaces), then slip away up to your Speed (as a free action)',
+    id: 't_infiltrator:3', note: 'Mastermind: when you lose Hidden, first flash an adjacent character of your choice (Systems save or it sees only adjacent spaces until the end of its next turn), then move up to your Speed ignoring engagement and without provoking reactions',
     onStatusRemoved(b, self, status) {
-      if (status !== 'hidden' || self.destroyed) return
-      const t = hostiles(b, self).find(h => b.adjacent(self, h))
-      if (t && !b.save(t, 'sys', self.stats.save, 0, self)) { t.flags.blindBy = self.id; t.flags.blindUntil = b.round + 1; b.say(`${self.name}'s flash bomb blinds ${t.name}!`) }
-      self.flags.mastermindMove = true
-    },
-    beforeAnyAttack(b, self, ctx) {
-      const a = ctx.attacker
-      if (a.flags.blindBy === self.id && b.round <= a.flags.blindUntil && b.distance(a, ctx.target) > 1) { ctx.cancelled = true; b.say(`  ${a.name} is flash-blinded.`) }
-    },
-    actions: (_b, u) => (u.flags.mastermindMove ? [action({
-      key: 'mastermind', name: 'Mastermind: slip away', activation: 'free', target: 'tile', range: u.stats.speed, text: 'Move up to your Speed, ignoring engagement and without provoking reactions.',
-      run: (bt, me, t) => {
-        const p = t && 'x' in t ? t : (t as Unit).pos
-        me.flags.mastermindMove = false
-        const was = me.flags['turn:disengaged']
-        me.flags['turn:disengaged'] = true
-        me.flags.pendingMove = me.stats.speed
-        try { bt.move(me, p, { mode: 'free', ignoreEngagement: true }) } finally { me.flags['turn:disengaged'] = was; me.flags.pendingMove = undefined }
-      },
-      aiTarget: (bt, me) => {
-        let best: Pos | null = null, bestD = -1
-        for (const { pos } of bt.reachable(me, me.stats.speed, { ignoreEngagement: true }).values()) {
-          const d = Math.min(...hostiles(bt, me).map(h => chebyshev(h.pos, pos)))
-          if (d > bestD) { bestD = d; best = pos }
+      if (status !== 'hidden' || self.destroyed || self.flags.mastermindBusy) return
+      self.flags.mastermindBusy = true
+      try {
+        const adj = chars(b).filter(o => o !== self && b.adjacent(self, o))
+        if (adj.length) {
+          const i = b.choose({ kind: 'mastermind_flash', unit: self, title: 'Mastermind: flash bomb', options: [...adj.map(o => ({ label: o.name, hint: b.hostile(self, o) ? 'hostile' : 'ally' })), { label: 'No flash' }], defaultIndex: Math.max(0, adj.findIndex(o => b.hostile(self, o))) })
+          const t = adj[i]
+          if (t && !b.save(t, 'sys', self.stats.save, 0, self)) { t.flags.blindUntil = b.round + 1; b.say(`${self.name}'s flash bomb blinds ${t.name}!`) }
         }
-        return best
-      },
-      aiScore: () => 2,
-    })] : []),
-    onTurnEnd(_b, u) { u.flags.mastermindMove = false },
+        if (b.has(self, 'immobilized') || b.has(self, 'stunned')) return
+        const r = b.reachable(self, self.stats.speed, { ignoreEngagement: true })
+        const far = (p: Pos) => Math.min(99, ...hostiles(b, self).map(h => chebyshev(h.pos, p)))
+        const spots = [...r.values()].filter(n => n.cost > 0)
+        if (!spots.length) return
+        const away = spots.reduce((x, y) => (far(y.pos) > far(x.pos) ? y : x))
+        const cover = spots.filter(n => b.alive().some(o => o.flags.isCover && chebyshev(o.pos, n.pos) <= 1) || footprint({ ...self, pos: n.pos } as Unit).some(p => [[0, 1], [1, 0], [0, -1], [-1, 0]].some(([dx, dy]) => b.map.tiles[(p.y + dy) * b.map.w + p.x + dx]?.kind === 'block'))).sort((x, y) => far(y.pos) - far(x.pos))[0]
+        const opts = [{ label: 'Slip away', hint: `farthest from hostiles (${away.pos.x},${away.pos.y})`, to: away.pos }, ...(cover ? [{ label: 'Into cover', hint: `next to terrain (${cover.pos.x},${cover.pos.y})`, to: cover.pos }] : []), { label: 'Stay', hint: '', to: null as Pos | null }]
+        const k = b.choose({ kind: 'mastermind_move', unit: self, title: 'Mastermind: move', options: opts.map(o => ({ label: o.label, hint: o.hint })), defaultIndex: 0 })
+        const to = opts[k].to
+        if (!to) return
+        const p = b.pathTo(self, to, self.stats.speed, { ignoreEngagement: true })
+        if (p) { b.say(`${self.name} slips away.`); b.moveAlong(self, p.path) }
+      } finally { delete self.flags.mastermindBusy }
+    },
   },
   // ---------------- Juggernaut 2–3
   {

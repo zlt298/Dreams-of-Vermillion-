@@ -31,6 +31,11 @@ function mimicRoll(b: Battle, u: Unit, w: Weapon) {
 // ---------------------------------------------------------------- Prototype weapons
 const PROTO_TYPES = ['Melee', 'CQB', 'Rifle', 'Cannon', 'Launcher', 'Nexus'] as const
 const PROTO_DAMAGE = ['Kinetic', 'Energy', 'Explosive'] as const
+/** Apply a saved Prototype Weapon set-up (from the run, until the next Full Repair). */
+export function applyPrototypeConfig(w: Weapon, type: string, damage: string, locked = false) {
+  protoConfigure(w, type, damage)
+  if (locked) flags(w).protoLocked = true
+}
 function protoConfigure(w: Weapon, type: string, damage: string) {
   const pr = w.profiles[w.profileIndex]
   w.type = type
@@ -120,17 +125,17 @@ registerScripts([
   },
   ...(['mw_prototype_1', 'mw_prototype_2', 'mw_prototype_3'] as const).map(id => ({
     id,
-    note: 'Prototype Weapon: Limited uses rerolled each battle (after the full repair); configure its weapon type and damage type before your first attack',
+    note: 'Prototype Weapon: Limited uses (1d6+2, or 2d6) rerolled after each Full Repair; set its weapon type and damage type before it first attacks after a Full Repair (kept for the run until then)',
     init(u: Unit) {
       for (const w of weaponsOf(u, id)) {
         protoConfigure(w, w.flags?.protoType ?? 'Rifle', w.flags?.protoDamage ?? 'Kinetic')
-        w.usesLeft = 0 // rolled at the start of the battle
+        w.usesLeft = -1 // rolled at the first battle after a Full Repair (a run restores the uses it has left)
       }
     },
     onRoundStart(b: Battle, self: Unit) {
       if (b.round !== 1) return
       for (const w of weaponsOf(self, id)) {
-        if (flags(w).protoRolled) continue
+        if (flags(w).protoRolled || (w.usesLeft ?? -1) >= 0) continue
         flags(w).protoRolled = true
         const dice = id === 'mw_prototype_3' ? '2d6' : '1d6+2'
         w.usesLeft = rollDice(b.rng, dice).total + self.stats.limitedBonus

@@ -12,6 +12,10 @@ export interface AttackCtx {
   target: Unit
   /** hits automatically (no roll, no crit): Autopod and similar */
   autoHit?: boolean
+  /** the attack roll was already rerolled once (Valiant Aid) */
+  rerolled?: boolean
+  /** Brutal (Predator): deal maximum damage and bonus damage */
+  maxDamage?: boolean
   /** Combat Drill: each Overkill activation adds +1d6 bonus damage (chaining on 1s) */
   overkillBonus?: boolean
   /** the attack consumed the target's Lock On */
@@ -106,6 +110,8 @@ export interface ItemScript {
   onDamaged?(b: Battle, self: Unit, d: DamageCtx): void
   /** measure this weapon attack from another point (Throughbolt); may apply its own effects first */
   attackOrigin?(b: Battle, self: Unit, w: Weapon, aim: { targetId?: string; tile?: Pos }): Pos | null | undefined
+  /** any character spent an action or reaction */
+  onAnyAction?(b: Battle, self: Unit, actor: Unit, cost: string): void
   /** your voluntary moves must follow straight lines (Ramjet, OASIS Wall) */
   straightMovesOnly?(b: Battle, self: Unit): boolean
   /** veto a voluntary move: return a reason string to refuse it */

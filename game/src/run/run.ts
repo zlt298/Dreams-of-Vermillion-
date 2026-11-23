@@ -1,6 +1,7 @@
 // Roguelike campaign layer: a branching node map over three acts (tiers 1-3), persistent mech
 // damage between fights, Lancer-style repairs at rest, rewards, and localStorage saves.
 import type { PilotBuild } from '../import/compcon'
+import { applyPrototypeConfig } from '../rules/effects/scripts/weapons2'
 import { buildMechUnit } from '../rules/stats'
 import { Rng } from '../rules/rng'
 import type { Sitrep } from '../rules/battle'
@@ -32,6 +33,10 @@ export interface MechCondition {
   destroyedWeapons: string[]   // weapon dataIds destroyed (system trauma)
   destroyedSystems: string[]
   limited: Record<string, number> // uses left per item dataId
+  /** Prototype Weapon set-up (weapon type, damage type) until the next Full Repair */
+  proto?: Record<string, { type: string; damage: string }>
+  /** Bonded: the Bondmate's pilot id */
+  bondmate?: string
 }
 
 export interface Reward { id: string; name: string; text: string }
@@ -153,6 +158,8 @@ export function squadUnits(run: RunState): Unit[] {
       if (c.limited[s.dataId] != null && s.usesLeft != null) s.usesLeft = c.limited[s.dataId]
     }
     u.flags.pilotId = p.id
+    if (c.bondmate) u.flags.bondmatePilot = c.bondmate
+    for (const w of u.weapons) if (w.dataId && c.proto?.[w.dataId]) applyPrototypeConfig(w, c.proto[w.dataId].type, c.proto[w.dataId].damage, true)
     for (const b of run.boons.filter(b => !b.pilotId || b.pilotId === p.id)) applyBoon(u, b.reward)
     out.push(u)
   }
@@ -198,6 +205,8 @@ export function recordBattle(run: RunState, node: RunNode, units: Unit[], won: b
     c.destroyedWeapons = u.weapons.filter(w => w.destroyed && w.dataId).map(w => w.dataId!)
     c.destroyedSystems = u.systems.filter(s => s.destroyed).map(s => s.dataId)
     for (const w of u.weapons) if (w.dataId && w.usesLeft != null) c.limited[w.dataId] = w.usesLeft
+    for (const w of u.weapons) if (w.dataId && w.flags?.protoLocked) (c.proto ??= {})[w.dataId] = { type: w.flags.protoType, damage: w.flags.protoDamage }
+    if (u.flags.bondmatePilot) c.bondmate = u.flags.bondmatePilot
     for (const s of u.systems) if (s.usesLeft != null) c.limited[s.dataId] = s.usesLeft
   }
   // one-battle boons are consumed

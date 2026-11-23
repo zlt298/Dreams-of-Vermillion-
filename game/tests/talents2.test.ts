@@ -60,13 +60,12 @@ describe('talent ranks', () => {
     b.endTurn(a)
     expect(b.has(a, 'hidden')).toBe(false)
   })
-  it('Infiltrator 3 (Mastermind): losing Hidden offers a free slip-away move', () => {
+  it('Infiltrator 3 (Mastermind): losing Hidden slips you away at once (ignoring engagement)', () => {
     const { a, b } = setup([['t_infiltrator', 3]])
+    const from = { ...a.pos }
     b.addStatus(a, 'hidden')
     b.removeStatus(a, 'hidden')
-    expect(a.flags.mastermindMove).toBe(true)
-    b.useCustom(a, act(b, a, /Mastermind/), { x: 1, y: 1 })
-    expect(a.pos).toEqual({ x: 1, y: 1 })
+    expect(a.pos).not.toEqual(from)
   })
   it('Juggernaut 3 (Unstoppable Force): charges in a straight line and takes heat', () => {
     const { a, b } = setup([['t_juggernaut', 3]])

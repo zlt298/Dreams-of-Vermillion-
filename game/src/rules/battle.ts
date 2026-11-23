@@ -7,6 +7,7 @@ import {
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from './grid'
 import { parseDice, Rng, rollDice, rollAccuracy, averageDice } from './rng'
+const maxOf = (v: string | number) => { const d = parseDice(v); return d.count * d.sides + d.flat }
 import { hasTag, tagVal, nextUid, isWeaponType } from './stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from './types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from './effects/registry'
@@ -588,6 +589,7 @@ export class Battle {
     const ok = this.canSpend(u, cost, action)
     if (ok !== true) throw new Error(ok)
     if (cost === 'reaction') {
+      for (const o of this.alive()) for (const sc of scriptsFor(o)) sc.onAnyAction?.(this, o, u, 'reaction')
       u.reactionsLeft--
       if (u.flags.ghostweave && this.has(u, 'invisible')) this.removeStatus(u, 'invisible')
       if (action) u.flags[`react:${action}`] = true
@@ -596,6 +598,7 @@ export class Battle {
     }
     if (cost !== 'protocol') u.actedThisTurn = true
     ;(u.flags['turn:spent'] ??= []).push(action ?? cost)
+    for (const o of this.alive()) for (const sc of scriptsFor(o)) sc.onAnyAction?.(this, o, u, cost)
     if (cost === 'quick') {
       // a repeated action must be paid from the free-action pool
       if ((action && this.quickUsed(u, action)) || (u.flags.payWithBonus && (u.flags.bonusQuick ?? 0) > 0)) u.flags.bonusQuick--
@@ -881,6 +884,8 @@ export class Battle {
     const fp = new Set(footprint(u, at).map(key))
     for (const o of this.units) {
       if (o === u || mover.has(o.id)) continue
+      // Blademaster Trip: pass through the tripped character this turn (not end there)
+      if (u.flags['turn:tripThrough'] === o.id && footprint(o).some(p => fp.has(key(p)))) { res = 'pass'; continue }
       // phased out (FADE Cloak): pass through anything, but not end a move inside it
       if (u.flags.intangible && !o.destroyed && footprint(o).some(p => fp.has(key(p)))) { res = 'pass'; continue }
       if (o.destroyed && !o.flags.wreck) continue
@@ -950,7 +955,7 @@ export class Battle {
         let terminal = false
         if (!opts.ignoreEngagement && u.kind !== 'deployable') {
           for (const o of this.alive()) {
-            if (!this.hostile(u, o) || startAdj.has(o.id) || (o.kind !== 'mech' && o.kind !== 'npc') || this.has(o, 'hidden')) continue
+            if (!this.hostile(u, o) || startAdj.has(o.id) || (o.kind !== 'mech' && o.kind !== 'npc') || this.has(o, 'hidden') || u.flags.feint === o.id) continue
             if ((o.stats.size >= u.stats.size || o.flags.localizedMaze) && this.adjacent(u, o, np)) { terminal = true; break }
           }
         }
@@ -1144,7 +1149,7 @@ export class Battle {
     if (this.reactionDepth > 0) return
     for (const o of this.alive()) {
       if (mover.destroyed) return
-      if (!this.hostile(o, mover) || o.policies.overwatch === 'off') continue
+      if (!this.hostile(o, mover) || o.policies.overwatch === 'off' || mover.flags.feint === o.id) continue
       if (this.canSpend(o, 'reaction', 'overwatch') !== true) continue
       const w = this.bestThreatWeapon(o, mover)
       if (!w) continue
@@ -1255,7 +1260,8 @@ export class Battle {
     if (d > reach) return `Out of range (${d}/${reach})`
     const minR = u.bonuses.find(b => b.id === 'min_range')
     void minR
-    if (!hasTag(tags, 'tg_seeking') && !hasTag(tags, 'tg_arcing') && !this.los(u, t, from)) return 'No line of sight'
+    const magRound = u.flags.ammo === 'mag' && w.size === 'Main' && !this.isMelee(w) && !u.flags['turn:ammoUsed']
+    if (!hasTag(tags, 'tg_seeking') && !hasTag(tags, 'tg_arcing') && !magRound && !this.los(u, t, from)) return 'No line of sight'
     return true
   }
 
@@ -1627,15 +1633,16 @@ export class Battle {
     for (const ctx of ctxs) {
       const t = ctx.target
       if (ctx.hit) {
-        const base = (ctx.crit ? dmgCrit : dmgNormal).map(x => ({ ...x }))
+        // Brutal (Predator): a natural 20 crit deals maximum damage and bonus damage
+        const base = ctx.maxDamage ? pr.damage.map(d => ({ type: d.type, amount: maxOf(d.val) + this.flatDamageBonus(u, w, d.type) })) : (ctx.crit ? dmgCrit : dmgNormal).map(x => ({ ...x }))
         // bonus damage (halved vs multiple targets)
         for (const bd of ctx.bonusDamage) {
-          let a = rollDice(this.rng, bd.val, { crit: ctx.crit }).total
+          let a = ctx.maxDamage ? maxOf(bd.val) : rollDice(this.rng, bd.val, { crit: ctx.crit }).total
           if (multi) a = Math.ceil(a / 2)
           base.push({ type: bd.type, amount: a })
         }
         for (const e of [...pr.onHit, ...(ctx.crit ? pr.onCrit : [])]) if (e.do === 'bonus_damage') {
-          let a = rollDice(this.rng, e.val, { crit: ctx.crit }).total
+          let a = ctx.maxDamage ? maxOf(e.val) : rollDice(this.rng, e.val, { crit: ctx.crit }).total
           if (multi) a = Math.ceil(a / 2)
           base.push({ type: e.type ?? pr.damage[0]?.type ?? 'Kinetic', amount: a })
         }
@@ -1690,6 +1697,20 @@ export class Battle {
     return { ctxs, ok: true }
   }
 
+  /** Reroll a resolved attack roll (Valiant Aid): the second result stands. */
+  rerollToHit(ctx: AttackCtx) {
+    const net = ctx.accuracy - (ctx.ignoreDifficulty ? 0 : ctx.difficulty)
+    const d20 = this.rollD20(ctx.attacker, 'attack', ctx)
+    const acc = rollAccuracy(this.rng, net)
+    const total = d20 + ctx.attackBonus + acc.bonus
+    const def = this.defenseOf(ctx.target, ctx)
+    ctx.roll = d20
+    ctx.total = total
+    ctx.hit = total >= def
+    ctx.crit = ctx.hit && total >= 20 && ctx.attacker.canCrit && !ctx.tech
+    this.say(`  Reroll vs ${ctx.target.name}: ${total} — ${ctx.crit ? 'CRITICAL HIT' : ctx.hit ? 'HIT' : 'MISS'}`, 'attack')
+    this.emit({ type: 'attack', attackerId: ctx.attacker.id, targetId: ctx.target.id, hit: !!ctx.hit, crit: !!ctx.crit, weapon: ctx.weapon?.name ?? 'tech', total })
+  }
   rollToHit(ctx: AttackCtx) {
     const t = ctx.target
     const net = ctx.accuracy - (ctx.ignoreDifficulty ? 0 : ctx.difficulty)

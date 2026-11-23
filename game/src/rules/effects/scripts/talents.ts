@@ -6,6 +6,7 @@ import { rollDice } from '../../rng'
 import type { Pos, Unit, Weapon } from '../../types'
 import type { Battle } from '../../battle'
 import { registerScripts, type AttackCtx, type CustomAction } from '../registry'
+import { bondmate, setBond } from './bond'
 
 const once = (u: Unit, key: string, scope: 'round' | 'turn' | 'scene' = 'round'): boolean => {
   const k = `${scope}:${key}`
@@ -36,8 +37,18 @@ registerScripts([
   },
   // ---------------- Bonded
   {
-    id: 't_bonded:1', partial: true, note: 'Huckleberry: +1 acc on checks/saves when adjacent to an ally mech (bondmate approximated as nearest ally)',
-    init: u => { u.bonuses.push({ id: 'check', accuracy: 1, condition: '{adjacent_ally}' }, { id: 'save', accuracy: 1, condition: '{adjacent_ally}' }) },
+    id: 't_bonded:1', note: "I'm Your Huckleberry: choose a Bondmate (kept for the run); while you're adjacent, both of you gain +1 Accuracy on mech skill checks and saves (+2 if both of you have Bonded)",
+    actions: (b, u) => (u.flags.bondmatePilot || (u.flags.bondmate && b.unit(u.flags.bondmate)) ? [] : [action({
+      key: 'bondmate', name: 'Choose Bondmate', activation: 'free', target: 'ally', range: 99, text: 'Choose your Bondmate (another pilot). It stays your Bondmate for the run.',
+      run: (bt, self, t) => { const m = t as Unit; if (!m || m === self || m.kind !== 'mech' || bt.hostile(self, m)) throw new Error('Choose an allied mech'); setBond(self, m); bt.say(`${self.name} bonds with ${m.name}.`) },
+      aiScore: () => -1,
+    })]),
+    checkAccuracy(b, self, u, kind) {
+      if (kind !== 'check' && kind !== 'save') return 0
+      const mate = bondmate(b, self)
+      if (!mate || !b.adjacent(self, mate)) return 0
+      return u === self || u === mate ? 1 : 0
+    },
   },
   // ---------------- Brawler
   {
@@ -67,14 +78,8 @@ registerScripts([
   },
   // ---------------- Brutal
   {
-    id: 't_brutal:1', partial: true, note: 'Predator: natural 20 crits deal maximum damage (approximated: +50% bonus as extra damage)',
-    afterAttack(b, self, ctx, role) {
-      if (role === 'attacker' && ctx.crit && ctx.roll === 20 && !ctx.target.destroyed && ctx.profile) {
-        const max = ctx.profile.damage.reduce((a, d) => a + maxDice(d.val), 0)
-        const extra = Math.max(0, max - (ctx.damageDealt ?? 0) - ctx.target.stats.armor)
-        if (extra) { b.say('  Predator: maximum damage!'); b.applyDamage(ctx.target, [{ type: ctx.profile.damage[0].type, amount: extra }], { source: self, ap: true }) }
-      }
-    },
+    id: 't_brutal:1', note: 'Predator: a natural 20 that crits deals maximum damage and bonus damage',
+    afterAnyRoll(b, self, ctx) { if (ctx.attacker === self && ctx.crit && ctx.roll === 20) { ctx.maxDamage = true; ctx.reasons.push('Predator: maximum damage') } },
   },
   {
     id: 't_brutal:2', note: 'Cull the Herd',
@@ -108,10 +113,15 @@ registerScripts([
     },
   },
   {
-    id: 't_crack_shot:3', partial: true, note: 'Watch This (auto: Limb Shot → Immobilized, or Body Shot → Prone)',
+    id: 't_crack_shot:3', note: 'Watch This: 1/round, a Rifle crit while steadying your aim — the target saves (Hull) or you pick Headshot (line of sight to adjacent spaces only), Leg Shot (Immobilized) until the end of its next turn, or Body Shot (Prone)',
     afterAttack(b, self, ctx, role) {
-      if (role !== 'attacker' || !ctx.crit || ctx.weapon?.type !== 'Rifle' || !self.flags.steady || ctx.target.destroyed || !once(self, 'watchthis')) return
-      if (!b.save(ctx.target, 'hull', self.stats.save, 0, self)) b.addStatus(ctx.target, 'immobilized', 'next_turn_end_target', self)
+      if (role !== 'attacker' || !ctx.crit || !isWeaponType(ctx.weapon, 'Rifle') || !self.flags.steady || ctx.target.destroyed || !once(self, 'watchthis')) return
+      const t = ctx.target
+      if (b.save(t, 'hull', self.stats.save, 0, self)) return
+      const i = b.choose({ kind: 'watch_this', unit: self, title: 'Watch This!', text: `${t.name} failed its save. Choose the shot:`, options: [{ label: 'Headshot', hint: 'line of sight to adjacent spaces only until the end of its next turn' }, { label: 'Leg shot', hint: 'Immobilized until the end of its next turn' }, { label: 'Body shot', hint: 'knocked Prone' }], defaultIndex: b.has(t, 'prone') ? 1 : 2 })
+      if (i === 0) { t.flags.blindUntil = b.round + 1; b.say(`  Headshot: ${t.name} is blinded.`, 'status') }
+      else if (i === 1) b.addStatus(t, 'immobilized', 'next_turn_end_target', self)
+      else b.addStatus(t, 'prone', 'until_cleared', self)
     },
   },
   // ---------------- Centimane
@@ -161,15 +171,43 @@ registerScripts([
     },
   },
   {
-    id: 't_duelist:2', partial: true, note: 'Blademaster dice (auto-parry: +1 diff vs melee/ranged attacks while dice remain)',
+    id: 't_duelist:2', note: 'Blademaster: 1/round a Main melee hit gives a Blademaster die (max 3, for the scene); spend them to Parry (reaction vs a melee hit: Resistance to its damage, heat and burn), Deflect (reaction vs a ranged hit: roll any number, a 5+ gives that Resistance), Feint (free: ignore an adjacent character\'s engagement and reactions until your next turn) or Trip (quick: adjacent Agility save or Prone; you may pass through it this turn)',
     afterAttack(b, self, ctx, role) {
-      if (role === 'attacker' && ctx.hit && ctx.melee && ctx.weapon?.size === 'Main' && once(self, 'blademaster')) self.flags.bladeDice = Math.min(3, (self.flags.bladeDice ?? 0) + 1)
+      if (role === 'attacker' && ctx.hit && ctx.melee && ctx.weapon?.size === 'Main' && once(self, 'blademaster')) { self.flags.bladeDice = Math.min(3, (self.flags.bladeDice ?? 0) + 1); b.say(`  ${self.name} gains a Blademaster die (${self.flags.bladeDice}).`) }
     },
-    beforeAttack(b, self, ctx, role) {
-      if (role === 'target' && (self.flags.bladeDice ?? 0) > 0 && b.canSpend(self, 'reaction') === true && !ctx.tech) {
-        self.flags.bladeDice--; self.reactionsLeft--; ctx.difficulty++; ctx.reasons.push('Parry -1')
+    afterAnyRoll(b, self, ctx) {
+      const dice = self.flags.bladeDice ?? 0
+      if (ctx.target !== self || !ctx.hit || ctx.tech || dice <= 0 || ctx.resistAll || b.canSpend(self, 'reaction') !== true) return
+      if (ctx.melee) {
+        if (!b.offerReaction(self, 'parry', 'Blademaster: Parry?', `${ctx.attacker.name} hit you in melee. Spend a Blademaster die for Resistance to this attack? (${dice} left)`, ctx.crit || self.hp <= self.stats.hp / 2)) return
+        b.spend(self, 'reaction')
+        self.flags.bladeDice--
+        ctx.resistAll = true
+        ctx.reasons.push('Parry')
+      } else {
+        const opts = [{ label: "Don't deflect" }, ...Array.from({ length: dice }, (_, i) => ({ label: `Roll ${i + 1} die${i ? 's' : ''}` }))]
+        const n = b.choose({ kind: 'deflect', unit: self, policy: 'reactions', title: 'Blademaster: Deflect?', text: `${ctx.attacker.name} hit you at range. Roll Blademaster dice: any 5+ gives Resistance to this attack.`, options: opts, defaultIndex: ctx.crit || self.hp <= self.stats.hp / 2 ? Math.min(dice, 2) : 0 })
+        if (n <= 0) return
+        b.spend(self, 'reaction')
+        self.flags.bladeDice -= n
+        const r = Array.from({ length: n }, () => b.rng.d(6))
+        b.say(`  Deflect [${r.join(', ')}]`)
+        if (r.some(x => x >= 5)) { ctx.resistAll = true; ctx.reasons.push('Deflect') }
       }
     },
+    onTurnStart: (_b, self) => { delete self.flags.feint },
+    actions: (b, u) => ((u.flags.bladeDice ?? 0) > 0 ? [
+      action({
+        key: 'feint', name: `Blademaster: Feint (${u.flags.bladeDice})`, activation: 'free', target: 'enemy', range: 1, text: 'Spend a die: ignore an adjacent character\'s engagement and reactions when moving, until your next turn.',
+        run: (bt, self, t) => { const x = t as Unit; if (!x || !bt.adjacent(self, x)) throw new Error('Choose an adjacent character'); self.flags.bladeDice--; self.flags.feint = x.id; bt.say(`${self.name} feints ${x.name}.`) },
+        aiScore: () => -1,
+      }),
+      action({
+        key: 'trip', name: `Blademaster: Trip (${u.flags.bladeDice})`, activation: 'quick', target: 'enemy', range: 1, text: 'Spend a die: an adjacent character saves (Agility) or falls Prone; you may pass through its space this turn.',
+        run: (bt, self, t) => { const x = t as Unit; if (!x || !bt.adjacent(self, x)) throw new Error('Choose an adjacent character'); self.flags.bladeDice--; if (!bt.save(x, 'agi', self.stats.save, 0, self)) bt.addStatus(x, 'prone', 'until_cleared', self); self.flags['turn:tripThrough'] = x.id },
+        aiScore: (bt, self, t) => (t && 'id' in t && !bt.has(t as Unit, 'prone') ? 1.5 : 0),
+      }),
+    ] : []),
   },
   {
     id: 't_duelist:3', note: 'Unstoppable (auto-Ram after a melee hit using a blademaster die)',
@@ -225,17 +263,22 @@ registerScripts([
   },
   // ---------------- Exemplar
   {
-    id: 't_exemplar:1', partial: true, note: "Honorable Challenge (mark first target within 3; marked target attacking others within 3 of you takes +1 diff... simplified to Exemplar's Mark tracking)",
+    id: 't_exemplar:1', note: "Honorable Challenge: the first time on your turn you attack a hostile within 3, you may give it your Exemplar's Mark (until the start of your next turn; one mark per character); Valiant Aid (reaction): when an ally misses your Mark, it may reroll (the second result stands)",
     afterAttack(b, self, ctx, role) {
       if (self.flags.duel) return // To the Death: no new marks
-      if (role === 'attacker' && self.activeTurn && b.hostile(self, ctx.target) && b.distance(self, ctx.target) <= 3 && once(self, 'mark', 'turn')) {
-        for (const o of b.units) if (o.flags.exemplarMarkBy === self.id) delete o.flags.exemplarMarkBy
-        ctx.target.flags.exemplarMarkBy = self.id
-        b.say(`${self.name} marks ${ctx.target.name}.`)
-      }
+      if (role !== 'attacker' || !self.activeTurn || !b.hostile(self, ctx.target) || b.distance(self, ctx.target) > 3 || ctx.target.destroyed || !once(self, 'mark', 'turn')) return
+      if (b.choose({ kind: 'exemplar_mark', unit: self, title: "Exemplar's Mark?", text: `Mark ${ctx.target.name}?`, options: [{ label: 'Mark it' }, { label: 'No' }], defaultIndex: 0 }) !== 0) return
+      for (const o of b.units) if (o.flags.exemplarMarkBy) delete o.flags.exemplarMarkBy // one mark per character, newest wins
+      ctx.target.flags.exemplarMarkBy = self.id
+      b.say(`${self.name} marks ${ctx.target.name}.`)
     },
-    beforeAnyAttack(b, self, ctx) {
-      if (ctx.attacker.flags.exemplarMarkBy === self.id && ctx.target !== self && b.distance(self, ctx.target) <= 3) { ctx.difficulty++; ctx.reasons.push("Exemplar's Mark -1") }
+    onTurnStart(b, self) { if (!self.flags.duel) for (const o of b.units) if (o.flags.exemplarMarkBy === self.id) delete o.flags.exemplarMarkBy },
+    afterAnyRoll(b, self, ctx) {
+      if (ctx.hit || ctx.target.flags.exemplarMarkBy !== self.id || ctx.attacker === self || b.hostile(self, ctx.attacker) || ctx.rerolled || b.canSpend(self, 'reaction') !== true) return
+      if (!b.offerReaction(self, 'valiant_aid', 'Valiant Aid?', `${ctx.attacker.name} missed your Mark. Let it reroll (the second result stands)?`)) return
+      b.spend(self, 'reaction')
+      ctx.rerolled = true
+      b.rerollToHit(ctx)
     },
   },
   {
@@ -308,32 +351,37 @@ registerScripts([
     })],
   },
   {
-    id: 't_hacker:3', partial: true, note: 'Last Argument of Kings',
+    id: 't_hacker:3', note: 'Last Argument of Kings (full tech): a tech attack within Sensors and line of sight; on a hit the target takes Burn equal to its current Heat',
     actions: (b, u) => [action({
       key: 'laok', name: 'Last Argument of Kings', activation: 'full_tech', target: 'enemy', range: u.stats.sensors,
-      text: 'Tech attack: deal 1 damage per point of heat on the target... (target takes heat-equal energy damage).',
+      text: 'Tech attack: the target takes Burn equal to its current Heat.',
       run: (bt, self, t) => {
         const target = t as Unit
+        const v = bt.techTargetValid(self, target); if (v !== true) throw new Error(v)
+        if (!bt.los(self, target) && !bt.viaMetahook(self, target)) throw new Error('No line of sight')
         const ctx = bt.techAttackRoll(self, target, 'Last Argument of Kings')
-        if (ctx.hit) bt.applyDamage(target, [{ type: 'Energy', amount: Math.max(1, target.heat) }], { source: self, ap: true })
+        if (ctx.hit && target.heat > 0) bt.applyDamage(target, [{ type: 'Burn', amount: target.heat }], { source: self })
       },
+      aiScore: (bt, self, t) => (t && 'heat' in t ? (t as Unit).heat / 2 : 0),
     })],
   },
   // ---------------- Heavy Gunner
   {
-    id: 't_heavy_gunner:1', partial: true, note: 'Covering Fire (target Impaired until it moves or the start of your next turn; auto-attack if it moves)',
+    id: 't_heavy_gunner:1', note: 'Covering Fire (quick): a character within 10, line of sight and a Heavy ranged weapon\'s range is Impaired until the start of your next turn; if it moves more than 1 space it clears Impaired and you may attack it with that weapon as a reaction for half damage, heat and burn; one target at a time; ends if it damages you',
     actions: (b, u) => [action({
-      key: 'coverfire', name: 'Covering Fire', activation: 'quick', target: 'enemy', range: 15,
+      key: 'coverfire', name: 'Covering Fire', activation: 'quick', target: 'enemy', range: 10,
       text: 'Pin a target with a Heavy ranged weapon: it is Impaired; if it moves 1+ spaces you may attack it as a reaction.',
       usable: (bt, self) => (self.weapons.some(w => w.size === 'Heavy' && isRangedWeapon(bt, w) && bt.weaponReady(self, w)) ? true : 'Needs a Heavy ranged weapon'),
       run: (bt, self, t) => {
         const target = t as Unit
+        if (bt.distance(self, target) > 10) throw new Error('Out of range (10)')
+        for (const o of bt.units) if (o.flags.coveredBy === self.id && !self.talents.some(x => x.id === 't_heavy_gunner' && x.rank >= 3)) { delete o.flags.coveredBy; o.statuses = o.statuses.filter(s => !(s.id === 'impaired' && s.data?.covering && s.source === self.id)) }
         const w = self.weapons.find(w => w.size === 'Heavy' && isRangedWeapon(bt, w) && bt.validTarget(self, w, target) === true)
         if (!w) throw new Error('No Heavy ranged weapon in range')
         const cover = (x: Unit, wp: Weapon) => {
           x.flags.coveredBy = self.id
           x.flags.coveredWeapon = wp.uid
-          bt.addStatus(x, 'impaired', 'next_turn_end_source', self, { covering: true })
+          bt.addStatus(x, 'impaired', 'until_cleared', self, { covering: true })
         }
         cover(target, w)
         // Bracketing Fire (rank 3): a second target
@@ -343,14 +391,20 @@ registerScripts([
         }
       },
     })],
-    onMove(b, self, mover) {
-      if (mover.flags.coveredBy !== self.id || mover.destroyed) return
+    onTurnStart(b, self) { for (const o of b.units) if (o.flags.coveredBy === self.id) { delete o.flags.coveredBy; o.statuses = o.statuses.filter(s => !(s.id === 'impaired' && s.data?.covering && s.source === self.id)) } },
+    onDamaged(b, self, d) { const src = d.source; if (src && src.flags.coveredBy === self.id) { delete src.flags.coveredBy; src.statuses = src.statuses.filter(s => !(s.id === 'impaired' && s.data?.covering && s.source === self.id)) } },
+    onMove(b, self, mover, path) {
+      if (mover.flags.coveredBy !== self.id || mover.destroyed || path.length - 1 <= 1) return
       delete mover.flags.coveredBy
+      mover.statuses = mover.statuses.filter(s => !(s.id === 'impaired' && s.data?.covering && s.source === self.id))
       const w = self.weapons.find(w => w.uid === mover.flags.coveredWeapon)
       if (!w || b.canSpend(self, 'reaction') !== true || b.validTarget(self, w, mover) !== true) return
-      self.reactionsLeft--
+      if (!b.offerReaction(self, 'covering_fire', 'Covering Fire?', `${mover.name} broke cover. Attack it with ${w.name} (half damage)?`)) return
+      b.spend(self, 'reaction')
       b.say(`${self.name}'s covering fire triggers!`)
-      const r = b.weaponAttack(self, w, { targetId: mover.id }, 'free')
+      self.flags.halfDamage = true
+      let r
+      try { r = b.weaponAttack(self, w, { targetId: mover.id }, 'free') } finally { delete self.flags.halfDamage }
       if (self.talents.some(t => t.id === 't_heavy_gunner' && t.rank >= 2) && r.ctxs[0]?.hit) b.addStatus(mover, 'immobilized', 'next_turn_end_target', self)
     },
   },
@@ -395,15 +449,41 @@ registerScripts([
   },
   // ---------------- Leader (leadership dice: +1d6 to an ally's attack, auto)
   {
-    id: 't_leader:1', partial: true, note: 'Field Commander (leadership dice: allies within sensors add +1d6 bonus damage once each)',
+    id: 't_leader:1', note: 'Field Commander: Leadership Dice (3; 5 at rank 2, 6 at rank 3); Issue Order (free, 1/turn): give an ally without one a die; it may spend it for +1 Accuracy on a following attack, check or save, or hand it back (free)',
     init: u => { u.flags.leaderDice = u.talents.find(t => t.id === 't_leader')!.rank >= 3 ? 6 : u.talents.find(t => t.id === 't_leader')!.rank >= 2 ? 5 : 3 },
+    actions: (b, u) => ((u.flags.leaderDice ?? 0) > 0 ? [action({
+      key: 'issue_order', name: `Issue Order (${u.flags.leaderDice} dice)`, activation: 'free', target: 'ally', range: 99, text: 'Give an allied mech a Leadership Die: +1 Accuracy on an action that follows your order.',
+      usable: (_bt, self) => (self.flags['turn:order'] ? 'Once per turn' : !self.activeTurn ? 'On your turn' : true),
+      run: (bt, self, t) => {
+        const a = t as Unit
+        if (!a || a === self || bt.hostile(self, a) || a.kind !== 'mech') throw new Error('Choose an allied mech')
+        if (a.flags.leaderDie) throw new Error(`${a.name} already holds a Leadership Die`)
+        self.flags['turn:order'] = true
+        self.flags.leaderDice--
+        a.flags.leaderDie = self.id
+        bt.say(`${self.name} issues an order to ${a.name}.`)
+      },
+      aiTarget: (bt, self) => bt.alive().filter(o => o !== self && o.kind === 'mech' && !bt.hostile(self, o) && !o.flags.leaderDie && o.activationsLeft > 0)[0] ?? null,
+      aiScore: () => 1,
+    })] : []),
+    grantActions: (b, self, other) => (other.flags.leaderDie === self.id ? [action({
+      key: `return_die:${self.id}`, name: 'Return Leadership Die', activation: 'free', target: 'none', text: `Give the die back to ${self.name}.`,
+      run: (bt, me) => { delete me.flags.leaderDie; self.flags.leaderDice = (self.flags.leaderDice ?? 0) + 1; bt.say(`${me.name} returns the Leadership Die.`) },
+      aiScore: () => -1,
+    })] : []),
     beforeAnyAttack(b, self, ctx) {
-      if (ctx.attacker === self || b.hostile(self, ctx.attacker) || (self.flags.leaderDice ?? 0) <= 0 || ctx.tech) return
-      if (b.distance(self, ctx.attacker) > self.stats.sensors || ctx.attacker.flags[`scene:led:${self.id}`]) return
-      ctx.attacker.flags[`scene:led:${self.id}`] = true
-      self.flags.leaderDice--
+      const a = ctx.attacker
+      if (a.flags.leaderDie !== self.id || !a.activeTurn) return
+      if (b.choose({ kind: 'leader_die', unit: a, title: 'Spend the Leadership Die?', text: `+1 Accuracy on this attack (an order from ${self.name}).`, options: [{ label: 'Spend it (+1 Accuracy)' }, { label: 'Keep it' }], defaultIndex: 0 }) !== 0) return
+      delete a.flags.leaderDie
       ctx.accuracy++
       ctx.reasons.push(`${self.name}'s order +1`)
+    },
+    checkAccuracy(b, self, u, kind) {
+      if (u.flags.leaderDie !== self.id || !u.activeTurn || (kind !== 'check' && kind !== 'save')) return 0
+      if (b.choose({ kind: 'leader_die', unit: u, title: 'Spend the Leadership Die?', text: `+1 Accuracy on this ${kind}.`, options: [{ label: 'Spend it (+1 Accuracy)' }, { label: 'Keep it' }], defaultIndex: 0 }) !== 0) return 0
+      delete u.flags.leaderDie
+      return 1
     },
   },
   // ---------------- Nuclear Cavalier
@@ -480,11 +560,17 @@ registerScripts([
     },
   },
   {
-    id: 't_stormbringer:2', partial: true, note: 'Stormbending (auto: Lightning → push 3 on a failed hull save... simplified to knockback 3)',
+    id: 't_stormbringer:2', note: 'Stormbending: 1/round, when you hit with a Launcher, choose Lightning (the target saves (Hull) or is knocked 3 away from you, and you are knocked 3 back) or Thunder (everyone else in Burst 2 of the target saves (Agility) or is knocked 1 away from it)',
     afterAttack(b, self, ctx, role) {
-      if (role === 'attacker' && ctx.hit && isWeaponType(ctx.weapon, 'Launcher') && !ctx.target.destroyed && once(self, 'stormbend')) {
-        b.forceMove(ctx.target, self, 3, 1)
-        self.flags.torrent = Math.max(1, (self.flags.torrent ?? 6) - 1)
+      if (role !== 'attacker' || !ctx.hit || !isWeaponType(ctx.weapon, 'Launcher') || !once(self, 'stormbend')) return
+      const t = ctx.target
+      self.flags.torrent = Math.max(1, (self.flags.torrent ?? 6) - 1)
+      const i = b.choose({ kind: 'stormbending', unit: self, title: 'Stormbending', options: [{ label: 'Lightning', hint: 'the target saves (Hull) or is knocked 3 away; you are knocked back 3' }, { label: 'Thunder', hint: 'Burst 2 around the target: Agility save or knocked back 1' }, { label: 'Neither' }], defaultIndex: t.destroyed ? 1 : 0 })
+      if (i === 0 && !t.destroyed) {
+        if (!b.save(t, 'hull', self.stats.save, 0, self)) b.forceMove(t, self, 3, 1)
+        b.forceMove(self, t, 3, 1)
+      } else if (i === 1) {
+        for (const o of unitsOnTiles(b.alive(), burstTiles(b.map, t, 2))) if (o !== t && (o.kind === 'mech' || o.kind === 'npc') && !b.save(o, 'agi', self.stats.save, 0, self)) b.forceMove(o, t, 1, 1)
       }
     },
   },
@@ -540,19 +626,7 @@ registerScripts([
   },
   // ---------------- Walking Armory (Ammo Case: auto THUMPER = +knockback 1, +? …)
   {
-    id: 't_walking_armory:1', partial: true, note: 'Armament: Ammo Case auto-uses THUMPER (knockback 1) / SHOCK (+energy) once per turn',
-    beforeAttack(b, self, ctx, role) {
-      if (self.flags.ammo) return // a round was chosen with the Ammo Case actions
-      if (role !== 'attacker' || ctx.weapon?.size !== 'Main' || !isRangedWeapon(b, ctx.weapon) || !once(self, 'ammo', 'turn')) return
-      const sys = self.systems.find(s => s.dataId.startsWith('ms_walking_armory'))
-      if (!sys || sys.usesLeft === 0) return
-      if (sys.usesLeft != null) sys.usesLeft--
-      ctx.reasons.push('Ammo: Thumper')
-      self.flags.thumper = true
-    },
-    afterAttack(b, self, ctx, role) {
-      if (role === 'attacker' && self.flags.thumper) { delete self.flags.thumper; if (ctx.hit && !ctx.target.destroyed) b.forceMove(ctx.target, self, 1, 1) }
-    },
+    id: 't_walking_armory:1', note: 'Armament: gives the Ammo Case system — load THUMPER, SHOCK or MAG for a Main ranged attack (1/turn) from the action bar',
   },
 ])
 
