@@ -170,7 +170,9 @@ npm run build          # static build in game/dist
 vendor/compcon/        COMP/CON v3 (submodule, reference)
 game/src/data          lancer-data index + COMP/CON pregens
 game/src/import        COMP/CON pilot importer
-game/src/rules         engine: battle.ts, grid.ts, stats.ts, effects/ (registry, generic, coverage, scripts)
+game/src/rules         engine: battle.ts (entry), battle/ (below), grid.ts, stats.ts, effects/ (registry, generic, coverage, scripts)
+game/src/rules/battle  core.ts: the Battle class (state + one-line typed stubs); logic by area:
+                       turns, damage, movement, attacks, actions, terrain (grapples too), tech, fields (mines, areas), decisions
 game/src/enemies       enemy ruleset, validator, builder, catalog
 game/src/ai            utility-based tactical AI
 game/src/run           campaign layer, map generator
