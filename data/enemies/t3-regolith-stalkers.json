@@ -1,0 +1,272 @@
+{
+  "id": "t3-regolith-stalkers",
+  "name": "Regolith Stalkers",
+  "faction": "Martian incursion",
+  "theme": "Things that came up through the cleanroom floor with the red dust. They hunt in the haze.",
+  "tier": 3,
+  "designedFor": 4,
+  "kind": "standard",
+  "description": "Identity: ambush from the dust. Stalkers vanish between strikes, breachers shove you off the white floor, spitters soften you up, mites swarm.",
+  "units": [
+    {
+      "name": "Dust Stalker",
+      "role": "Biological",
+      "count": 3,
+      "color": "#a0522d",
+      "description": "Rust-coloured, too many joints, and quiet.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Rending Claws",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "2d6+3"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Dust Shroud",
+          "hooks": [
+            {
+              "on": "turn_end",
+              "effects": [
+                {
+                  "do": "status",
+                  "status": "invisible",
+                  "duration": "start_of_next_turn_target",
+                  "target": "self"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Burrowing Gait",
+          "stats": {
+            "speed": 1
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Lash Out",
+          "trigger": "hit_by_melee",
+          "frequency": "1/round",
+          "attackWith": "Rending Claws"
+        },
+        {
+          "type": "trait",
+          "name": "Regolith Hide",
+          "resist": [
+            "Energy"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Regolith Breacher",
+      "role": "Biological",
+      "count": 1,
+      "color": "#8b3a1f",
+      "description": "It hits like a landslide.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Battering Carapace",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+5"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_knockback",
+              "val": 3
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Living Rock",
+          "stats": {
+            "armor": 1
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Shrug Off",
+          "trigger": "damaged",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "clear_status",
+              "status": "any_negative",
+              "target": "self"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Rock Spit",
+          "weaponType": "Launcher",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            },
+            {
+              "type": "Blast",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Bulk",
+          "stats": {
+            "hp": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dune Spitter",
+      "role": "Biological",
+      "count": 2,
+      "color": "#c0392b",
+      "description": "Lobs corrosive regolith from behind the dunes.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Corrosive Spit",
+          "weaponType": "Launcher",
+          "range": [
+            {
+              "type": "Range",
+              "val": 12
+            },
+            {
+              "type": "Blast",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Explosive",
+              "val": "1d6+3"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_arcing"
+            }
+          ],
+          "onHit": [
+            {
+              "do": "status",
+              "status": "shredded",
+              "duration": "next_turn_end_target",
+              "save": "eng"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Barbed Tail",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Dug In",
+          "stats": {
+            "evasion": 1
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Scatter",
+          "trigger": "enemy_moves_adjacent",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "push",
+              "val": 2,
+              "save": "hull"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Dust Lungs",
+          "immune": [
+            "jammed"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Regolith Mite",
+      "role": "Biological",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 4,
+      "color": "#d35400",
+      "description": "Fist-sized and very, very many.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Swarm Bite",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+4"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,15 +1,15 @@
 {
   "id": "t3-black-tithe",
-  "name": "Knights of the Black Tithe",
-  "faction": "Black Tithe Order",
-  "theme": "A militant order of armored templars collecting a tithe in salvage and blood.",
+  "name": "Knights of the Solar Eye",
+  "faction": "Choir of the Second Dawn",
+  "theme": "The Choir's armoured order, sworn to hold the cleanroom until the casket wakes.",
   "tier": 3,
   "designedFor": 4,
   "kind": "elite",
   "description": "Identity: an aggressive shield-wall; the paladin anchors, templars charge, the inquisitor locks targets down.",
   "units": [
     {
-      "name": "Tithe Paladin",
+      "name": "Eye Paladin",
       "role": "Defender",
       "templates": [
         "Elite",
@@ -105,7 +105,7 @@
       ]
     },
     {
-      "name": "Tithe Templar",
+      "name": "Eye Templar",
       "role": "Striker",
       "templates": [
         "Veteran"
@@ -178,7 +178,7 @@
       "veteranTrait": "deadly"
     },
     {
-      "name": "Tithe Inquisitor",
+      "name": "Eye Inquisitor",
       "role": "Controller",
       "templates": [
         "Elite"
@@ -264,7 +264,7 @@
       "count": 1
     },
     {
-      "name": "Tithe Serf",
+      "name": "Eye Penitent",
       "role": "Striker",
       "templates": [
         "Grunt"

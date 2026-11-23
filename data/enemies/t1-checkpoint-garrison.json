@@ -1,8 +1,8 @@
 {
   "id": "t1-checkpoint-garrison",
-  "name": "Checkpoint Garrison",
-  "faction": "Vermillion Colonial Guard",
-  "theme": "A disciplined roadblock crew dug in behind a shield-wall.",
+  "name": "Theodora Roadblock",
+  "faction": "Choir of the Second Dawn",
+  "theme": "A Choir roadblock on the 6 km road from LZ Theodora to the Annex.",
   "tier": 1,
   "designedFor": 4,
   "depth": [
@@ -13,7 +13,7 @@
   "sitrep": "control",
   "units": [
     {
-      "name": "Bulwark",
+      "name": "Roadblock Bulwark",
       "role": "Defender",
       "color": "#7f8c8d",
       "features": [
@@ -64,7 +64,7 @@
       ]
     },
     {
-      "name": "Guard Rifleman",
+      "name": "Choir Rifleman",
       "role": "Striker",
       "count": 3,
       "color": "#c0392b",
@@ -112,7 +112,7 @@
       ]
     },
     {
-      "name": "Signals Officer",
+      "name": "Choir Signals Acolyte",
       "role": "Controller",
       "color": "#9b59b6",
       "features": [

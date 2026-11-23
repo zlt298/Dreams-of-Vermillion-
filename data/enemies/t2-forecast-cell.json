@@ -1,0 +1,323 @@
+{
+  "id": "t2-forecast-cell",
+  "name": "The Forecast Cell",
+  "faction": "Choir of the Second Dawn",
+  "theme": "Choir operatives who receive the casket’s forecasts directly. They are already where you are going.",
+  "tier": 2,
+  "designedFor": 4,
+  "kind": "elite",
+  "description": "Identity: anticipation. A phasing hunter and a breacher strike where you will be; a veteran archer covers; an engineer keeps them shielded.",
+  "units": [
+    {
+      "name": "Forecast Specter",
+      "role": "Striker",
+      "templates": [
+        "Elite"
+      ],
+      "count": 1,
+      "color": "#b3122e",
+      "description": "It steps out of a shadow it was never in.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Phase Blade",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "2d6+1"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Foreknown Step",
+          "hooks": [
+            {
+              "on": "turn_end",
+              "effects": [
+                {
+                  "do": "status",
+                  "status": "invisible",
+                  "duration": "start_of_next_turn_target",
+                  "target": "self"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "It Saw That Coming",
+          "trigger": "attacked_and_missed",
+          "frequency": "1/round",
+          "attackWith": "Phase Blade"
+        },
+        {
+          "type": "weapon",
+          "name": "Needle Pistol",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 5
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Forecast Breacher",
+      "role": "Striker",
+      "templates": [
+        "Elite"
+      ],
+      "count": 1,
+      "color": "#d9534f",
+      "description": "Twin shotguns and a ram plate. It has rehearsed this.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Twin Shotguns",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 4
+            },
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+3"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_knockback",
+              "val": 1
+            }
+          ]
+        },
+        {
+          "type": "system",
+          "name": "Breach Charge",
+          "activation": "quick",
+          "target": "self_burst",
+          "radius": 1,
+          "save": "hull",
+          "effects": [
+            {
+              "do": "damage",
+              "damage": [
+                {
+                  "type": "Explosive",
+                  "val": "1d6+2"
+                }
+              ],
+              "saveHalf": true
+            },
+            {
+              "do": "push",
+              "val": 2
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "trait",
+          "name": "Ram Plate",
+          "stats": {
+            "armor": 1
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Brace Through",
+          "trigger": "damaged",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "overshield",
+              "val": 3,
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Forecast Archer",
+      "role": "Artillery",
+      "templates": [
+        "Veteran"
+      ],
+      "veteranTrait": "deadly",
+      "count": 1,
+      "color": "#e08e2b",
+      "description": "Fires at where you will be in three seconds.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Forecast Rifle",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 15
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+4"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_seeking"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "weapon",
+          "name": "Carbine",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 10
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Predicted Path",
+          "trigger": "enemy_moves_adjacent",
+          "frequency": "1/round",
+          "attackWith": "Carbine"
+        },
+        {
+          "type": "trait",
+          "name": "Spotter Link",
+          "stats": {
+            "sensors": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "Forecast Engineer",
+      "role": "Support",
+      "count": 1,
+      "color": "#27ae60",
+      "description": "Patches whoever the forecast says will be hit next.",
+      "features": [
+        {
+          "type": "system",
+          "name": "Pre-emptive Shield",
+          "activation": "quick",
+          "target": "ally",
+          "range": 8,
+          "effects": [
+            {
+              "do": "overshield",
+              "val": 5
+            }
+          ],
+          "recharge": 4
+        },
+        {
+          "type": "system",
+          "name": "Nanite Patch",
+          "activation": "quick",
+          "target": "ally",
+          "range": 6,
+          "effects": [
+            {
+              "do": "heal",
+              "val": "1d6+3"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "weapon",
+          "name": "Rivet Gun",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 6
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+1"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Field Kit",
+          "stats": {
+            "armor": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "Choir Skirmisher",
+      "role": "Striker",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 4,
+      "color": "#d9534f",
+      "description": "Converts in cheap prints, singing on the open channel.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Carbine",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

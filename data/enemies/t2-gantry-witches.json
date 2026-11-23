@@ -1,0 +1,220 @@
+{
+  "id": "t2-gantry-witches",
+  "name": "Gantry Witches",
+  "faction": "Choir of the Second Dawn",
+  "theme": "Choir hackers strung through the gantries of the industrial park, with printed hornet drones and a container wall to hide behind.",
+  "tier": 2,
+  "designedFor": 4,
+  "kind": "standard",
+  "sitrep": "control",
+  "description": "Identity: jam and swarm. Witches heat and jam from range, hover-drones harass, a bastion holds the lane.",
+  "units": [
+    {
+      "name": "Gantry Witch",
+      "role": "Controller",
+      "count": 2,
+      "color": "#9b59b6",
+      "description": "Her code is written as a hymn. It still compiles.",
+      "features": [
+        {
+          "type": "tech",
+          "name": "Tear-Down Hymn",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "heat",
+              "val": 3
+            }
+          ]
+        },
+        {
+          "type": "tech",
+          "name": "Blinding Verse",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "jammed",
+              "duration": "next_turn_end_target",
+              "save": "sys"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "trait",
+          "name": "Hymnal Firewall",
+          "stats": {
+            "edef": 2
+          }
+        },
+        {
+          "type": "weapon",
+          "name": "Arc Pistol",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 6
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Printed Hornet",
+      "role": "Striker",
+      "count": 3,
+      "color": "#d9534f",
+      "description": "Fresh off the fab line, rotors still warm.",
+      "features": [
+        {
+          "type": "trait",
+          "name": "Hover Rotors",
+          "stats": {
+            "speed": 1
+          }
+        },
+        {
+          "type": "weapon",
+          "name": "Stinger Burst",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            },
+            {
+              "type": "Threat",
+              "val": 3
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+2"
+            }
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Evasive Climb",
+          "trigger": "attacked_and_missed",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "status",
+              "status": "hidden",
+              "duration": "end_of_turn",
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Container Bastion",
+      "role": "Defender",
+      "count": 1,
+      "color": "#7f8c8d",
+      "description": "Welded from shipping containers. It walks like one.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Crane Arm",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+3"
+            }
+          ],
+          "onHit": [
+            {
+              "do": "pull",
+              "val": 2
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Container Hull",
+          "stats": {
+            "armor": 1
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Close Ranks",
+          "trigger": "ally_attacked_adjacent",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "status",
+              "status": "impaired",
+              "save": "hull"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Bolt Thrower",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Rigging Crawler",
+      "role": "Biological",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 2,
+      "color": "#8e2a2a",
+      "description": "Something the Choir printed and did not name.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Clamp Jaws",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

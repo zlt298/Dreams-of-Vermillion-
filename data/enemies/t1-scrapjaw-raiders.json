@@ -1,8 +1,8 @@
 {
   "id": "t1-scrapjaw-raiders",
-  "name": "Scrapjaw Raiders",
-  "faction": "Scrapjaw Clans",
-  "theme": "Desperate salvagers in welded-together chassis, swarming with crude melee rigs.",
+  "name": "The Misprint Mob",
+  "faction": "Cinnabar Annex print anomalies",
+  "theme": "Half-finished frames spat out of the Annex fab bays, crewed by converts who do not care that they are unfinished.",
   "tier": 1,
   "designedFor": 4,
   "depth": [
@@ -13,7 +13,7 @@
   "sitrep": "standard",
   "units": [
     {
-      "name": "Scrapjaw Ripper",
+      "name": "Misprint Ripper",
       "role": "Striker",
       "templates": [
         "Grunt"
@@ -51,7 +51,7 @@
       ]
     },
     {
-      "name": "Scrapjaw Boss-Rig",
+      "name": "Misprint Foreman",
       "role": "Striker",
       "color": "#d9534f",
       "features": [
@@ -118,7 +118,7 @@
       ]
     },
     {
-      "name": "Scrapjaw Lobber",
+      "name": "Misprint Lobber",
       "role": "Artillery",
       "color": "#e08e2b",
       "features": [
@@ -168,7 +168,7 @@
       ]
     },
     {
-      "name": "Scrapjaw Patcher",
+      "name": "Misprint Patcher",
       "role": "Support",
       "color": "#2e9e6b",
       "features": [

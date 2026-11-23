@@ -1,8 +1,8 @@
 {
   "id": "t3-harrow-cell",
-  "name": "Harrow Cell",
-  "faction": "Harrow Syndicate",
-  "theme": "Cybernetic hunters who blind, jam and then gut lancers with chainblades.",
+  "name": "Anomaly Cell",
+  "faction": "Cinnabar Annex print anomalies",
+  "theme": "HORUS-pattern frames that should not exist, printed in the cleanroom labs after the Annex went dark.",
   "tier": 3,
   "designedFor": 4,
   "kind": "standard",
@@ -10,7 +10,7 @@
   "description": "Identity: netrunners strip defenses, reavers pounce, a railgunner finishes.",
   "units": [
     {
-      "name": "Harrow Netrunner",
+      "name": "Anomaly Weaver",
       "role": "Controller",
       "color": "#9b59b6",
       "features": [
@@ -88,7 +88,7 @@
       ]
     },
     {
-      "name": "Harrow Reaver",
+      "name": "Anomaly Reaver",
       "role": "Striker",
       "count": 3,
       "color": "#c0392b",
@@ -156,7 +156,7 @@
       ]
     },
     {
-      "name": "Harrow Eye",
+      "name": "Anomaly Eye",
       "role": "Artillery",
       "color": "#e67e22",
       "features": [
@@ -224,7 +224,7 @@
       ]
     },
     {
-      "name": "Harrow Ganger",
+      "name": "Anomaly Drone",
       "role": "Striker",
       "templates": [
         "Grunt"

@@ -63,6 +63,12 @@ It uses the pilot's favourite mech and its active loadout: frame, weapons, mods,
 - **Story.** In-universe Union documents bracket the campaign: a priority transmission at the start, an after-action report after act 1, an intercepted transmission after act 2 and a debrief after the final fight. They type out as a console readout. Hold any key or mouse button to skip; recovered documents can be replayed from **Title → Transmissions**. The final boss is always *The Voice of the Eye*, the Choir of the Second Dawn's prophet in the Cinnabar Annex casket vault. Texts: `game/src/data/story.ts`.
 - **Tag tooltips.** Hover any tag (AP, Reliable 2, Blast 2, Loading, Smart…) on weapon cards, Hangar weapon lines or the battle log to read its rules. System chips and weapon cards show their rules text on hover too.
 - **Field overlays.** Smoke, terrain zones, drone fields, barriers and auras are tinted on the map by effect, and listed when you hover a tile. Press **V** to toggle.
+- **Between-battle events.** After each won combat:
+  - 25%: nothing happens.
+  - 50%: a minor find (+1, free).
+  - 15%: a gamble (a minor sacrifice for +2).
+  - 10%: a hard choice (a heavy sacrifice such as a Structure or Stress, a destroyed system or a stunned first round, for a big or permanent benefit).
+  - There are six of each kind, in `game/src/run/events.ts`.
 - **Persistent damage.** HP, structure, stress, repairs, destroyed gear, Limited uses and CORE power carry between fights.
 - **Recovery.** Spend Repairs at LANCER costs in field repairs. A rest is a full repair that reprints destroyed mechs.
 - **Progression.** Each act boss grants +5 License Levels (act 1 LL0, act 2 LL5, act 3 LL10, matching the core book NPC tiers), which raises grit and HP. Spend the new talent, license and core-bonus points with **Level up** on the campaign map, or re-import updated COMP/CON builds.
@@ -127,7 +133,7 @@ To add fidelity, register a script keyed by the item id in `game/src/rules/effec
 Massif's NPC data is a paid content pack, so the bundled enemies use an **original ruleset** modelled on LANCER's NPC structure. Roles: Striker, Artillery, Controller, Defender, Support, Biological. Tiers: 1–3. Templates follow the official rules: Grunt, Veteran (with a Veteran trait), Elite (two turns), Commander, Ultra (two turns, Deadly, Juggernaut, Legendary), Mercenary. Features are written in a small effect DSL, and an encounter budget keeps teams fair.
 
 - Rules: [`docs/enemy-ruleset.md`](docs/enemy-ruleset.md). The code lives in `game/src/enemies/ruleset.ts` and `validate.ts`.
-- Teams: `data/enemies/*.json`. The game loads every valid file automatically. Twelve teams ship, covering all tiers and including three bosses.
+- Teams: `data/enemies/*.json`. The game loads every valid file automatically. Twenty teams ship, covering all tiers and including three bosses. They're named for the campaign's factions: the Choir of the Second Dawn, the Annex's print anomalies and subverted security, Choir-paid mercenaries, and the Martian incursion.
 - **Generate more with Claude.** The project skill [`.claude/skills/generate-enemies`](.claude/skills/generate-enemies/SKILL.md) designs teams from the ruleset, writes the JSON and validates it. Ask Claude Code something like *"generate two tier-2 enemy teams themed around rogue terraforming drones"* or *"make a tier 3 boss"*.
 - Validate: `cd game && npm run validate-enemies`.
 - Balance check: `npx tsx scripts/simulate.ts 10 [team-id]` runs AI vs AI on 18×36 maps. Tier 1 faces the LL0 pregens, tier 2 the LL5 sample squad and tier 3 the LL10 sample squad (the squad's level in acts 2 and 3).

@@ -1,0 +1,462 @@
+{
+  "id": "t3-burning-eye-cantors",
+  "name": "Cantors of the Burning Eye",
+  "faction": "Choir of the Second Dawn",
+  "theme": "The Voice's own choir: the singers closest to the casket, holding the cleanroom approaches.",
+  "tier": 3,
+  "designedFor": 4,
+  "kind": "elite",
+  "description": "Identity: the full choir. A witch-cantor scrambles your systems, an assault cantor and a frenzied blade press in, a veteran sniper covers, a commander keeps them all in voice.",
+  "units": [
+    {
+      "name": "Witch-Cantor",
+      "role": "Controller",
+      "templates": [
+        "Elite"
+      ],
+      "count": 1,
+      "color": "#9b59b6",
+      "description": "Her verses get into your firmware.",
+      "features": [
+        {
+          "type": "tech",
+          "name": "Verse of Unmaking",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "heat",
+              "val": 4
+            }
+          ]
+        },
+        {
+          "type": "tech",
+          "name": "Blinding Chorus",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "jammed",
+              "duration": "next_turn_end_target",
+              "save": "sys"
+            },
+            {
+              "do": "status",
+              "status": "impaired",
+              "duration": "next_turn_end_target",
+              "save": "sys"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "tech",
+          "name": "Turned Hymn",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "lockon",
+              "duration": "until_cleared"
+            },
+            {
+              "do": "status",
+              "status": "slowed",
+              "duration": "next_turn_end_target",
+              "save": "sys"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Hymnal Firewall",
+          "stats": {
+            "edef": 2
+          }
+        },
+        {
+          "type": "weapon",
+          "name": "Arc Pistol",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 6
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Assault Cantor",
+      "role": "Striker",
+      "templates": [
+        "Elite"
+      ],
+      "count": 1,
+      "color": "#d9534f",
+      "description": "Sings the verses that are about killing.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Hymn Rifle",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 10
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+5"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_reliable",
+              "val": 3
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Grenade Launcher",
+          "weaponType": "Launcher",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            },
+            {
+              "type": "Blast",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Explosive",
+              "val": "1d6+3"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "weapon",
+          "name": "Combat Knife",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+3"
+            }
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Hunker Down in Song",
+          "trigger": "damaged",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "overshield",
+              "val": 4,
+              "target": "self"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Choir Armour",
+          "stats": {
+            "armor": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "Frenzy Blade",
+      "role": "Striker",
+      "templates": [
+        "Veteran"
+      ],
+      "veteranTrait": "feign_death",
+      "count": 1,
+      "color": "#b3122e",
+      "description": "It sang through its own destruction once already.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Chain Glaive",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "2d6+4"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Ecstatic Frenzy",
+          "hooks": [
+            {
+              "on": "damaged",
+              "effects": [
+                {
+                  "do": "clear_status",
+                  "status": "any_negative"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Answering Stroke",
+          "trigger": "hit_by_melee",
+          "frequency": "1/round",
+          "attackWith": "Chain Glaive"
+        },
+        {
+          "type": "trait",
+          "name": "Blood-Red Plate",
+          "stats": {
+            "armor": 1
+          }
+        },
+        {
+          "type": "weapon",
+          "name": "Thrown Blades",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Thrown",
+              "val": 5
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Eye Marksman",
+      "role": "Artillery",
+      "templates": [
+        "Veteran"
+      ],
+      "veteranTrait": "deadly",
+      "count": 1,
+      "color": "#e08e2b",
+      "description": "A red eye on the scope. Another on the trigger finger.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Anti-Frame Rifle",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 20
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "2d6+4"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_ap"
+            },
+            {
+              "id": "tg_loading"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Sidearm",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 6
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Ridgeline Optics",
+          "stats": {
+            "sensors": 3
+          }
+        },
+        {
+          "type": "tech",
+          "name": "Spot",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "lockon",
+              "duration": "until_cleared"
+            }
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Displace",
+          "trigger": "enemy_moves_adjacent",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "push",
+              "val": 2,
+              "save": "hull"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Choir Precentor",
+      "role": "Support",
+      "templates": [
+        "Commander"
+      ],
+      "count": 1,
+      "color": "#27ae60",
+      "description": "Leads the hymn. Everyone near it sings in time.",
+      "features": [
+        {
+          "type": "system",
+          "name": "Antiphon",
+          "activation": "quick",
+          "target": "ally",
+          "range": 8,
+          "effects": [
+            {
+              "do": "heal",
+              "val": "1d6+3"
+            },
+            {
+              "do": "clear_status",
+              "status": "any_negative"
+            }
+          ],
+          "recharge": 4
+        },
+        {
+          "type": "system",
+          "name": "Sanctus Ward",
+          "activation": "quick",
+          "target": "ally",
+          "range": 8,
+          "effects": [
+            {
+              "do": "overshield",
+              "val": 5
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Censer Mace",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+3"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Cantor's Plate",
+          "stats": {
+            "armor": 1
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Rally the Hymn",
+          "trigger": "ally_attacked_adjacent",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "overshield",
+              "val": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Choir Skirmisher",
+      "role": "Striker",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 3,
+      "color": "#d9534f",
+      "description": "Converts in cheap prints, singing on the open channel.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Carbine",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+4"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

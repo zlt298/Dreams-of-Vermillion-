@@ -125,6 +125,23 @@ Useful commands, all run from `game/`:
   - The AI's "advance pull" brings units forward until they're in range.
   - Holdout lasts 8 rounds.
 
+### Enemy variety
+- 8 new original teams modelled on official NPC archetypes (sniper/scout, berserker, pyro/demolisher, witch/hornet, specter, bastion, engineer), written in the game's own feature format. No LCP data is copied.
+  - T1: Theodora Sunspotters, Hymn of Blades
+  - T2: Steamline Pyres, Gantry Witches, The Forecast Cell (elite)
+  - T3: Cleanroom Wardens, Regolith Stalkers, Cantors of the Burning Eye (elite)
+- All 20 teams are named for the story's factions.
+- Untuned: in a one-seed smoke run, Cleanroom Wardens and the Burning Eye Cantors hit the round cap (heavy sustain); check them in the balance pass.
+
+### Between-battle events
+- 18 events after won combats (`run/events.ts`), seeded per node:
+  - 25% nothing
+  - 50% find
+  - 15% gamble
+  - 10% hard choice
+- New boons: one-battle plating, tech booster, hot rounds, early-round intel, and Impaired or Stunned starts; permanent +2 HP, +1 accuracy, +1 Armor, and +1 Evasion/E-Defense.
+- Their values are part of the post-content balance pass.
+
 ### Act looks
 - Map themes (`run/mapgen.ts` and `render/scene.ts`), each with its own layout generator, palette, lighting and props:
   - outskirts (act 1, unchanged)

@@ -1,8 +1,8 @@
 {
   "id": "t1-boss-red-warden",
-  "name": "The Red Warden",
-  "faction": "Vermillion Colonial Guard",
-  "theme": "A towering siege-frame that has held the pass for a decade, attended by expendable infantry walkers.",
+  "name": "The Theodora Psalmist",
+  "faction": "Choir of the Second Dawn",
+  "theme": "The Choir cell that was waiting at LZ Theodora before the lance ever landed: a red-eyed prophet and a wall of singing pickets.",
   "tier": 1,
   "designedFor": 4,
   "depth": [
@@ -13,7 +13,7 @@
   "sitrep": "standard",
   "units": [
     {
-      "name": "The Red Warden",
+      "name": "The Theodora Psalmist",
       "role": "Defender",
       "templates": [
         "Ultra"
@@ -135,7 +135,7 @@
       ]
     },
     {
-      "name": "Warden Picket",
+      "name": "Choir Picket",
       "role": "Striker",
       "templates": [
         "Grunt"
@@ -170,7 +170,7 @@
       ]
     },
     {
-      "name": "Warden Signaller",
+      "name": "Choir Signaller",
       "role": "Controller",
       "color": "#9b59b6",
       "features": [
@@ -220,7 +220,7 @@
       ]
     },
     {
-      "name": "Warden Bulwark",
+      "name": "Choir Bulwark",
       "role": "Defender",
       "color": "#7f8c8d",
       "features": [

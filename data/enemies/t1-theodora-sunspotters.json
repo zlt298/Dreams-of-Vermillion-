@@ -1,0 +1,160 @@
+{
+  "id": "t1-theodora-sunspotters",
+  "name": "Theodora Sunspotters",
+  "faction": "Choir of the Second Dawn",
+  "theme": "Choir spotters on the LZ Theodora ridgeline. One marks you; everyone else already knows where to shoot.",
+  "tier": 1,
+  "designedFor": 4,
+  "kind": "standard",
+  "sitrep": "holdout",
+  "description": "Identity: mark and snipe. A scout locks targets on; long rifles punish them while singing skirmishers screen.",
+  "units": [
+    {
+      "name": "Sunspotter Longrifle",
+      "role": "Artillery",
+      "count": 2,
+      "color": "#e08e2b",
+      "description": "A long-barrelled print with a red eye painted on the scope.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Longrifle",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 15
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+3"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_loading"
+            },
+            {
+              "id": "tg_accurate"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Sidearm",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 5
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d3+1"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Ridgeline Perch",
+          "stats": {
+            "sensors": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sunspotter",
+      "role": "Controller",
+      "count": 1,
+      "color": "#9b59b6",
+      "description": "It hums the coordinates before it sends them.",
+      "features": [
+        {
+          "type": "tech",
+          "name": "Mark the Heretic",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "lockon",
+              "duration": "until_cleared"
+            },
+            {
+              "do": "heat",
+              "val": 2
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Signal Pistol",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 6
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d3+1"
+            }
+          ]
+        },
+        {
+          "type": "system",
+          "name": "Flare Burst",
+          "activation": "quick",
+          "target": "tile_blast",
+          "range": 10,
+          "radius": 1,
+          "save": "sys",
+          "effects": [
+            {
+              "do": "status",
+              "status": "impaired",
+              "duration": "next_turn_end_target",
+              "save": "sys"
+            }
+          ],
+          "recharge": 5
+        }
+      ]
+    },
+    {
+      "name": "Choir Skirmisher",
+      "role": "Striker",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 4,
+      "color": "#d9534f",
+      "description": "Converts in cheap prints, singing on the open channel.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Carbine",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+1"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

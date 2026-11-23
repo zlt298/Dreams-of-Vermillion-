@@ -19,6 +19,7 @@ import { featureAutomated, loadPacks, readLcp, removePack, storePack, officialCl
 import { generateOfficialTeam } from '../enemies/official'
 import { Rng } from '../rules/rng'
 import { STORY, STORY_ORDER, type StoryId } from '../data/story'
+import { rollEvent, type RunEvent } from '../run/events'
 import { playInterlude } from './interlude'
 import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad } from './roster'
 import { esc } from './dom'
@@ -372,7 +373,48 @@ export class App {
     }).join('')
     this.root.innerHTML = `<div class="screen"><h2>Field repairs</h2><p class="muted">Spend Repairs between engagements (LANCER costs: 1 for full HP, 2 per structure or stress, 1 per destroyed weapon/system). Heat and statuses have cleared.</p>${rows}<button data-go="map" class="primary">Continue</button></div>`
     this.on('[data-o]', el => { try { applyRepair(run, el.dataset.p!, el.dataset.o!); saveRun(run) } catch (e) { alert((e as Error).message) } this.repairs() })
-    this.on('[data-go]', () => this.runMap())
+    this.on('[data-go]', () => this.maybeEvent(() => this.runMap()))
+  }
+
+  // ------------------------------------------------------------------ between-battle events
+  /** After a won combat: maybe a random event (rolled once per node). */
+  maybeEvent(then: () => void) {
+    const run = this.run!
+    const node = run.nodes.find(n => n.id === run.current)
+    if (!node || !['combat', 'elite', 'boss'].includes(node.kind) || run.over || run.eventsSeen?.includes(node.id)) return then()
+    run.eventsSeen = [...(run.eventsSeen ?? []), node.id]
+    saveRun(run)
+    const ev = rollEvent(node)
+    if (!ev) return then()
+    this.eventScreen(ev, then)
+  }
+
+  eventScreen(ev: RunEvent, then: () => void) {
+    const run = this.run!
+    this.clear()
+    const label = { find: 'Find', gamble: 'Gamble', pact: 'Hard choice' }[ev.tier]
+    const mechs = run.squad.map(p => {
+      const ok = ev.eligible ? ev.eligible(run, p.id) : true
+      return `<button data-ev="${esc(p.id)}" ${ok === true ? '' : 'disabled'} title="${esc(ok === true ? '' : ok)}" class="${ev.tier === 'find' ? 'primary' : ''}">${esc(p.callsign)}${ok === true ? '' : ` <span class="muted small">(${esc(ok)})</span>`}</button>`
+    }).join('')
+    const anyEligible = run.squad.some(p => !ev.eligible || ev.eligible(run, p.id) === true)
+    this.root.innerHTML = `<div class="screen center event ${ev.tier}">
+      <div class="evtag">${label}</div>
+      <h2>${esc(ev.title)}</h2>
+      <p class="evtext">${esc(ev.text)}</p>
+      <p class="eveffect">${esc(ev.effect)}</p>
+      ${ev.needsMech
+        ? `<p class="muted small">${ev.tier === 'find' ? 'Who takes it?' : 'Who pays the price?'}</p><div class="menu row">${mechs}</div>`
+        : `<div class="menu row"><button data-ev="" class="primary">${ev.tier === 'find' ? 'Take it' : 'Accept'}</button></div>`}
+      ${ev.tier !== 'find' || (ev.needsMech && !anyEligible) ? '<button data-skip="1">Leave it</button>' : ''}
+    </div>`
+    this.on('[data-ev]', el => {
+      const msg = ev.apply(run, el.dataset.ev || undefined)
+      run.log.push(`Act ${run.act}: ${ev.title}: ${msg}`)
+      saveRun(run)
+      this.notice(ev.title, msg, then)
+    })
+    this.on('[data-skip]', () => { run.log.push(`Act ${run.act}: ${ev.title}: left alone.`); saveRun(run); then() })
   }
 
   levelUpScreen() {
