@@ -103,7 +103,7 @@ Useful commands, all run from `game/`:
 
 ### Story
 - Four console-readout interludes: opening, end of act 1, end of act 2, finale. They type out, hold-to-skip, show a faint two-frame flash of the burning solar eye, and are replayable from the title screen.
-- Final boss retooled as *The Voice of the Eye*, with Sleepwalker grunts and Cantors of the Second Dawn. It's always the act 3 boss. Sim: 50% player wins vs LL10.
+- Final boss retooled as *The Voice of the Eye*, with Sleepwalker grunts and Cantors of the Second Dawn. It's always the act 3 boss. Sim: 67% player wins vs LL10 (after the November balance pass).
 
 ### Content and balance
 - Legal LL5 and LL10 sample squads (the act 2 and act 3 levels), also available from Hangar buttons.
@@ -118,6 +118,28 @@ Useful commands, all run from `game/`:
 
   These are the results after the core-book and template changes: 8–10 seeds per team, against LL0 / LL5 / LL10 squads.
 
+### Balance pass (November 2026, after content)
+Three sim-integrity bugs were fixed first; each was skewing results:
+- **Sandbox leak.** A reaction fired from an attack preview (Cover Me) could kill the active unit and end the round inside `Battle.sandbox`; turn state wasn't rolled back, so the real battle deadlocked with no activations left. Previewed Blasts could also flatten real terrain. The sandbox now restores round, side, active unit, winner, chain turn, grapples, LoS zones and terrain.
+- **Standoffs.** Long-range teams and the lancers froze just outside each other's reach until the round cap. When nobody has attacked for 3+ rounds, the AI's advance pull now grows each idle round.
+- **Rooted Drake.** The LL5/LL10 squads' Drake fired Fortress Protocol on round 2 near deployment and stayed immobilized. It now only roots within its weapons' reach and folds up (protocol) when nothing is in reach. Untargeted protocols with an AI score (Active Camouflage, ASURA) are now used too.
+
+Team changes, each found by ablation (removing one unit or feature at a time):
+| team | change | player wins |
+|---|---|---|
+| T1 Red Warden (boss) | Rotary Cannon 1d6+2 Reliable 2 → 1d6+1 Reliable 1 | 50% → 70% |
+| T2 Furnace Saint (boss) | +1 Ember Zealot, +1 Kiln Thrall | 90% → 77% |
+| T2 Forecast Cell (elite) | a second Forecast Specter | 100% → 80% |
+| T3 Burning Eye Cantors (elite) | Witch-Cantor Elite → Veteran; Precentor loses Commander; Sanctus Ward recharge 5+, Antiphon 4+ → 6+ | 0% → 87% |
+| T3 Voice of the Eye (boss) | + a Frenzy Blade (Veteran, Feign Death) | 97% → 67% |
+
+Results, 30 seeds per team (`npx tsx scripts/simulate.ts 30`):
+| kind | player wins | mechs lost per fight | avg rounds |
+|---|---|---|---|
+| standard | 90–100% | 0.1–0.7 | 7–18 |
+| elite | 73–97% | 0.9–2.0 | 12–22 |
+| boss | 67–77% | 1.9–2.3 | 14–19 |
+
 ### Presentation and map
 - Procedural low-poly unit models, shaped by manufacturer or role, carrying their actual weapons, with marks for templates; creatures for biological enemies.
 - The battlefield is 18 wide × 36 long, with terrain features scaled by area.
@@ -131,7 +153,7 @@ Useful commands, all run from `game/`:
   - T2: Steamline Pyres, Gantry Witches, The Forecast Cell (elite)
   - T3: Cleanroom Wardens, Regolith Stalkers, Cantors of the Burning Eye (elite)
 - All 20 teams are named for the story's factions.
-- Untuned: in a one-seed smoke run, Cleanroom Wardens and the Burning Eye Cantors hit the round cap (heavy sustain); check them in the balance pass.
+- Tuned in the November balance pass (below); Cleanroom Wardens is still a long fight.
 
 ### Between-battle events
 - 18 events after won combats (`run/events.ts`), seeded per node:
@@ -311,12 +333,13 @@ Driven by `npm run coverage -- --list`.
 6. Model polish, effects, terrain, audio (M).
 
 ### 6. Balance (after content)
-One full pass once §1–§2 are in. Includes:
-- tier-3 fight length (17–25 rounds; target 8–14)
-- Hunter Cell
-- tier-1 openers
-- official-encounter scale
-- the final boss
+The first full pass is done (see Done → Balance pass). Remaining:
+- Tier-3 fight length: Burning Eye Cantors (22 rounds), Voice of the Eye (19) and Cleanroom Wardens (18, 3/30 at the round cap) are still long; target 8–14. Ablation finds no single cause in Cleanroom Wardens (giving Sterile Field a recharge changed nothing), so this looks like T3 durability vs LL10 damage on the long map.
+- Hunter Cell (T1) and Warden Strike Team (T2) elites are a little easy (97%).
+- The Lance (LL5/LL10) is lost far more often than its squadmates (17–29 of 30 fights against bosses); check whether the AI over-commits it.
+- Hymn of Blades' Hymn of Warding is the only at-will (no recharge) overshield left in the roster.
+- tier-1 openers; official-encounter scale (needs an LCP)
+- Between-battle event values
 
 ### 7. Tooling
 1. CI (S).

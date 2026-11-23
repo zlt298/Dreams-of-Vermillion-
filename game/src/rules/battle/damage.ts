@@ -3,7 +3,7 @@
 import type { DamageData, RangeData, TagData, BonusData } from '../../data/lancer'
 import { Lancer } from '../../data/lancer'
 import {
-  type AreaEffect, type GridMap, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
+  type AreaEffect, type GridMap, type Tile, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
   distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from '../grid'
@@ -170,7 +170,17 @@ export function destroy(bt: Battle, u: Unit, why: string) {
   for (const o of bt.alive()) for (const s of scriptsFor(o)) s.onDestroyed?.(bt, o, u)
   for (const s of scriptsFor(u)) s.onDestroyed?.(bt, u, u)
   // drones/deployables persist; owned drones of destroyed mechs remain until the scene ends
-  if (u.id === bt.activeId) {
+  const ownTurn = u.id === bt.activeId && bt.endingTurnOf !== u.id
+  // its turn is over: statuses timed to the end of this unit's turn expire now
+  if (ownTurn) bt.tickStatuses(u, false)
+  // statuses timed to its future turns would never tick again: they end with the current turn instead
+  // (or at the end of the affected unit's next turn, between turns). Dying during its own endTurn: that tick is about to run.
+  for (const o of bt.units) for (const st of o.statuses) if (st.clockUnit === u.id && o !== u) {
+    if (bt.endingTurnOf !== u.id) st.clockUnit = bt.activeId && bt.activeId !== u.id ? bt.activeId : o.id
+    st.turnsLeft = 1
+    delete st.atStart
+  }
+  if (ownTurn) {
     u.activeTurn = false
     bt.activeId = null
     bt.checkVictory()
@@ -191,7 +201,11 @@ export function applyDamage(bt: Battle, t: Unit, parts: { type: string; amount: 
   if (t.flags.intangible) { bt.say(`${t.name} is intangible: unaffected.`); return 0 }
   for (const o of bt.alive()) for (const sc of scriptsFor(o)) sc.beforeAnyDamage?.(bt, o, t, parts, opts)
   const shredded = bt.has(t, 'shredded')
-  const resists = (type: string) => !opts.irreducible && !shredded && (opts.resistAll || opts.resistTypes?.includes(type) || t.resist.includes(type) || t.resist.includes('all') || (t.flags.resistAll ?? 0) > 0)
+  const rctx: DamageCtx = { source: opts.source, attack: opts.attack, amount: 0, kind: 'hp' }
+  // Resistance from any number of sources halves once
+  const scriptResist = (type: string) => scriptsFor(t).some(s => s.grantsResistance?.(bt, t, type, rctx)) ||
+    bt.alive().some(o => o !== t && scriptsFor(o).some(s => s.grantsAnyResistance?.(bt, o, t, type, rctx)))
+  const resists = (type: string) => !opts.irreducible && !shredded && (opts.resistAll || opts.resistTypes?.includes(type) || t.resist.includes(type) || t.resist.includes('all') || (t.flags.resistAll ?? 0) > 0 || scriptResist(type))
   let hpDmg = 0, heat = 0, burn = 0
   const exposed = bt.has(t, 'exposed')
   // Grunts are destroyed by heat from any source other than their own systems

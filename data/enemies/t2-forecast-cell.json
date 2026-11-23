@@ -6,7 +6,7 @@
   "tier": 2,
   "designedFor": 4,
   "kind": "elite",
-  "description": "Identity: anticipation. A phasing hunter and a breacher strike where you will be; a veteran archer covers; an engineer keeps them shielded.",
+  "description": "Identity: anticipation. Two phasing hunters and a breacher strike where you will be; a veteran archer covers; an engineer keeps them shielded.",
   "units": [
     {
       "name": "Forecast Specter",
@@ -14,7 +14,7 @@
       "templates": [
         "Elite"
       ],
-      "count": 1,
+      "count": 2,
       "color": "#b3122e",
       "description": "It steps out of a shadow it was never in.",
       "features": [

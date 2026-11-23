@@ -31,7 +31,7 @@ if (process.env.LCP) {
 }
 for (const { team, official } of teams) {
   if (filter && !team.id.includes(filter)) continue
-  let wins = 0, rounds = 0, lost = 0
+  let wins = 0, rounds = 0, lost = 0, capped = 0
   for (let s = 1; s <= N; s++) {
     const squad = squads[team.tier].map(raw => buildMechUnit(importPilots(raw)[0]))
     const enemies = buildTeam(official ? generateOfficialTeam(team.classes, team.tier, team.kind, 4, s * 31) : team, 4)
@@ -42,9 +42,10 @@ for (const { team, official } of teams) {
     b.start()
     autoBattle(b, Number(process.env.MAX_ROUNDS ?? 30))
     if (b.winner === 'player') wins++
+    else if (!b.winner) capped++ // no winner at the round cap: a stalemate or a stuck battle
     rounds += b.round
     lost += squad.filter(u => u.destroyed).length
   }
   const sq = team.tier === 1 ? 'LL0' : team.tier === 2 ? 'LL5' : 'LL10'
-  console.log(`${team.id.padEnd(28)} vs ${sq}  player win ${wins}/${N}  avg rounds ${(rounds / N).toFixed(1)}  mechs lost/fight ${(lost / N).toFixed(1)}`)
+  console.log(`${team.id.padEnd(28)} vs ${sq}  player win ${wins}/${N}  no result ${capped}  avg rounds ${(rounds / N).toFixed(1)}  mechs lost/fight ${(lost / N).toFixed(1)}`)
 }

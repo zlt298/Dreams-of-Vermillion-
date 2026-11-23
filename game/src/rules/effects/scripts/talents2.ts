@@ -88,6 +88,8 @@ registerScripts([
     id: 't_bonded:2', note: 'Sundance — Intercede (reaction): when your adjacent Bondmate takes damage from a source in your line of sight, you take it instead',
     modifyAnyIncoming(b, self, target, d) {
       if (d.kind !== 'hp' || d.amount <= 0 || target !== bondmate(b, self) || !b.adjacent(self, target) || self.destroyed) return
+      // damage that is itself an Intercede can't be interceded back (two Bonded 2 pilots who are each other's Bondmate)
+      if (target.flags.interceding) return
       if (d.source && !b.los(self, d.source)) return
       if (b.canSpend(self, 'reaction', 'intercede') !== true) return
       const sensible = d.amount >= 3 && !(self.hp + self.overshield <= d.amount && self.structure <= 1)
@@ -96,7 +98,8 @@ registerScripts([
       const amount = d.amount
       d.amount = 0
       b.say(`${self.name} intercedes for ${target.name}!`, 'attack')
-      b.applyDamage(self, [{ type: 'Kinetic', amount }], { source: d.source, irreducible: true })
+      self.flags.interceding = true
+      try { b.applyDamage(self, [{ type: 'Kinetic', amount }], { source: d.source, irreducible: true }) } finally { delete self.flags.interceding }
     },
   },
   {
@@ -104,7 +107,7 @@ registerScripts([
     beforeAnyAttack(b, self, ctx) {
       const mate = bondmate(b, self)
       if (!mate || ctx.target !== mate || !b.hostile(self, ctx.attacker) || ctx.attacker.destroyed || self.destroyed || !b.los(self, ctx.attacker)) return
-      if (self.flags.coverMeBusy || ctx.mode === 'secondary' || b.canSpend(self, 'reaction', 'overwatch') !== true) return
+      if (b.previewing || self.flags.coverMeBusy || ctx.mode === 'secondary' || b.canSpend(self, 'reaction', 'overwatch') !== true) return
       const w = b.bestThreatWeapon(self, ctx.attacker) ?? self.weapons.find(x => !x.tech && b.weaponUsable(self, x, false) === true && b.validTarget(self, x, ctx.attacker) === true)
       if (!b.offerReaction(self, 'cover_me', 'Cover Me!', `${ctx.attacker.name} is about to attack ${mate.name}. Spend your Overwatch to threaten it?`)) return
       b.spend(self, 'reaction', 'overwatch')
@@ -311,7 +314,7 @@ registerScripts([
         if (b.canSpend(ally, 'reaction') !== true) continue
         const w = ally.weapons.find(x => !x.tech && b.weaponReady(ally, x) && b.validTarget(ally, x, target) === true)
         if (!w) continue
-        ally.reactionsLeft--
+        b.spend(ally, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
         b.say(`${ally.name} fires on ${self.name}'s mark!`, 'attack')
         b.weaponAttack(ally, w, { targetId: target.id }, 'free')
         return

@@ -245,7 +245,7 @@ registerScripts([
   {
     id: 'npc:npcf_stampede_defense_berserker', note: 'Resistance to all damage unless Impaired, Stunned, Immobilized, Shredded, Slowed or Exposed',
     beforeAttack(b, self, ctx, role) { if (role === 'target' && !NEGATIVE.some(s => b.has(self, s))) resist(ctx, 'Stampede Defense') },
-    modifyIncoming(b, self, d) { if (!d.attack && !NEGATIVE.some(s => b.has(self, s))) d.amount = Math.ceil(d.amount / 2) },
+    grantsResistance: (b, self, _type, d) => !d.attack && !NEGATIVE.some(s => b.has(self, s)),
   },
   {
     id: 'npc:npcf_aggression_berserker', note: 'Aggression: the first time it takes damage each round, it attacks a random adjacent character',

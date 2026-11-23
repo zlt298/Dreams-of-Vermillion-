@@ -3,7 +3,7 @@
 import type { DamageData, RangeData, TagData, BonusData } from '../../data/lancer'
 import { Lancer } from '../../data/lancer'
 import {
-  type AreaEffect, type GridMap, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
+  type AreaEffect, type GridMap, type Tile, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
   distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from '../grid'
@@ -92,7 +92,7 @@ export function reachable(bt: Battle, u: Unit, budget: number, opts: { ignoreEng
       const prev = dist.get(nk)
       if (prev && prev.cost <= c) continue
       let terminal = false
-      if (!opts.ignoreEngagement && u.kind !== 'deployable') {
+      if (!opts.ignoreEngagement && !u.flags['turn:disengaged'] && u.kind !== 'deployable') {
         for (const o of bt.alive()) {
           if (!bt.hostile(u, o) || startAdj.has(o.id) || (o.kind !== 'mech' && o.kind !== 'npc') || bt.has(o, 'hidden') || u.flags.feint === o.id) continue
           if ((o.stats.size >= u.stats.size || o.flags.localizedMaze) && bt.adjacent(u, o, np)) { terminal = true; break }
@@ -129,7 +129,7 @@ export function canMove(bt: Battle, u: Unit, mode: MoveOpts['mode']): true | str
   if (bt.has(u, 'immobilized')) return 'Immobilized'
   if (bt.has(u, 'stunned')) return 'Stunned'
   if (bt.grapples.some(g => g.a === u.id || g.d === u.id) && !bt.grappleInfo(u).dominant) return 'Grappled (held by a larger side)'
-  if (mode !== 'standard' && bt.has(u, 'slowed') && mode !== 'disengage') return 'Slowed'
+  if (mode !== 'standard' && (bt.has(u, 'slowed') || bt.has(u, 'prone')) && mode !== 'disengage') return bt.has(u, 'slowed') ? 'Slowed' : 'Prone (Slowed)'
   return true
 }
 
@@ -137,20 +137,28 @@ export function canMove(bt: Battle, u: Unit, mode: MoveOpts['mode']): true | str
 export function move(bt: Battle, u: Unit, dest: Pos, opts: MoveOpts = { mode: 'standard' }): boolean {
   const ok = bt.canMove(u, opts.mode)
   if (ok !== true) throw new Error(ok)
-  if (u.flags.landed && opts.mode !== 'involuntary') { u.flying = true; u.flags.landed = false; bt.say(`${u.name} takes off again.`) }
-  if (bt.has(u, 'prone') && opts.mode === 'standard') throw new Error('Stand up first')
   // Mesmer Beacon: voluntary movement only toward the source
   const mes = u.flags.mesmerBy ? bt.unit(u.flags.mesmerBy) : undefined
   if (mes && !mes.destroyed && bt.round <= u.flags.mesmerUntil && opts.mode !== 'involuntary' && chebyshev(dest, mes.pos) >= chebyshev(u.pos, mes.pos)) throw new Error(`Mesmerized: can only move toward ${mes.name}`)
   const budget = opts.mode === 'standard' ? u.moveLeft : u.flags.pendingMove ?? u.stats.speed
-  // teleporting movers (u.flags.teleportMoves) aren't held by engagement
-  let p = bt.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves })
-  // Ramjet / OASIS Wall: voluntary moves must follow a straight line
-  if (opts.mode !== 'involuntary' && !u.flags.teleportMoves && scriptsFor(u).some(sc => sc.straightMovesOnly?.(bt, u))) p = bt.straightPath(u, dest, budget)
-  if (!p) throw new Error('Unreachable')
-  if (p.path.length <= 1) return true
-  if (opts.mode !== 'involuntary') for (const sc of scriptsFor(u)) { const v = sc.validateMove?.(bt, u, dest, p.path, opts.mode); if (v && v !== true) throw new Error(v) }
-  for (const o of bt.alive()) if (o !== u) for (const sc of scriptsFor(o)) { const v = sc.validateAnyMove?.(bt, o, u, dest, opts.mode); if (v && v !== true) throw new Error(v) }
+  // a landed flyer takes off to move; pathing depends on it, so take off first and land again if the move is refused
+  const takeOff = !!u.flags.landed && opts.mode !== 'involuntary'
+  if (takeOff) { u.flying = true; u.flags.landed = false }
+  let p: { path: Pos[]; cost: number } | null
+  try {
+    // teleporting movers (u.flags.teleportMoves) aren't held by engagement
+    p = bt.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves })
+    // Ramjet / OASIS Wall: voluntary moves must follow a straight line
+    if (opts.mode !== 'involuntary' && !u.flags.teleportMoves && scriptsFor(u).some(sc => sc.straightMovesOnly?.(bt, u))) p = bt.straightPath(u, dest, budget)
+    if (!p) throw new Error('Unreachable')
+    if (opts.mode !== 'involuntary' && p.path.length > 1) for (const sc of scriptsFor(u)) { const v = sc.validateMove?.(bt, u, dest, p.path, opts.mode); if (v && v !== true) throw new Error(v) }
+    if (p.path.length > 1) for (const o of bt.alive()) if (o !== u) for (const sc of scriptsFor(o)) { const v = sc.validateAnyMove?.(bt, o, u, dest, opts.mode); if (v && v !== true) throw new Error(v) }
+  } catch (e) {
+    if (takeOff) { u.flying = false; u.flags.landed = true }
+    throw e
+  }
+  if (p.path.length <= 1) { if (takeOff) { u.flying = false; u.flags.landed = true } return true }
+  if (takeOff) bt.say(`${u.name} takes off again.`)
   const snapshot = opts.mode === 'standard'
     ? { unitId: u.id, pos: { ...u.pos }, moveLeft: u.moveLeft, acted: u.actedThisTurn, moved: !!u.flags['turn:moved'], round: bt.round, startEvents: bt.eventCount, endEvents: -1 }
     : null

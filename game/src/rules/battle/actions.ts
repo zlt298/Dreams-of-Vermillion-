@@ -3,7 +3,7 @@
 import type { DamageData, RangeData, TagData, BonusData } from '../../data/lancer'
 import { Lancer } from '../../data/lancer'
 import {
-  type AreaEffect, type GridMap, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
+  type AreaEffect, type GridMap, type Tile, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
   distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from '../grid'
@@ -21,9 +21,12 @@ export function skirmish(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, aux?: {
   const pre = bt.weaponUsable(u, w)
   if (pre !== true) return { ctxs: [], ok: false, reason: pre }
   if (bt.firedThisTurn(u, w)) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
+  const refund = bt.checkpoint()
   bt.spend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish')
   bt.markFired(u, w)
   const r = bt.weaponAttack(u, w, aim, 'skirmish')
+  // an attack refused before anything was rolled (bad target, out of range...) costs nothing
+  if (!r.ok && !r.ctxs.length) { refund(); return r }
   if (aux && aux.weapon.size === 'Auxiliary' && aux.weapon !== w && aux.weapon.mountIndex === w.mountIndex && w.mountIndex >= 0 && !u.destroyed && !bt.firedThisTurn(u, aux.weapon)) {
     bt.markFired(u, aux.weapon)
     const r2 = bt.weaponAttack(u, aux.weapon, aux.aim, 'skirmish', { noBonusDamage: true })
@@ -39,6 +42,7 @@ export function barrage(bt: Battle, u: Unit, a: { weapon: Weapon; aim: AttackAim
   if (bt.firedThisTurn(u, a.weapon) || (b && bt.firedThisTurn(u, b.weapon))) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
   const ua = bt.weaponUsable(u, a.weapon)
   if (ua !== true) return { ctxs: [], ok: false, reason: ua }
+  const refund = bt.checkpoint()
   bt.markFired(u, a.weapon)
   if (b) bt.markFired(u, b.weapon)
   if (a.weapon.size !== 'Superheavy' && !b) {
@@ -49,7 +53,11 @@ export function barrage(bt: Battle, u: Unit, a: { weapon: Weapon; aim: AttackAim
   if (b && a.weapon.size !== 'Superheavy' && !u.destroyed) {
     const r2 = bt.weaponAttack(u, b.weapon, b.aim, 'barrage')
     r.ctxs.push(...r2.ctxs)
+    if (r2.ok) r.ok = true
+    else if (!r.ok && !r2.ok) r.reason = r.reason ?? r2.reason
   }
+  // neither weapon could attack: the Barrage costs nothing
+  if (!r.ok && !r.ctxs.length) { refund(); return r }
   // additional AUXILIARY weapon on each mount that was fired (no bonus damage)
   const mounts = new Set([a.weapon.mountIndex, b?.weapon.mountIndex].filter((m): m is number => m != null && m >= 0))
   const usedMounts = new Set<number>()

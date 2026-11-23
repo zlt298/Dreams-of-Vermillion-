@@ -3,7 +3,7 @@
 import type { DamageData, RangeData, TagData, BonusData } from '../../data/lancer'
 import { Lancer } from '../../data/lancer'
 import {
-  type AreaEffect, type GridMap, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
+  type AreaEffect, type GridMap, type Tile, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
   distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from '../grid'
@@ -73,7 +73,9 @@ export function beginTurn(bt: Battle, u: Unit) {
   bt.syncZeroG(u)
   u.moveLeft = u.stats.speed
   if (bt.has(u, 'bracing_recovery')) { u.actionsLeft = 1; u.moveLeft = 0 }
-  if (bt.has(u, 'stunned')) { u.actionsLeft = 0; u.moveLeft = 0 }
+  // Shut Down counts as Stunned, but keeps its actions so it can Boot Up (a full action); canSpend refuses everything else
+  if (u.statuses.some(x => x.id === 'stunned')) { u.actionsLeft = 0; u.moveLeft = 0 }
+  else if (bt.has(u, 'shutdown')) u.moveLeft = 0
   if (bt.has(u, 'immobilized')) u.moveLeft = 0
   bt.emit({ type: 'turn', unitId: u.id })
   bt.say(`${u.name} activates.`, 'turn')
@@ -90,6 +92,11 @@ export function beginTurn(bt: Battle, u: Unit) {
 
 export function endTurn(bt: Battle, u: Unit = bt.active!) {
   if (!u || u.id !== bt.activeId) throw new Error('Not the active unit')
+  bt.endingTurnOf = u.id
+  try { bt.endTurnInner(u) } finally { bt.endingTurnOf = null }
+}
+
+export function endTurnInner(bt: Battle, u: Unit) {
   if (bt.has(u, 'hidden') && bt.inRevealField(u)) bt.removeStatus(u, 'hidden')
   // Prowl ends with the turn: lose Hidden if exposed now
   if (u.flags.prowl && bt.has(u, 'hidden')) { u.activeTurn = false; const ok = bt.canHide(u); u.activeTurn = true; if (!ok) bt.removeStatus(u, 'hidden') }
@@ -103,7 +110,7 @@ export function endTurn(bt: Battle, u: Unit = bt.active!) {
     if (bt.check(u, 'eng')) { bt.say(`${u.name} clears burn.`); u.burn = 0 }
     else { bt.say(`${u.name} burns for ${u.burn}.`, 'damage'); bt.applyDamage(u, [{ type: 'Burn-tick', amount: u.burn }], {}) }
   }
-  for (const s of scriptsFor(u)) s.onTurnEnd?.(bt, u)
+  if (!u.destroyed) for (const s of scriptsFor(u)) s.onTurnEnd?.(bt, u)
   for (const o of bt.alive()) if (o !== u) for (const s of scriptsFor(o)) s.onAnyTurnEnd?.(bt, o, u)
   // reactor meltdown / self destruct
   if (!u.destroyed && u.meltdownTurns != null) {

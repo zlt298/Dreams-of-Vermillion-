@@ -385,7 +385,7 @@ registerScripts([
   {
     id: 'cb_briareos_frame', note: 'Resistance to all damage at 1 Structure or less; at 0 HP and 0 Structure the mech is not destroyed but makes a structure check each time it takes damage, and cannot regain HP until a Full Repair',
     init: u => { u.flags.briareos = true },
-    modifyIncoming(b, self, d) { if (self.structure <= 1 && d.kind === 'hp') d.amount = Math.ceil(d.amount / 2) },
+    grantsResistance: (b, self) => self.structure <= 1,
   },
   {
     id: 'cb_all_theater_movement_suite', note: 'Toggle flight; 1 heat at end of turn while flying',
@@ -423,7 +423,7 @@ registerScripts([
       if (b.hostile(self, u) || u === self || b.canSpend(self, 'reaction') !== true || b.has(self, 'jammed')) return
       const t = b.alive().find(o => b.hostile(self, o) && (o.kind === 'mech' || o.kind === 'npc') && !b.has(o, 'lockon') && b.techTargetValid(self, o) === true)
       if (!t || !once(self, 'heldimage')) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       b.say(`${self.name}: The Lesson of the Held Image.`)
       b.addStatus(t, 'lockon', 'until_cleared', self)
     },

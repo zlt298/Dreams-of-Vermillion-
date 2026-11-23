@@ -348,7 +348,7 @@ registerScripts([
       text: 'Toggle: Resistance to all damage, heat and burn from attacks originating beyond range 3.',
       run: (bt, self) => { self.flags.hyperdense = !self.flags.hyperdense },
     })],
-    modifyIncoming(b, self, d) { if (self.flags.hyperdense && d.source && b.distance(self, d.source) > 3) d.amount = Math.ceil(d.amount / 2) },
+    grantsResistance: (b, self, _type, d) => !!self.flags.hyperdense && !!d.source && b.distance(self, d.source) > 3,
   },
   {
     id: 'ms_webjaw_snare', note: 'Webjaw Snare: an adjacent Deployable (10 HP, Evasion 5) that doesn\'t obstruct and can\'t be attacked until triggered; a hostile moving over it saves (Hull) or takes 1d6 AP kinetic and is Immobilized until the snare is destroyed',
@@ -472,7 +472,7 @@ registerScripts([
       invade('neurospike', 'Mirage', 'The target treats you as Invisible until the end of its next turn.', (bt, self, t) => { t.flags[`mirage:${self.id}`] = bt.round + 1 })(b, u),
     ],
     beforeAnyAttack(b, self, ctx) {
-      if (ctx.attacker.flags.shrikeUntil && b.round <= ctx.attacker.flags.shrikeUntil && b.hostile(self, ctx.attacker)) b.applyDamage(ctx.attacker, [{ type: 'Heat', amount: 2 }], { source: self })
+      if (!b.previewing && ctx.attacker.flags.shrikeUntil && b.round <= ctx.attacker.flags.shrikeUntil && b.hostile(self, ctx.attacker)) b.applyDamage(ctx.attacker, [{ type: 'Heat', amount: 2 }], { source: self })
       const m = ctx.attacker.flags[`mirage:${self.id}`]
       if (m && b.round <= m && ctx.target === self) ctx.forceInvisible = true
     },
@@ -529,7 +529,7 @@ registerScripts([
       if (self.flags.markerTarget !== ctx.target.id || !ctx.hit || ctx.crit || ctx.tech || ctx.attacker === self || b.hostile(self, ctx.attacker) || !ctx.attacker.canCrit) return
       if (b.canSpend(self, 'reaction') !== true) return
       if (!b.offerReaction(self, 'markerlight', 'Weak spot?', `${ctx.attacker.name} hit ${ctx.target.name}. Spend ${self.name}'s reaction to make it a critical hit?`)) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       delete self.flags.markerTarget
       ctx.crit = true
       b.say(`  ${self.name} marks a weak spot: CRITICAL HIT!`, 'attack')
@@ -549,7 +549,7 @@ registerScripts([
     id: 'ms_singularity_motivator', note: 'Exposed Singularity: teleport 1d6 when hit (auto reaction, away from the attacker)',
     afterAttack(b, self, ctx, role) {
       if (role !== 'target' || !ctx.hit || self.destroyed || b.canSpend(self, 'reaction') !== true || !once(self, 'singularity')) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       b.forceMove(self, ctx.attacker, b.rng.d(6), 1)
     },
   },
@@ -676,7 +676,7 @@ registerScripts([
       if (!m || ctx.target.id !== m.ally || !b.hostile(ctx.attacker, ctx.target) || b.adjacent(self, ctx.target)) return
       if (b.canSpend(self, 'reaction') !== true || b.has(self, 'immobilized') || b.has(self, 'stunned')) return
       if (!b.offerReaction(self, 'mimic_mesh', 'Battlefield Awareness?', `${ctx.attacker.name} acts against ${ctx.target.name}. Spend ${self.name}'s reaction to move 3 toward it first?`)) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       b.say(`${self.name} dashes toward ${ctx.target.name} (Battlefield Awareness).`)
       b.forceMove(self, ctx.target, 3, -1)
     },
@@ -685,7 +685,7 @@ registerScripts([
     id: 'ms___scorpion_v70.1', note: '//SCORPION: when a tech attack hits you, the attacker is Impaired and takes 2 heat',
     afterAttack(b, self, ctx, role) {
       if (role === 'target' && ctx.tech && b.canSpend(self, 'reaction') === true && once(self, 'scorpion')) {
-        self.reactionsLeft--
+        b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
         b.addStatus(ctx.attacker, 'impaired', 'next_turn_end_target', self)
         b.applyDamage(ctx.attacker, [{ type: 'Heat', amount: 2 }], { source: self })
       }
@@ -1019,7 +1019,7 @@ registerScripts([
     actions: (b, u) => [action({ key: 'stasisbolt', name: 'Charge Stasis Bolt', activation: 'quick', target: 'none', text: 'Gain the Interdiction Point reaction.', usable: (bt, self) => (self.flags.stasisBolt ? 'Already charged' : true), run: (bt, self) => { self.flags.stasisBolt = true } })],
     afterAnyRoll(b, self, ctx) {
       if (!self.flags.stasisBolt || !ctx.hit || b.hostile(self, ctx.target) || b.canSpend(self, 'reaction') !== true || !b.los(self, ctx.attacker)) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       self.flags.stasisBolt = false
       const mine = b.rng.d(20) + self.stats.grit
       b.say(`${self.name} fires a stasis bolt (${mine} vs ${ctx.total}).`)
@@ -1043,7 +1043,7 @@ registerScripts([
       if (ctx.resistAll || b.canSpend(self, 'reaction') !== true || self.heat + 2 > self.stats.heatcap) return
       const want = !b.hostile(self, ctx.target) && b.hostile(self, ctx.attacker)
       if (!b.offerReaction(self, 'blinkfield', 'Blinkfield Intervention?', `${ctx.attacker.name} attacks ${ctx.target.name} inside the dome. Take 2 heat to give it Resistance to all damage from this attack?`, want && ctx.target.hp <= ctx.target.stats.hp / 2)) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       b.addHeat(self, 2)
       ctx.resistAll = true
       ctx.reasons.push('Blinkfield Intervention')
@@ -1080,8 +1080,10 @@ registerScripts([
   },
   {
     id: 'ms_deep_well_heat_sink', note: 'Resistance to heat on turns started in the Danger Zone',
-    onTurnStart(b, u) { if (b.has(u, 'dangerzone') && !u.resist.includes('Heat')) { u.resist.push('Heat'); u.flags['turn:deepwell'] = true } },
-    onTurnEnd(b, u) { if (u.flags['turn:deepwell']) u.resist = u.resist.filter(r => r !== 'Heat') },
+    // a flag, not u.resist: other sources of heat Resistance (Manticore's core) must survive the end of the turn
+    onTurnStart(b, u) { if (b.has(u, 'dangerzone')) u.flags.deepwell = true },
+    onTurnEnd(b, u) { delete u.flags.deepwell },
+    grantsResistance: (b, self, type) => type === 'Heat' && !!self.flags.deepwell,
   },
   {
     id: 'ms_lucifer_class_nhp', note: 'LUCIFER: next energy attack deals bonus damage equal to your heat',

@@ -3,7 +3,7 @@
 import type { DamageData, RangeData, TagData, BonusData } from '../../data/lancer'
 import { Lancer } from '../../data/lancer'
 import {
-  type AreaEffect, type GridMap, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
+  type AreaEffect, type GridMap, type Tile, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
   distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from '../grid'
@@ -39,7 +39,8 @@ export function bestThreatWeapon(bt: Battle, o: Unit, target: Unit): Weapon | nu
     if (bt.isAoE(pr)) continue
     const threat = bt.weaponThreat(o, w)
     if (threat <= 0 || bt.distance(o, target) > threat) continue
-    if (!bt.los(o, target)) continue
+    // a target the attack would refuse (Hidden, intangible, no line of sight) doesn't provoke the reaction
+    if (bt.validTarget(o, w, target) !== true) continue
     const avg = pr.damage.reduce((a, d) => a + averageDice(d.val), 0)
     if (avg > bestDmg) { best = w; bestDmg = avg }
   }
@@ -115,7 +116,8 @@ export function weaponUsable(bt: Battle, u: Unit, w: Weapon, normalAttack = true
   if (!w.loaded) return 'Needs reloading'
   if (w.usesLeft === 0) return 'No uses left'
   if (!w.charged) return 'Recharging'
-  if (bt.has(u, 'jammed') && !(u.flags.shieldedMagazines && !bt.isMelee(w))) return 'Jammed'
+  // Jammed stops weapon attacks, but Improvised Attacks, Grapple and Ram are still allowed
+  if (bt.has(u, 'jammed') && w.type !== 'Improvised' && !(u.flags.shieldedMagazines && !bt.isMelee(w))) return 'Jammed'
   const pr = bt.profile(w)
   if (!pr.damage.length && !pr.onHit.length && !w.tech) {
     const d = w.dataId ? Lancer.weapons.get(w.dataId) : undefined
@@ -211,7 +213,7 @@ export function previewDetail(bt: Battle, attacker: Unit, w: Weapon, target: Uni
       // armor once from the attack's total (largest parts first), then resistance per type
       let total = 0
       const ps = parts.filter(p => p.type !== 'Heat' && p.type !== 'Burn').map(p => ({ type: p.type, amount: exposed ? p.amount * 2 : p.amount })).sort((x, y) => y.amount - x.amount)
-      let armor = ap || irreducible ? 0 : target.stats.armor
+      let armor = ap || irreducible || bt.has(target, 'shredded') ? 0 : target.stats.armor
       for (const p of ps) { const cut = Math.min(armor, p.amount); armor -= cut; p.amount -= cut; total += resists(p.type) ? Math.ceil(p.amount / 2) : p.amount }
       for (const p of parts) if (p.type === 'Burn') total += resists('Burn') ? Math.ceil(p.amount / 2) : p.amount
       return total
@@ -256,10 +258,22 @@ export function previewAttackRaw(bt: Battle, attacker: Unit, w: Weapon, target: 
     const def = bt.defenseOf(target, ctx)
     const chance = hitChance(ctx.attackBonus, ctx.accuracy - ctx.difficulty, def)
     const pr = bt.profile(w)
+    // same order as applyDamage: Exposed doubles, Armor comes off the total once, then Resistance halves
+    const shredded = bt.has(target, 'shredded')
+    const exposed = bt.has(target, 'exposed')
+    const resists = (type: string) => !shredded && (target.resist.includes(type) || target.resist.includes('all'))
+    const parts = pr.damage.filter(d => d.type !== 'Heat').map(d => {
+      const amount = averageDice(d.val) + bt.flatDamageBonus(attacker, w, d.type)
+      return { type: d.type, amount: exposed && d.type !== 'Burn' ? amount * 2 : amount }
+    }).sort((x, y) => y.amount - x.amount)
+    let armor = hasTag(pr.tags, 'tg_ap') || shredded ? 0 : target.stats.armor
     let dmg = 0
-    for (const d of pr.damage) if (d.type !== 'Heat') dmg += averageDice(d.val) + bt.flatDamageBonus(attacker, w, d.type)
-    dmg = Math.max(0, dmg - (hasTag(pr.tags, 'tg_ap') ? 0 : target.stats.armor))
-    if (bt.has(target, 'exposed')) dmg *= 2
+    for (const p of parts) {
+      if (p.type === 'Burn') { dmg += resists('Burn') ? p.amount / 2 : p.amount; continue }
+      const cut = Math.min(armor, Math.max(0, p.amount)); armor -= cut
+      const left = Math.max(0, p.amount - cut)
+      dmg += resists(p.type) ? left / 2 : left
+    }
     let exp = dmg * chance
     const rel = tagVal(pr.tags, 'tg_reliable')
     if (rel) exp += (1 - chance) * rel

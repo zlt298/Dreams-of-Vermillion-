@@ -6,13 +6,13 @@
   "tier": 3,
   "designedFor": 4,
   "kind": "elite",
-  "description": "Identity: the full choir. A witch-cantor scrambles your systems, an assault cantor and a frenzied blade press in, a veteran sniper covers, a commander keeps them all in voice.",
+  "description": "Identity: the full choir. A witch-cantor scrambles your systems, an assault cantor and a frenzied blade press in, a veteran sniper covers, a precentor keeps them all in voice.",
   "units": [
     {
       "name": "Witch-Cantor",
       "role": "Controller",
       "templates": [
-        "Elite"
+        "Veteran"
       ],
       "count": 1,
       "color": "#9b59b6",
@@ -91,7 +91,8 @@
             }
           ]
         }
-      ]
+      ],
+      "veteranTrait": "hardened_target"
     },
     {
       "name": "Assault Cantor",
@@ -353,12 +354,10 @@
     {
       "name": "Choir Precentor",
       "role": "Support",
-      "templates": [
-        "Commander"
-      ],
+      "templates": [],
       "count": 1,
       "color": "#27ae60",
-      "description": "Leads the hymn. Everyone near it sings in time.",
+      "description": "Leads the hymn. Its verses mend what the lance breaks.",
       "features": [
         {
           "type": "system",
@@ -376,7 +375,7 @@
               "status": "any_negative"
             }
           ],
-          "recharge": 4
+          "recharge": 6
         },
         {
           "type": "system",
@@ -389,7 +388,8 @@
               "do": "overshield",
               "val": 5
             }
-          ]
+          ],
+          "recharge": 5
         },
         {
           "type": "weapon",

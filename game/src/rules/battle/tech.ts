@@ -3,7 +3,7 @@
 import type { DamageData, RangeData, TagData, BonusData } from '../../data/lancer'
 import { Lancer } from '../../data/lancer'
 import {
-  type AreaEffect, type GridMap, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
+  type AreaEffect, type GridMap, type Tile, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
   distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from '../grid'
@@ -114,6 +114,15 @@ export function techAttackRoll(bt: Battle, u: Unit, t: Unit, label: string): Att
   for (const s of scriptsFor(u)) s.beforeAttack?.(bt, u, ctx, 'attacker')
   for (const s of scriptsFor(t)) s.beforeAttack?.(bt, t, ctx, 'target')
   for (const o of bt.alive()) for (const s of scriptsFor(o)) s.beforeAnyAttack?.(bt, o, ctx)
+  // Prone, Braced and Lock On apply to every attack, tech included (after scripts, so Hacker's SNOW-CRASH can consume Lock On itself)
+  if (bt.has(t, 'prone')) { ctx.accuracy++; ctx.reasons.push('Prone target +1') }
+  if (bt.has(t, 'braced')) { ctx.difficulty++; ctx.reasons.push('Braced target -1') }
+  if (bt.has(t, 'lockon') && bt.hostile(u, t)) {
+    ctx.accuracy++
+    ctx.reasons.push('Lock On +1')
+    bt.removeStatus(t, 'lockon')
+    ctx.lockOnConsumed = true
+  }
   bt.say(`${u.name} — ${label} → ${t.name}.`, 'attack')
   if (bt.has(u, 'hidden')) bt.removeStatus(u, 'hidden')
   bt.rollToHit(ctx)
@@ -153,8 +162,9 @@ export function bolster(bt: Battle, u: Unit, t: Unit) {
   const c = bt.canQuickTech(u, 'bolster')
   if (c !== true) throw new Error(c)
   if (bt.hostile(u, t)) throw new Error('Bolster targets allies')
-  if (bt.distance(u, t) > u.stats.sensors) throw new Error('Out of sensor range')
-  if (t.role === 'Biological') throw new Error('Biological characters are immune to tech actions')
+  if (t === u) throw new Error('Bolster targets another character')
+  const v = bt.techTargetValid(u, t, 'bolster')
+  if (v !== true) throw new Error(v)
   bt.spendTech(u, 'bolster')
   bt.say(`${u.name} BOLSTERS ${t.name}.`)
   bt.addStatus(t, 'bolstered', 'next_turn_end_target', u)

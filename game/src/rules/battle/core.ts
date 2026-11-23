@@ -2,7 +2,7 @@
 import type { DamageData, RangeData, TagData, BonusData } from '../../data/lancer'
 import { Lancer } from '../../data/lancer'
 import {
-  type AreaEffect, type GridMap, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
+  type AreaEffect, type GridMap, type Tile, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
   distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from '../grid'
@@ -342,9 +342,18 @@ export class Battle {
     if (existing) {
       // keep the longer of the two
       if (!existing.clockUnit) return true
-      if (!inst.clockUnit) Object.assign(existing, inst)
-      else if (existing.clockUnit === inst.clockUnit) existing.turnsLeft = Math.max(existing.turnsLeft ?? 0, inst.turnsLeft ?? 0)
-      else Object.assign(existing, inst)
+      if (!inst.clockUnit) { Object.assign(existing, inst); delete existing.clockUnit; delete existing.turnsLeft; delete existing.atStart; return true }
+      const same = u.statuses.find(s => s.id === id && s.clockUnit === inst.clockUnit)
+      if (same) {
+        // on one clock, more turns is longer; with equal turns, ending at the end of the turn outlasts the start
+        const n = same.turnsLeft ?? 0, m = inst.turnsLeft ?? 0
+        if (m > n) { same.turnsLeft = m; same.atStart = inst.atStart }
+        else if (m === n) same.atStart = !!same.atStart && !!inst.atStart
+        if (!same.atStart) delete same.atStart
+      } else {
+        // timed on different units' turns: the two can't be compared, so keep both; the status lasts until the later one expires
+        u.statuses.push(inst)
+      }
       return true
     }
     u.statuses.push(inst)
@@ -370,7 +379,10 @@ export class Battle {
       for (const s of [...u.statuses]) {
         if (s.clockUnit !== clock.id || !!s.atStart !== atStart) continue
         s.turnsLeft = (s.turnsLeft ?? 1) - 1
-        if (s.turnsLeft <= 0) this.removeStatus(u, s.id)
+        if (s.turnsLeft > 0) continue
+        // drop just this instance; the status only ends when no other instance is left
+        if (u.statuses.some(x => x !== s && x.id === s.id)) u.statuses = u.statuses.filter(x => x !== s)
+        else this.removeStatus(u, s.id)
       }
     }
   }
@@ -458,7 +470,10 @@ export class Battle {
 
   beginTurn(u: Unit) { return this.command('beginTurn', [u], () => turns.beginTurn(this, u)) }
 
+  /** Set while endTurn runs, so a unit destroyed by its own end-of-turn effects doesn't hand the turn over twice. */
+  endingTurnOf: string | null = null
   endTurn(u: Unit = this.active!) { return this.command('endTurn', [u], () => turns.endTurn(this, u)) }
+  endTurnInner(u: Unit) { return turns.endTurnInner(this, u) }
   removeStatusIfExpiredRecovery(_u: Unit) {}
   endRound() { return turns.endRound(this) }
   sitrepScore?: number
@@ -565,12 +580,25 @@ export class Battle {
    * weapon and system objects keep their identity so the UI's references stay valid). Render
    * listeners are not involved: use `transaction` to hold events back until a command succeeds.
    */
+  /** True while a preview runs in sandbox(): scripts must not take real actions (reactions, attacks) then. */
+  get previewing(): boolean { return this.sandboxDepth > 0 }
+  /** Tiles changed during the current preview, as they were before it (see touchTile). */
+  sandboxTiles: Map<number, Tile> | null = null
+  /** Call before changing a map tile: inside a preview, remember how it was so sandbox() can put it back. */
+  touchTile(p: Pos) { return decisions.touchTile(this, p) }
+
+  /**
+   * Snapshot of the battle's own fields (turn, side, round, winner, grapples, areas, terrain…) and the map tiles,
+   * not the units: deep-copied, but references to units, weapons, systems and the map are kept as they are.
+   */
+  snapshotBattleFields(withTiles = true): () => void { return decisions.snapshotBattleFields(this, withTiles) }
+
   checkpoint(): () => void { return decisions.checkpoint(this) }
   /**
    * Run a player or AI command so it can be suspended for a decision: render events are held back
    * until it finishes; on PendingChoice the battle is rolled back and the question returned.
    */
-  transaction(fn: () => void, answers: number[] = []): { pending: ChoiceQuestion } | { error?: Error } { return decisions.transaction(this, fn, answers) }
+  transaction(fn: () => void, answers: number[] = [], opts: { rollbackOnError?: boolean } = {}): { pending: ChoiceQuestion } | { error?: Error } { return decisions.transaction(this, fn, answers, opts) }
 
   /** Compute accuracy/difficulty and the to-hit chance for previews and the AI (no state is changed). */
   previewAttack(attacker: Unit, w: Weapon, target: Unit, from: Pos = attacker.pos, mode: AttackCtx['mode'] = 'skirmish'): { ctx: AttackCtx; chance: number; cover: Cover; expectedDamage: number } { return attacks.previewAttack(this, attacker, w, target, from, mode) }
@@ -635,6 +663,8 @@ export class Battle {
 
   boost(u: Unit) { return this.command('boost', [u], () => terrain.boost(this, u)) }
 
+  /** Standing up takes the standard move: only on your own turn, before moving, and not while Stunned or Immobilized. */
+  canStandUp(u: Unit): true | string { return terrain.canStandUp(this, u) }
   standUp(u: Unit) { return this.command('standUp', [u], () => terrain.standUp(this, u)) }
 
   overcharge(u: Unit) { return this.command('overcharge', [u], () => terrain.overcharge(this, u)) }
@@ -648,6 +678,10 @@ export class Battle {
   hide(u: Unit) { return this.command('hide', [u], () => terrain.hide(this, u)) }
   search(u: Unit) { return this.command('search', [u], () => terrain.search(this, u)) }
 
+  /** Ram and Grapple are attacks: hidden, intangible or destroyed targets can't be chosen. */
+  meleeTargetValid(u: Unit, t: Unit): true | string { return terrain.meleeTargetValid(this, u, t) }
+  /** The status modifiers every attack gets (as buildWeaponCtx applies them), for Ram and Grapple. Attacking reveals a Hidden attacker. */
+  meleeAttackMods(u: Unit, t: Unit, ctx: AttackCtx) { return terrain.meleeAttackMods(this, u, t, ctx) }
   ram(u: Unit, t: Unit) { return this.command('ram', [u, t], () => terrain.ram(this, u, t)) }
 
   /** Active grapples: attacker `a` holds defender `d`; `winner` decides same-size contests. */

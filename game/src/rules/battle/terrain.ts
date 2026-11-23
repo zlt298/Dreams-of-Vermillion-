@@ -3,7 +3,7 @@
 import type { DamageData, RangeData, TagData, BonusData } from '../../data/lancer'
 import { Lancer } from '../../data/lancer'
 import {
-  type AreaEffect, type GridMap, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
+  type AreaEffect, type GridMap, type Tile, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
   distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from '../grid'
@@ -19,6 +19,7 @@ export function damageTerrain(bt: Battle, p: Pos, amount: number, opts: { source
   const t = tileAt(bt.map, p)
   if (!t || t.kind !== 'block' || amount <= 0 || t.indestructible) return false
   const k = `${p.x},${p.y}`
+  bt.touchTile(p)
   let dmg = (bt.terrainDamage.get(k) ?? 0) + amount
   let levels = 0
   while (dmg >= Battle.TERRAIN_SECTION_HP && t.h > 0) { dmg -= Battle.TERRAIN_SECTION_HP; t.h--; levels++ }
@@ -41,6 +42,7 @@ export function damageObjectsIn(bt: Battle, tiles: Pos[], amount: number, opts: 
 export function raiseCover(bt: Battle, p: Pos, opts: { indestructible?: boolean; owner?: string } = {}): boolean {
   const t = tileAt(bt.map, p)
   if (!t || t.kind === 'block' || bt.alive().some(o => !o.flags.flat && footprint(o).some(q => q.x === p.x && q.y === p.y))) return false
+  bt.touchTile(p)
   t.h += 1
   t.kind = 'block'
   if (opts.indestructible) t.indestructible = true
@@ -84,6 +86,7 @@ export function boost(bt: Battle, u: Unit) {
   const c = bt.canSpend(u, 'quick', 'boost')
   if (c !== true) throw new Error(c)
   if (bt.has(u, 'slowed') || bt.has(u, 'immobilized')) throw new Error('Cannot boost while slowed/immobilized')
+  if (bt.has(u, 'prone')) throw new Error('Cannot boost while prone (stand up first)') // Prone characters are Slowed
   if (bt.has(u, 'grappled')) throw new Error('Cannot boost while grappling or grappled')
   bt.spend(u, 'quick', 'boost')
   const extra = u.bonuses.filter(b => b.id === 'boost').reduce((a, b) => a + Number(b.val), 0)
@@ -95,9 +98,20 @@ export function boost(bt: Battle, u: Unit) {
   for (const o of bt.alive()) for (const s of scriptsFor(o)) s.onAnyMovementAction?.(bt, o, u, 'boost')
 }
 
+/** Standing up takes the standard move: only on your own turn, before moving, and not while Stunned or Immobilized. */
+export function canStandUp(bt: Battle, u: Unit): true | string {
+  if (!bt.has(u, 'prone')) return 'Not prone'
+  if (!u.activeTurn) return 'Not this unit’s turn'
+  if (bt.has(u, 'stunned')) return 'Stunned'
+  if (bt.has(u, 'immobilized')) return 'Immobilized'
+  if (u.flags['turn:moved'] || u.moveLeft < u.stats.speed) return 'Standard move already used'
+  return true
+}
+
 export function standUp(bt: Battle, u: Unit) {
   if (!bt.has(u, 'prone')) return
-  if (bt.has(u, 'immobilized')) throw new Error('Immobilized')
+  const ok = bt.canStandUp(u)
+  if (ok !== true) throw new Error(ok)
   u.moveLeft = 0
   bt.removeStatus(u, 'prone')
 }
@@ -118,6 +132,8 @@ export function overcharge(bt: Battle, u: Unit) {
 export function stabilize(bt: Battle, u: Unit, mode: 'cool' | 'repair', clear?: { unit: Unit; status?: StatusId | 'burn' | 'reload' }) {
   const c = bt.canSpend(u, 'full')
   if (c !== true) throw new Error(c)
+  // Stabilize ends burn, reloads, or clears one condition: nothing else
+  if (clear?.status && !['burn', 'reload', 'impaired', 'slowed', 'immobilized', 'jammed', 'shredded', 'lockon'].includes(clear.status)) throw new Error(`Stabilize can't clear ${clear.status}`)
   if (mode === 'repair' && u.repairs <= 0) throw new Error('No repairs left')
   if (mode === 'repair' && u.flags.briareosZero) throw new Error("Can't regain HP until a Full Repair (Briareos Frame)")
   bt.spend(u, 'full')
@@ -193,15 +209,34 @@ export function search(bt: Battle, u: Unit) {
   }
 }
 
+/** Ram and Grapple are attacks: hidden, intangible or destroyed targets can't be chosen. */
+export function meleeTargetValid(bt: Battle, u: Unit, t: Unit): true | string {
+  if (t.destroyed) return 'Destroyed'
+  if (t === u) return 'Cannot target self'
+  if (t.flags.intangible || u.flags.intangible) return 'Intangible'
+  if (bt.has(t, 'hidden') && bt.hostile(u, t)) return 'Hidden'
+  return true
+}
+
+/** The status modifiers every attack gets (as buildWeaponCtx applies them), for Ram and Grapple. Attacking reveals a Hidden attacker. */
+export function meleeAttackMods(bt: Battle, u: Unit, t: Unit, ctx: AttackCtx) {
+  if (bt.has(u, 'impaired')) { ctx.difficulty++; ctx.reasons.push('Impaired -1') }
+  if (bt.has(t, 'prone')) { ctx.accuracy++; ctx.reasons.push('Prone target +1') }
+  if (bt.has(t, 'braced')) { ctx.difficulty++; ctx.reasons.push('Braced target -1') }
+  if (bt.has(t, 'lockon') && bt.hostile(u, t)) { ctx.accuracy++; ctx.reasons.push('Lock On +1'); bt.removeStatus(t, 'lockon'); ctx.lockOnConsumed = true }
+  if (bt.has(u, 'hidden')) bt.removeStatus(u, 'hidden')
+}
+
 export function ram(bt: Battle, u: Unit, t: Unit) {
   const c = bt.canSpend(u, 'quick', 'ram')
   if (c !== true) throw new Error(c)
   if (!bt.adjacent(u, t)) throw new Error('Must be adjacent')
   if (t.stats.size > u.stats.size && !u.flags.muscleNet) throw new Error('Target is too large')
+  const v = bt.meleeTargetValid(u, t)
+  if (v !== true) throw new Error(v)
   bt.spend(u, 'quick', 'ram')
   const ctx = bt.newAttackCtx(u, t, { melee: true, ranged: false, mode: 'ram' })
-  if (bt.has(u, 'impaired')) ctx.difficulty++
-  if (bt.has(t, 'prone')) ctx.accuracy++
+  bt.meleeAttackMods(u, t, ctx)
   for (const s of scriptsFor(u)) s.beforeAttack?.(bt, u, ctx, 'attacker')
   bt.say(`${u.name} RAMS ${t.name}.`, 'attack')
   bt.rollToHit(ctx)
@@ -216,9 +251,11 @@ export function grapple(bt: Battle, u: Unit, t: Unit) {
   const c = bt.canSpend(u, 'quick', 'grapple')
   if (c !== true) throw new Error(c)
   if (!bt.adjacent(u, t)) throw new Error('Must be adjacent')
+  const v = bt.meleeTargetValid(u, t)
+  if (v !== true) throw new Error(v)
   bt.spend(u, 'quick', 'grapple')
   const ctx = bt.newAttackCtx(u, t, { melee: true, ranged: false, mode: 'grapple' })
-  if (bt.has(u, 'impaired')) ctx.difficulty++
+  bt.meleeAttackMods(u, t, ctx)
   bt.say(`${u.name} attempts to GRAPPLE ${t.name}.`, 'attack')
   bt.rollToHit(ctx)
   if (ctx.hit) bt.startGrapple(u, t)
@@ -357,6 +394,7 @@ export function improvisedAttack(bt: Battle, u: Unit, t: Unit) {
   const c = bt.canSpend(u, 'full')
   if (c !== true) throw new Error(c)
   if (!bt.adjacent(u, t)) throw new Error('Must be adjacent')
+  const refund = bt.checkpoint()
   bt.spend(u, 'full')
   const w: Weapon = {
     uid: 'improvised', name: 'Improvised Attack', mountIndex: -1, size: 'Main', type: 'Improvised', profileIndex: 0,
@@ -365,7 +403,8 @@ export function improvisedAttack(bt: Battle, u: Unit, t: Unit) {
   }
   const brawler = u.bonuses.find(b => b.id === 'damage' && b.weapon_types?.includes('Improvised') && typeof b.val === 'string')
   if (brawler) w.profiles[0].damage = [{ type: 'Kinetic', val: brawler.val }]
-  bt.weaponAttack(u, w, { targetId: t.id }, 'improvised')
+  const r = bt.weaponAttack(u, w, { targetId: t.id }, 'improvised')
+  if (!r.ok && !r.ctxs.length) { refund(); throw new Error(r.reason ?? 'Cannot attack') }
 }
 
 export function reload(bt: Battle, u: Unit, w: Weapon) {
@@ -391,6 +430,7 @@ export function shutDown(bt: Battle, u: Unit) {
 
 export function bootUp(bt: Battle, u: Unit) {
   if (!u.activeTurn || !bt.has(u, 'shutdown')) throw new Error('Not shut down')
+  if (u.statuses.some(x => x.id === 'stunned')) throw new Error('Stunned')
   if (u.actionsLeft < 2) throw new Error('Needs a full action')
   u.actionsLeft = 0
   u.actedThisTurn = true

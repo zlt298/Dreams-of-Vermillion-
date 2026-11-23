@@ -3,7 +3,7 @@
 import type { DamageData, RangeData, TagData, BonusData } from '../../data/lancer'
 import { Lancer } from '../../data/lancer'
 import {
-  type AreaEffect, type GridMap, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
+  type AreaEffect, type GridMap, type Tile, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
   distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from '../grid'
@@ -16,7 +16,8 @@ import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, Mo
 
 /** Let `u` take a forced action it has no action economy for (Law of Blades): costs are paid from a temporary pool. */
 export function withForcedAction<T>(bt: Battle, u: Unit, fn: () => T): T {
-  const keep = { actionsLeft: u.actionsLeft, acted: u.actedThisTurn, quick: u.flags['turn:quickUsed'], spent: u.flags['turn:spent'], bonus: u.flags.bonusQuick }
+  // copy the arrays: spend() pushes into turn:spent in place, which would leak the forced action into the turn's record
+  const keep = { actionsLeft: u.actionsLeft, acted: u.actedThisTurn, quick: u.flags['turn:quickUsed'], spent: u.flags['turn:spent'] ? [...u.flags['turn:spent']] : undefined, bonus: u.flags.bonusQuick }
   const recovering = u.statuses.filter(s => s.id === 'bracing_recovery')
   u.statuses = u.statuses.filter(s => s.id !== 'bracing_recovery')
   u.actionsLeft = 2
@@ -37,6 +38,11 @@ export function sandbox<T>(bt: Battle, fn: () => T): T {
   const listeners = bt.listeners
   bt.listeners = []
   const rng = bt.rng.state, logLen = bt.log.length, evLen = bt.events.length, evCount = bt.eventCount, nUnits = bt.units.length
+  // battle-level state too: a hook can make a real attack inside a preview, and a kill must not end the battle or the turn
+  // tiles are saved only when a preview is about to change one (touchTile): copying the whole map per preview is too slow
+  const restoreBattle = bt.snapshotBattleFields(false)
+  const outerTiles = bt.sandboxTiles
+  bt.sandboxTiles = new Map()
   bt.sandboxDepth++
   const areas = bt.areas.slice(), mines = bt.mines.slice(), lastMove = bt.lastMove
   const snap = bt.units.map(u => ({
@@ -51,7 +57,8 @@ export function sandbox<T>(bt: Battle, fn: () => T): T {
     flags: { ...u.flags },
     statuses: u.statuses.map(s => ({ ...s })),
     bonuses: u.bonuses.slice(), resist: u.resist.slice(), immune: u.immune.slice(),
-    weapons: u.weapons.map(w => ({ w, loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex })),
+    // scripts reshape the attack profile (Ammo Case damage types, Thunder God AP): previews must not keep the change
+    weapons: u.weapons.map(w => ({ w, loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex, profiles: w.profiles.map(p => ({ p, damage: p.damage.map(d => ({ ...d })), tags: p.tags.map(t => ({ ...t })) })) })),
     systems: u.systems.map(s => ({ s, destroyed: s.destroyed, usesLeft: s.usesLeft, charged: s.charged })),
     stats: { ...u.stats },
   }))
@@ -65,10 +72,21 @@ export function sandbox<T>(bt: Battle, fn: () => T): T {
       x.u.statuses = x.statuses
       x.u.bonuses = x.bonuses; x.u.resist = x.resist; x.u.immune = x.immune
       Object.assign(x.u.stats, x.stats)
-      for (const w of x.weapons) Object.assign(w.w, { loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex })
+      for (const w of x.weapons) {
+        Object.assign(w.w, { loaded: w.loaded, usesLeft: w.usesLeft, charged: w.charged, destroyed: w.destroyed, profileIndex: w.profileIndex })
+        for (const sp of w.profiles) { sp.p.damage = sp.damage; sp.p.tags = sp.tags }
+      }
       for (const s of x.systems) Object.assign(s.s, { destroyed: s.destroyed, usesLeft: s.usesLeft, charged: s.charged })
     }
     bt.units.length = nUnits
+    restoreBattle()
+    if (bt.sandboxTiles?.size) {
+      for (const [i, t] of bt.sandboxTiles) { const cur = bt.map.tiles[i] as any; for (const k of Object.keys(cur)) if (!(k in t)) delete cur[k]; Object.assign(cur, t) }
+      bt.invalidateTerrain()
+    }
+    // nested preview: a tile the outer preview hadn't touched was, before the inner one, still as the outer preview found it
+    if (outerTiles && bt.sandboxTiles) for (const [i, t] of bt.sandboxTiles) if (!outerTiles.has(i)) outerTiles.set(i, t)
+    bt.sandboxTiles = outerTiles
     bt.areas = areas
     bt.mines = mines
     bt.lastMove = lastMove
@@ -81,11 +99,49 @@ export function sandbox<T>(bt: Battle, fn: () => T): T {
   }
 }
 
+/** Call before changing a map tile: inside a preview, remember how it was so sandbox() can put it back. */
+export function touchTile(bt: Battle, p: Pos) {
+  if (!bt.sandboxTiles) return
+  const i = p.y * bt.map.w + p.x
+  if (!bt.sandboxTiles.has(i)) bt.sandboxTiles.set(i, { ...bt.map.tiles[i] })
+}
+
 /**
- * Deep snapshot of all mutable battle state; the returned function restores it in place (unit,
- * weapon and system objects keep their identity so the UI's references stay valid). Render
- * listeners are not involved: use `transaction` to hold events back until a command succeeds.
+ * Snapshot of the battle's own fields (turn, side, round, winner, grapples, areas, terrain…) and the map tiles,
+ * not the units: deep-copied, but references to units, weapons, systems and the map are kept as they are.
  */
+export function snapshotBattleFields(bt: Battle, withTiles = true): () => void {
+  const anchors = new Set<object>(bt.units)
+  for (const u of bt.units) { for (const w of u.weapons) anchors.add(w); for (const x of u.systems) anchors.add(x) }
+  anchors.add(bt.map)
+  const dc = (v: any): any => {
+    if (v === null || typeof v !== 'object' || anchors.has(v)) return v
+    if (Array.isArray(v)) return v.map(dc)
+    if (v instanceof Map) return new Map([...v].map(([k, x]) => [k, dc(x)]))
+    if (v instanceof Set) return new Set([...v].map(dc))
+    if (Object.getPrototypeOf(v) !== Object.prototype) return v
+    const o: any = {}
+    for (const k of Object.keys(v)) o[k] = dc(v[k])
+    return o
+  }
+  const tiles = withTiles ? bt.map.tiles.map(t => ({ ...t })) : []
+  const SKIP = new Set(['units', 'map', 'rng', 'log', 'events', 'listeners', 'chooser', 'answers', 'txDepth', 'record', 'commands', 'cmdDepth', 'currentCommand', 'sandboxDepth', 'sandboxTiles', 'mapCache', 'losCache', 'coverCache', 'cacheVersion', 'terrainVersion'])
+  const self = bt as any
+  const rest: Record<string, any> = {}
+  for (const k of Object.keys(self)) if (!SKIP.has(k) && typeof self[k] !== 'function') rest[k] = dc(self[k])
+  return () => {
+    let terrain = false
+    tiles.forEach((t, i) => {
+      const cur = bt.map.tiles[i] as any
+      if (cur.h !== t.h || cur.kind !== t.kind) terrain = true
+      for (const k of Object.keys(cur)) if (!(k in t)) delete cur[k]
+      Object.assign(cur, t)
+    })
+    for (const k of Object.keys(rest)) self[k] = dc(rest[k])
+    if (terrain) bt.invalidateTerrain()
+  }
+}
+
 export function checkpoint(bt: Battle): () => void {
   const anchors = new Set<object>(bt.units)
   for (const u of bt.units) { for (const w of u.weapons) anchors.add(w); for (const x of u.systems) anchors.add(x) }
@@ -131,7 +187,7 @@ export function checkpoint(bt: Battle): () => void {
  * Run a player or AI command so it can be suspended for a decision: render events are held back
  * until it finishes; on PendingChoice the battle is rolled back and the question returned.
  */
-export function transaction(bt: Battle, fn: () => void, answers: number[] = []): { pending: ChoiceQuestion } | { error?: Error } {
+export function transaction(bt: Battle, fn: () => void, answers: number[] = [], opts: { rollbackOnError?: boolean } = {}): { pending: ChoiceQuestion } | { error?: Error } {
   const restore = bt.checkpoint()
   const listeners = bt.listeners
   const held: BattleEvent[] = []
@@ -149,7 +205,9 @@ export function transaction(bt: Battle, fn: () => void, answers: number[] = []):
     bt.listeners = listeners
     bt.answers = []
   }
-  if ('pending' in out) { restore(); return out }
+  // a pending decision is replayed later; a player command refused part-way (rollbackOnError) leaves the battle as it was.
+  // AI turns don't roll back on error: the turn has already been ended, and undoing it would hand the same unit back forever.
+  if ('pending' in out || (out.error && opts.rollbackOnError)) { restore(); return out }
   for (const e of held) for (const l of bt.listeners) l(e)
   return out
 }

@@ -108,7 +108,7 @@ registerScripts([
     note: 'Heavy Frame, Blast Plating, Guardian',
     init: u => { u.flags.guardian = true },
     ...heavyFrame,
-    modifyIncoming: (b, self, d) => { if (isAoEAttack(b, d)) d.amount = Math.ceil(d.amount / 2) },
+    grantsResistance: (b, _self, _type, d) => isAoEAttack(b, d),
   },
   {
     id: 'core:mf_drake',
@@ -131,7 +131,7 @@ registerScripts([
     canBeMoved: (b, self) => !self.flags.fortress,
     preventAnyMove: (b, self, target) => target !== self && fortressShelters(b, self, target),
     blockAnyStatus: (b, self, target, st) => st === 'prone' && target !== self && fortressShelters(b, self, target),
-    modifyAnyIncoming: (b, self, target, d) => { if (target !== self && fortressShelters(b, self, target) && isAoEAttack(b, d)) d.amount = Math.ceil(d.amount / 2) },
+    grantsAnyResistance: (b, self, target, _type, d) => target !== self && fortressShelters(b, self, target) && isAoEAttack(b, d),
     actions: (_b, u) => (u.flags.fortress ? [action({
       key: 'fortress_off', name: 'Deactivate Fortress', activation: 'protocol', target: 'none', text: 'Fold the stabilizers away: you can move again (the cover sections stay).',
       run: (bt, self) => {
@@ -140,7 +140,11 @@ registerScripts([
         const i = self.immune.indexOf('prone'); if (i >= 0) self.immune.splice(i, 1)
         bt.say(`${self.name} deactivates Fortress.`)
       },
-      aiScore: () => -1,
+      // AI: fold up when nothing hostile is within reach of any weapon (otherwise it is rooted out of the fight)
+      aiScore: (bt, self) => {
+        const reach = Math.max(1, ...self.weapons.filter(w => !w.destroyed && !w.tech).map(w => bt.weaponReach(self, w)))
+        return bt.alive().some(o => bt.hostile(self, o) && (o.kind === 'mech' || o.kind === 'npc') && bt.distance(self, o) <= reach) ? -1 : 3
+      },
     })] : []),
   },
   // ---------------- IPS-N Lancaster
@@ -245,7 +249,7 @@ registerScripts([
     id: 'core:mf_vlad',
     note: 'Tormentor Spines',
     onCoreActivate: (b, u) => { u.flags.tormentor = true },
-    modifyIncoming: (b, self, d) => { if (self.flags.tormentor && d.source && b.distance(self, d.source) <= 3) d.amount = Math.ceil(d.amount / 2) },
+    grantsResistance: (b, self, _type, d) => !!self.flags.tormentor && !!d.source && b.distance(self, d.source) <= 3,
   },
   // ---------------- SSC Black Witch
   {
@@ -256,7 +260,7 @@ registerScripts([
       if (!ctx.hit || !ctx.profile?.damage.some(d => d.type === 'Kinetic')) return
       if (ctx.target !== self && (b.hostile(self, ctx.target) || !b.adjacent(self, ctx.target))) return
       if (b.has(ctx.target, 'invisible') || b.canSpend(self, 'reaction') !== true || !once(self, 'magparry')) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       const r = b.rng.d(6)
       b.say(`${self.name} attempts a Mag Parry (${r}).`)
       if (r >= 5) { ctx.hit = false; b.say('  Parried!') }
@@ -396,7 +400,7 @@ registerScripts([
     afterAnyRoll(b, self, ctx) {
       if (!self.flags.tacSim || !ctx.hit || b.hostile(self, ctx.target) || b.distance(self, ctx.target) > self.stats.sensors) return
       if (b.canSpend(self, 'reaction') !== true || !once(self, 'tacsim')) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       const r = b.rng.d(6)
       b.say(`${self.name}: Tactical Simulation (${r}).`)
       if (r >= 4) ctx.resistAll = true
@@ -441,7 +445,7 @@ registerScripts([
       const pick = b.choose({ kind: 'reactive_code', unit: self, policy: 'reactions', title: 'Reactive Code', text: `${att.name} hit ${self.name} with a tech attack. Take a Quick Tech option against it as a reaction?`, options: opts, defaultIndex: 1 })
       if (pick === opts.length - 1) return
       self.flags['round:reactive'] = true
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       b.say(`${self.name}'s Reactive Code answers ${att.name}.`)
       b.withFreeTech(self, () => {
         if (pick === 0) b.lockOn(self, att)
@@ -608,7 +612,7 @@ registerScripts([
     beforeAnyAttack(b, self, ctx) {
       if (b.hostile(self, ctx.target) || !b.hostile(self, ctx.attacker) || b.distance(self, ctx.target) > self.stats.sensors) return
       if (ctx.target.kind !== 'mech' || b.canSpend(self, 'reaction') !== true || !once(self, 'warpshield')) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       ctx.difficulty++
       ctx.reasons.push(`${self.name} Warp Shield -1`)
     },
@@ -623,7 +627,7 @@ registerScripts([
     },
     beforeAnyAttack(b, self, ctx) {
       if (self.flags.tachyonTarget !== ctx.target.id || b.canSpend(self, 'reaction') !== true || !once(self, 'pulse')) return
-      self.reactionsLeft--
+      b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       ctx.resistAll = true
       ctx.reasons.push('Defensive Pulse')
     },

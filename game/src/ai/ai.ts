@@ -2,7 +2,7 @@
 // best plan through the normal Battle API, so the AI obeys exactly the same rules as players.
 import { PendingChoice, type Battle } from '../rules/battle'
 import { Lancer } from '../data/lancer'
-import { blastTiles, lineTiles, coneTiles, burstTiles, key, unitsOnTiles } from '../rules/grid'
+import { blastTiles, lineTiles, coneTiles, burstTiles, key, unitsOnTiles, footprint, tileAt } from '../rules/grid'
 import type { Effect, Pos, Unit, Weapon } from '../rules/types'
 import type { CustomAction } from '../rules/effects/registry'
 import { averageDice } from '../rules/rng'
@@ -91,6 +91,10 @@ function aoeValue(b: Battle, u: Unit, w: Weapon, from: Pos): { value: number; ti
   } finally { u.pos = saved }
 }
 
+function weaponReachOf(b: Battle, u: Unit): number {
+  return Math.max(1, ...u.weapons.filter(w => !w.destroyed && !w.tech).map(w => b.weaponReach(u, w)))
+}
+
 function customValue(b: Battle, u: Unit, a: CustomAction, from: Pos): { value: number; target?: Unit | Pos } | null {
   if (a.usable(b, u) !== true) return null
   const saved = u.pos
@@ -154,6 +158,8 @@ function customValue(b: Battle, u: Unit, a: CustomAction, from: Pos): { value: n
       }
       return best ? { ...best, value: best.value - heatPenalty } : null
     }
+    // untargeted actions (protocols like Active Camouflage, ASURA, Deactivate Fortress) score themselves
+    if (a.target === 'none' && a.aiScore) return { value: a.aiScore(b, u) - heatPenalty }
     return null
   } finally { u.pos = saved }
 }
@@ -177,8 +183,34 @@ function threatsAgainst(b: Battle, u: Unit): Threat[] {
   }))
 }
 
+/** Expected damage from ending a turn at `p`: dangerous terrain (5 energy on a failed Engineering check) and damage areas. */
+function hazardCost(b: Battle, u: Unit, p: Pos): number {
+  if (u.flying || u.flags.ignoreHazard) return 0
+  const fp = footprint(u, p)
+  let cost = 0
+  if (!u.flags['round:hazard'] && fp.some(q => tileAt(b.map, q)?.kind === 'hazard')) cost += 3
+  for (const a of b.areas) if (a.kind === 'damage' && a.damage && fp.some(q => a.tiles.some(t => t.x === q.x && t.y === q.y))) cost += averageDice(a.damage)
+  return cost
+}
+
+/**
+ * Rounds the fight has gone without anyone attacking, beyond a grace period for the opening
+ * approach. Long-ranged teams that hang back can otherwise freeze both sides just outside each
+ * other's reach until the round cap; the advance pull grows with this so somebody commits.
+ */
+export function stallRounds(b: Battle, grace = 3): number {
+  let last = b.log[0]?.round ?? 0
+  for (let i = b.log.length - 1; i >= 0; i--) {
+    const e = b.log[i]
+    if (e.kind === 'attack' || e.kind === 'damage') { last = e.round; break }
+  }
+  return Math.max(0, b.round - last - grace)
+}
+let stall = 0
+
 function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAgainst(b, u)): number {
-  if (!threats.length) return 0
+  const hazard = hazardCost(b, u, p)
+  if (!threats.length) return -hazard
   const saved = u.pos
   u.pos = p
   try {
@@ -208,7 +240,7 @@ function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAg
     // advance pull: on long maps, units out of their own reach close the distance
     // (artillery/controllers more gently, so they settle near their preferred range)
     const myReach = Math.max(1, ...u.weapons.filter(w => !w.destroyed).map(w => b.weaponReach(u, w)))
-    const k = role === 'Artillery' || role === 'Controller' ? 0.25 : 0.35
+    const k = (role === 'Artillery' || role === 'Controller' ? 0.25 : 0.35) * (1 + stall)
     if (nearest > myReach) v -= (nearest - myReach) * k
     // sitrep objectives
     const zone = b.sitrep.zone
@@ -218,7 +250,7 @@ function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAg
       v += inZone ? 4 : -dz * 0.35
     }
     if (b.isEngaged(u, p) && u.weapons.every(w => !b.isMelee(w))) v -= 1.5
-    return v
+    return v - hazard
   } finally { u.pos = saved }
 }
 
@@ -287,7 +319,9 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
   if (u.kind === 'mech' && u.coreAvailable && u.frameId) {
     const act = (Lancer.frames.get(u.frameId)?.core_system.activation ?? 'Quick').toLowerCase()
     const near = hostiles.filter(h => (h.kind === 'mech' || h.kind === 'npc') && Math.max(Math.abs(h.pos.x - p.x), Math.abs(h.pos.y - p.y)) <= 10).length
-    if (near && b.round >= 2) opts.push({ kind: 'core', value: 4 + near, cost: act === 'protocol' ? 'protocol' : act === 'full' ? 'full' : act === 'free' ? 'free' : 'quick' })
+    // Drake Fortress Protocol roots the mech: only worth it with a hostile already inside its own reach
+    const rooted = u.frameId === 'mf_drake' && !hostiles.some(h => (h.kind === 'mech' || h.kind === 'npc') && Math.max(Math.abs(h.pos.x - p.x), Math.abs(h.pos.y - p.y)) <= weaponReachOf(b, u))
+    if (near && b.round >= 2 && !rooted) opts.push({ kind: 'core', value: 4 + near, cost: act === 'protocol' ? 'protocol' : act === 'full' ? 'full' : act === 'free' ? 'free' : 'quick' })
   }
   return opts
 }
@@ -321,6 +355,7 @@ export function planFor(b: Battle, u: Unit): Plan {
   for (const v of all.values()) cands.push({ pos: v.pos, boost: v.cost > u.moveLeft })
   // prune candidates for speed: keep the most promising ones by position value
   const threats = threatsAgainst(b, u)
+  stall = stallRounds(b)
   let scored = cands.map(c => ({ ...c, pv: positionValue(b, u, c.pos, threats) }))
   if (scored.length > 70) {
     scored.sort((a, b2) => b2.pv - a.pv)
@@ -368,9 +403,9 @@ export function runAiTurn(b: Battle, u: Unit) {
 function runAiTurnInner(b: Battle, u: Unit) {
   if (b.activeId !== u.id) b.beginTurn(u)
   try {
+    if (!u.destroyed && b.has(u, 'shutdown') && !u.statuses.some(x => x.id === 'stunned') && u.actionsLeft >= 2) { b.bootUp(u); return }
     if (!u.destroyed && !b.has(u, 'stunned')) {
-      if (b.has(u, 'shutdown')) { b.bootUp(u); return }
-      if (b.has(u, 'prone') && !b.has(u, 'immobilized')) b.standUp(u)
+      if (b.has(u, 'prone') && b.canStandUp(u) === true) b.standUp(u)
       if (b.has(u, 'grappled') && u.statuses.find(s => s.id === 'grappled')?.data?.by !== u.id) { try { b.breakGrapple(u) } catch (e) { if (e instanceof PendingChoice) throw e } }
       if (u.flags.sekhmet) { sekhmetTurn(b, u); return }
       const plan = planFor(b, u)
@@ -378,7 +413,12 @@ function runAiTurnInner(b: Battle, u: Unit) {
       for (const o of plan.actions.filter(o => o.cost === 'protocol')) safe(() => execute(b, u, o))
       if (plan.boost) safe(() => b.boost(u))
       if (plan.dest.x !== u.pos.x || plan.dest.y !== u.pos.y) safe(() => b.move(u, plan.dest, { mode: 'standard' }))
-      for (const o of plan.actions.filter(o => o.cost !== 'protocol')) {
+      // the plan was aimed from plan.dest: if the move failed or was cut short (a protocol Immobilized us, overwatch,
+      // knockback), re-plan the actions from where the unit actually stands instead of firing blind
+      const arrived = u.pos.x === plan.dest.x && u.pos.y === plan.dest.y
+      const actions = arrived ? plan.actions.filter(o => o.cost !== 'protocol')
+        : bestCombo(optionsAt(b, u, u.pos).filter(o => o.cost !== 'protocol'), u.actionsLeft + (u.flags.bonusQuick ?? 0), u.actionsLeft >= 2).actions.filter(o => o.cost !== 'protocol')
+      for (const o of actions) {
         if (u.destroyed || b.winner) break
         safe(() => execute(b, u, o))
       }
