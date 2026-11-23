@@ -479,6 +479,8 @@ export class Battle {
   endingTurnOf: string | null = null
   endTurn(u: Unit = this.active!) { return this.command('endTurn', [u], () => turns.endTurn(this, u)) }
   endTurnInner(u: Unit) { return turns.endTurnInner(this, u) }
+  handOverTurn(u: Unit) { return turns.handOverTurn(this, u) }
+  endInterjection(u: Unit) { return turns.endInterjection(this, u) }
   removeStatusIfExpiredRecovery(_u: Unit) {}
   endRound() { return turns.endRound(this) }
   sitrepScore?: number

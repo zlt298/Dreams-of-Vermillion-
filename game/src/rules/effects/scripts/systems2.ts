@@ -1,5 +1,5 @@
 // Systems previously resolved by hand: grenades and mines, shields and barriers, NHPs, utility.
-import type { Battle } from '../../battle'
+import { PendingChoice, type Battle } from '../../battle'
 import { blastTiles, burstTiles, chebyshev, distanceToTile, footprint, hasLineOfSightToTile, lineTiles, tileAt, unitsOnTiles } from '../../grid'
 import { rollDice } from '../../rng'
 import type { Pos, StatusId, SystemInst, Unit, Weapon } from '../../types'
@@ -126,7 +126,7 @@ export function sekhmetTurn(b: Battle, u: Unit) {
     if (!t || u.moveLeft <= 0 || b.canMove(u, 'standard') !== true) return
     let best: Pos | null = null, bd = b.distance(u, t)
     for (const r of b.reachable(u, u.moveLeft).values()) { const d = Math.max(0, chebyshev(r.pos, t.pos) - 1); if (d < bd) { bd = d; best = r.pos } }
-    if (best) try { b.move(u, best, { mode: 'standard' }) } catch { /* path blocked */ }
+    if (best) try { b.move(u, best, { mode: 'standard' }) } catch (e) { if (e instanceof PendingChoice) throw e /* else path blocked */ }
   }
   if (!target()) return
   if (!ready(target()!)) approach()
@@ -700,7 +700,7 @@ const scripts: ItemScript[] = [
         const ramAlly = opts.findIndex(o => o.label.startsWith('Ram ') && adj.some(v => o.label === `Ram ${v.name}` && !bt.hostile(t, v)))
         const i = bt.choose({ kind: 'slave_systems', unit: me, title: `Slave Systems: ${t.name} must…`, options: opts.slice(0, 12).map(o => ({ label: o.label })), defaultIndex: ramAlly >= 0 && ramAlly < 12 ? ramAlly : 0 })
         t.reactionsLeft = Math.max(0, t.reactionsLeft - 1)
-        try { opts[i].run() } catch (e) { bt.say(`  ${t.name} can't: ${(e as Error).message}`) }
+        try { opts[i].run() } catch (e) { if (e instanceof PendingChoice) throw e; bt.say(`  ${t.name} can't: ${(e as Error).message}`) }
       }),
     ],
   },

@@ -8,7 +8,7 @@ import {
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from '../grid'
 import { parseDice, Rng, rollDice, rollAccuracy, averageDice } from '../rng'
-import { hasTag, tagVal, nextUid, isWeaponType } from '../stats'
+import { hasTag, tagVal, nextUid, isWeaponType, uidState, setUidState } from '../stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
@@ -17,12 +17,15 @@ import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, Mo
 /** Let `u` take a forced action it has no action economy for (Law of Blades): costs are paid from a temporary pool. */
 export function withForcedAction<T>(bt: Battle, u: Unit, fn: () => T): T {
   // copy the arrays: spend() pushes into turn:spent in place, which would leak the forced action into the turn's record
-  const keep = { actionsLeft: u.actionsLeft, acted: u.actedThisTurn, quick: u.flags['turn:quickUsed'], spent: u.flags['turn:spent'] ? [...u.flags['turn:spent']] : undefined, bonus: u.flags.bonusQuick }
+  // it may not be this unit's turn at all (Slave Systems): it acts as if it were, for the forced action only
+  const keep = { activeTurn: u.activeTurn, actionsLeft: u.actionsLeft, acted: u.actedThisTurn, quick: u.flags['turn:quickUsed'], spent: u.flags['turn:spent'] ? [...u.flags['turn:spent']] : undefined, bonus: u.flags.bonusQuick }
   const recovering = u.statuses.filter(s => s.id === 'bracing_recovery')
   u.statuses = u.statuses.filter(s => s.id !== 'bracing_recovery')
   u.actionsLeft = 2
+  u.activeTurn = true
   u.flags['turn:quickUsed'] = []
   try { return fn() } finally {
+    u.activeTurn = keep.activeTurn
     u.actionsLeft = keep.actionsLeft; u.actedThisTurn = keep.acted
     u.flags['turn:quickUsed'] = keep.quick; u.flags['turn:spent'] = keep.spent; u.flags.bonusQuick = keep.bonus
     u.statuses.push(...recovering)
@@ -44,7 +47,11 @@ export function sandbox<T>(bt: Battle, fn: () => T): T {
   const outerTiles = bt.sandboxTiles
   bt.sandboxTiles = new Map()
   bt.sandboxDepth++
-  const areas = bt.areas.slice(), mines = bt.mines.slice(), lastMove = bt.lastMove
+  // areas and mines keep their identity but get their contents back: a preview may change one in place
+  const plain = (v: any): any => Array.isArray(v) ? v.map(plain) : v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x)])) : v
+  const keepAll = <T extends object>(xs: T[]) => xs.map(o => ({ o, v: plain(o) }))
+  const putBack = <T extends object>(xs: { o: T; v: any }[]) => xs.map(({ o, v }) => { for (const k of Object.keys(o)) if (!(k in v)) delete (o as any)[k]; return Object.assign(o, plain(v)) })
+  const areas = keepAll(bt.areas), mines = keepAll(bt.mines), lastMove = bt.lastMove, uid = uidState()
   const snap = bt.units.map(u => ({
     u,
     v: {
@@ -87,9 +94,10 @@ export function sandbox<T>(bt: Battle, fn: () => T): T {
     // nested preview: a tile the outer preview hadn't touched was, before the inner one, still as the outer preview found it
     if (outerTiles && bt.sandboxTiles) for (const [i, t] of bt.sandboxTiles) if (!outerTiles.has(i)) outerTiles.set(i, t)
     bt.sandboxTiles = outerTiles
-    bt.areas = areas
-    bt.mines = mines
+    bt.areas = putBack(areas)
+    bt.mines = putBack(mines)
     bt.lastMove = lastMove
+    setUidState(uid)
     bt.rng.state = rng
     bt.log.length = logLen
     bt.events.length = evLen
@@ -163,7 +171,7 @@ export function checkpoint(bt: Battle): () => void {
   const self = bt as any
   const rest: Record<string, any> = {}
   for (const k of Object.keys(self)) if (!SKIP.has(k) && typeof self[k] !== 'function') rest[k] = dc(self[k])
-  const rng = bt.rng.state, log = bt.log.slice(), events = bt.events.slice()
+  const rng = bt.rng.state, log = bt.log.slice(), events = bt.events.slice(), uid = uidState()
   const assign = (o: any, f: any) => { for (const k of Object.keys(o)) if (!(k in f)) delete o[k]; Object.assign(o, dc(f)) }
   return () => {
     for (const x of units) {
@@ -177,6 +185,7 @@ export function checkpoint(bt: Battle): () => void {
     tiles.forEach((t, i) => { const cur = bt.map.tiles[i] as any; for (const k of Object.keys(cur)) if (!(k in t)) delete cur[k]; Object.assign(cur, t) })
     for (const k of Object.keys(rest)) self[k] = dc(rest[k])
     bt.rng.state = rng
+    setUidState(uid)
     bt.log.splice(0, bt.log.length, ...log)
     bt.events.splice(0, bt.events.length, ...events)
     bt.invalidateTerrain()
