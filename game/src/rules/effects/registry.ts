@@ -5,13 +5,15 @@
 //   talents: `<talentId>:<rank>`          npc features: `npc:<featureKey>`
 import type { DamageData } from '../../data/lancer'
 import type { Battle } from '../battle'
-import type { Pos, Profile, Unit, Weapon } from '../types'
+import type { Duration, Pos, Profile, StatusId, Unit, Weapon } from '../types'
 
 export interface AttackCtx {
   attacker: Unit
   target: Unit
   /** hits automatically (no roll, no crit): Autopod and similar */
   autoHit?: boolean
+  /** Combat Drill: each Overkill activation adds +1d6 bonus damage (chaining on 1s) */
+  overkillBonus?: boolean
   /** the attack consumed the target's Lock On */
   lockOnConsumed?: boolean
   weapon?: Weapon
@@ -104,6 +106,12 @@ export interface ItemScript {
   onDamaged?(b: Battle, self: Unit, d: DamageCtx): void
   /** measure this weapon attack from another point (Throughbolt); may apply its own effects first */
   attackOrigin?(b: Battle, self: Unit, w: Weapon, aim: { targetId?: string; tile?: Pos }): Pos | null | undefined
+  /** a character failed a save against you */
+  onSaveFailed?(b: Battle, self: Unit, target: Unit, stat: string): void
+  /** another unit gained a status */
+  onAnyStatusAdded?(b: Battle, self: Unit, target: Unit, status: StatusId, duration: Duration, source?: Unit): void
+  /** another unit took heat */
+  onAnyHeat?(b: Battle, self: Unit, target: Unit, amount: number, source?: Unit): void
   /** any character took HP damage or heat (after `onDamaged`) */
   onAnyDamaged?(b: Battle, self: Unit, target: Unit, d: DamageCtx): void
   /** before damage is applied to this unit; may mutate amount */

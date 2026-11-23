@@ -93,7 +93,7 @@ const invisibleAlways = (id: string, note: string): ItemScript => ({
 })
 const flier = (id: string, note: string): ItemScript => ({ id, note, init(u) { u.flying = true } })
 const teleporter = (id: string): ItemScript => ({
-  id, note: 'Teleports when making a standard move (ignores engagement, terrain and climbing)', partial: true,
+  id, note: 'Teleports when making a standard move (straight to the space: ignores engagement, terrain, obstacles and climbing)',
   init(u) { u.flags.teleportMoves = true; u.flags.ignoreDifficult = true; u.flags.magClamps = true },
 })
 const noteOnly = (id: string, note: string): ItemScript => ({ id, note })
@@ -201,7 +201,7 @@ registerScripts([
         const from = self.pos
         self.pos = p
         bt.emit({ type: 'move', unitId: self.id, path: [from, p] })
-        for (const o of chars(bt)) if (o !== self && bt.adjacent(self, o) && !bt.save(o, 'agi', self.stats.save)) bt.addStatus(o, 'prone', 'until_cleared', self)
+        for (const o of chars(bt)) if (o !== self && bt.adjacent(self, o) && !bt.save(o, 'agi', self.stats.save, 0, self)) bt.addStatus(o, 'prone', 'until_cleared', self)
       },
       aiScore: (bt, self, t) => (t && 'id' in t && !bt.adjacent(self, t) ? 4 : 0),
     })],
@@ -280,7 +280,7 @@ registerScripts([
       self.flags['turn:earthshaker'] = true
       const tiles = burstTiles(b.map, ctx.target, 3)
       b.emit({ type: 'area', tiles, kind: 'attack' })
-      for (const o of unitsOnTiles(chars(b), tiles)) if (o !== self && b.hostile(self, o) && !b.save(o, 'hull', self.stats.save)) b.addStatus(o, 'prone', 'until_cleared', self)
+      for (const o of unitsOnTiles(chars(b), tiles)) if (o !== self && b.hostile(self, o) && !b.save(o, 'hull', self.stats.save, 0, self)) b.addStatus(o, 'prone', 'until_cleared', self)
       // two Size 1 sections of debris (hard cover), on the side nearest the Bombard
       let made = 0
       for (const p of [...tiles].sort((x, y) => chebyshev(x, self.pos) - chebyshev(y, self.pos))) if (made < 2 && b.raiseCover(p)) made++
@@ -295,7 +295,7 @@ registerScripts([
       run: (bt, self, t) => {
         const hit = new Set<Unit>()
         dash(bt, self, (t as Unit).pos, 6, o => hit.add(o))
-        for (const o of hit) if (!bt.save(o, 'agi', self.stats.save)) { bt.forceMove(o, self, 1, 1); bt.addStatus(o, 'prone', 'until_cleared', self) }
+        for (const o of hit) if (!bt.save(o, 'agi', self.stats.save, 0, self)) { bt.forceMove(o, self, 1, 1); bt.addStatus(o, 'prone', 'until_cleared', self) }
       },
       aiScore: (bt, self, t) => (t && 'id' in t && !bt.adjacent(self, t) ? 3 : 0),
     })],
@@ -318,7 +318,7 @@ registerScripts([
         const target = t as Unit
         dash(bt, self, target.pos, 8)
         if (!bt.adjacent(self, target)) return
-        if (!bt.save(target, 'hull', self.stats.save, -1)) {
+        if (!bt.save(target, 'hull', self.stats.save, -1, self)) {
           bt.startGrapple(self, target)
         }
       },
@@ -481,8 +481,8 @@ registerScripts([
       b.invalidateTerrain()
       for (const o of chars(b)) if (b.adjacent(self, o)) {
         const dmg = tv(self, [4, 6, 8])
-        const ok = b.save(o, 'agi', self.stats.save)
-        b.applyDamage(o, [{ type: 'Energy', amount: ok ? Math.ceil(dmg / 2) : dmg }], { source: self })
+        const ok = b.save(o, 'agi', self.stats.save, 0, self)
+        b.applyDamage(o, [{ type: 'Energy', amount: ok ? b.halfOnSave(o, dmg) : dmg }], { source: self })
       }
     },
   },
@@ -496,7 +496,7 @@ registerScripts([
         self.heat = 0
         const tiles = burstTiles(bt.map, self, 1)
         bt.emit({ type: 'area', tiles, kind: 'attack' })
-        for (const o of unitsOnTiles(chars(bt), tiles)) if (o !== self && !bt.save(o, 'agi', self.stats.save)) {
+        for (const o of unitsOnTiles(chars(bt), tiles)) if (o !== self && !bt.save(o, 'agi', self.stats.save, 0, self)) {
           if (cleared >= 2) bt.applyDamage(o, [{ type: 'Heat', amount: Math.floor(cleared / 2) }], { source: self })
           bt.addStatus(o, 'prone', 'until_cleared', self)
         }
@@ -533,7 +533,7 @@ registerScripts([
     actions: () => [action({
       key: 'rebound_scan', name: 'Rebound Scan', activation: 'full', target: 'self', area: { shape: 'burst', size: 5 }, text: 'Systems save or lose Hidden, Invisible and cover.',
       run: (bt, self) => {
-        for (const h of hostilesOf(bt, self)) if (bt.distance(self, h) <= 5 && !bt.save(h, 'sys', self.stats.save)) {
+        for (const h of hostilesOf(bt, self)) if (bt.distance(self, h) <= 5 && !bt.save(h, 'sys', self.stats.save, 0, self)) {
           bt.removeStatus(h, 'hidden'); bt.removeStatus(h, 'invisible')
           h.flags.scannedBy = self.id; h.flags.scannedUntil = bt.round + 1
         }
@@ -609,7 +609,7 @@ registerScripts([
       run: (bt, self, t) => {
         const target = t as Unit
         if (!bt.los(self, target)) throw new Error('No line of sight')
-        if (bt.hostile(self, target)) { if (!bt.save(target, 'agi', self.stats.save)) bt.addStatus(target, 'slowed', 'next_turn_end_target', self) }
+        if (bt.hostile(self, target)) { if (!bt.save(target, 'agi', self.stats.save, 0, self)) bt.addStatus(target, 'slowed', 'next_turn_end_target', self) }
         else { target.burn = 0; bt.addStatus(target, 'slowed', 'next_turn_end_target', self) }
         bt.areas.push({ id: `sealant-${bt.round}-${self.id}`, kind: 'difficult', tiles: burstTiles(bt.map, target, 1), ownerId: self.id })
         bt.invalidateTerrain()

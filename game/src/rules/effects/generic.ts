@@ -88,7 +88,7 @@ function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: 
       for (const v of victims) {
         const save = parts.find(p => p.save)?.save
         if (save) {
-          const ok = bt.save(v, save, self.stats.save || 10)
+          const ok = bt.save(v, save, self.stats.save || 10, 0, self)
           if (ok && (!parts[0].half || v.isGrunt)) continue
           bt.applyDamage(v, parts.map(p => ({ type: p.type, amount: ok ? bt.halfOnSave(v, p.amount) : p.amount })), { source: self })
         } else {

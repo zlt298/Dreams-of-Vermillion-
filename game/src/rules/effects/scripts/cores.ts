@@ -17,8 +17,8 @@ const oncePerRound = (u: Unit, key: string) => { const k = `round:${key}`; if (u
 /** Agility save or 1d6 energy (half on a success). */
 function hologramBlast(b: Battle, src: Unit, t: Unit) {
   const dmg = rollDice(b.rng, '1d6').total
-  const ok = b.save(t, 'agi', src.stats.save)
-  b.applyDamage(t, [{ type: 'Energy', amount: ok ? Math.ceil(dmg / 2) : dmg }], { source: src })
+  const ok = b.save(t, 'agi', src.stats.save, 0, src)
+  b.applyDamage(t, [{ type: 'Energy', amount: ok ? b.halfOnSave(t, dmg) : dmg }], { source: src })
 }
 
 // ------------------------------------------------------------------ Black Witch: Mag Field
@@ -42,6 +42,7 @@ function endMagField(b: Battle, self: Unit) {
 }
 
 // ------------------------------------------------------------------ Goblin: Symbiosis
+const CONDITIONS = ['immobilized', 'impaired', 'jammed', 'lockon', 'shredded', 'slowed', 'stunned']
 function detach(b: Battle, self: Unit) {
   const host = b.unit(self.flags.host)
   self.flags.host = undefined
@@ -49,7 +50,11 @@ function detach(b: Battle, self: Unit) {
   self.statuses = self.statuses.filter(s => !s.data?.symbiosis)
   if (host) {
     host.flags.goblin = undefined
-    if (host.flags.symOrig) { host.stats.edef = host.flags.symOrig.edef; host.stats.techAttack = host.flags.symOrig.techAttack; host.flags.symOrig = undefined }
+    if (host.flags.symOrig) { host.stats.edef = host.flags.symOrig.edef; host.stats.techAttack = host.flags.symOrig.techAttack; host.stats.sys = host.flags.symOrig.sys ?? host.stats.sys; host.flags.symOrig = undefined }
+    // when the effect ends, you don't take a turn until the next round
+    if (self.flags.symbiosisTurns) { self.activationsLeft = 0; if (b.chainTurn === self.id) b.chainTurn = null }
+    self.flags.symbiosisTurns = false
+    delete self.flags.noOvercharge
     // step off the host into the nearest free space
     let best: Pos | null = null
     for (let r = 1; r <= 3 && !best; r++) for (let dy = -r; dy <= r && !best; dy++) for (let dx = -r; dx <= r && !best; dx++) {
@@ -70,7 +75,9 @@ function attach(b: Battle, self: Unit, host: Unit) {
   self.flags.host = host.id
   self.flags.flat = true
   host.flags.goblin = self.id
-  host.flags.symOrig = { edef: host.stats.edef, techAttack: host.stats.techAttack }
+  host.flags.symOrig = { edef: host.stats.edef, techAttack: host.stats.techAttack, sys: host.stats.sys }
+  host.stats.sys = Math.max(host.stats.sys, self.stats.sys)
+  self.flags.symbiosisRound = b.round
   host.stats.edef = Math.max(host.stats.edef, self.stats.edef)
   host.stats.techAttack = Math.max(host.stats.techAttack, self.stats.techAttack)
   const from = self.pos
@@ -197,7 +204,26 @@ const scripts: ItemScript[] = [
   // ---------------------------------------------------------------- Goblin
   {
     id: 'core:mf_goblin', partial: true,
-    note: "Symbiosis: attach to a larger adjacent ally: move with it, hard cover, it uses your E-Defense and Tech Attack (you keep your own turns; conditions and heat aren't shared)",
+    note: "Symbiosis: attach to a larger adjacent ally: move with it, hard cover; it uses your Systems, E-Defense and Tech Attack; you share its conditions and heat; from the next round you no longer take your own turns but act (no moving or Overcharge) on your host's activation — right after its turn rather than at any point during it; ends on detach (quick) or when either is Stunned",
+    onRoundStart(b, self) {
+      if (self.flags.host && b.round > (self.flags.symbiosisRound ?? b.round)) { self.activationsLeft = 0; self.flags.symbiosisTurns = true }
+    },
+    onAnyTurnEnd(b, self, u) {
+      if (!self.flags.host || u.id !== self.flags.host || !self.flags.symbiosisTurns || self.destroyed) return
+      self.activationsLeft = 1
+      b.chainTurn = self.id
+      b.say(`${self.name} acts on its host's turn.`)
+    },
+    onTurnStart(b, self) {
+      if (self.flags.host && b.has(self, 'stunned')) { detach(b, self); return }
+      if (self.flags.host) { self.moveLeft = 0; self.flags.noOvercharge = true } else delete self.flags.noOvercharge
+    },
+    onAnyStatusAdded(b, self, target, st, duration, source) {
+      if (!self.flags.host || target.id !== self.flags.host) return
+      if (st === 'stunned') { detach(b, self); return }
+      if (CONDITIONS.includes(st)) b.addStatus(self, st, duration, source)
+    },
+    onAnyHeat(b, self, target, amount, source) { if (self.flags.host && target.id === self.flags.host) b.addHeat(self, amount, source) },
     onCoreActivate(b, u) {
       const host = symbiosisHost(b, u)
       if (host) attach(b, u, host)
@@ -232,7 +258,6 @@ const scripts: ItemScript[] = [
       if (!host || host.destroyed || b.has(self, 'stunned') || b.has(host, 'stunned')) detach(b, self)
       else if (u === host) { const from = self.pos; self.pos = { ...host.pos }; if (from.x !== host.pos.x || from.y !== host.pos.y) b.emit({ type: 'move', unitId: self.id, path: [from, self.pos] }) }
     },
-    onTurnStart(b, self) { if (self.flags.host && b.has(self, 'stunned')) detach(b, self) },
     onDestroyed(b, self, v) { if (v.id === self.flags.host || v === self) { if (v === self) { const h = b.unit(self.flags.host); if (h) { h.flags.goblin = undefined; if (h.flags.symOrig) { h.stats.edef = h.flags.symOrig.edef; h.stats.techAttack = h.flags.symOrig.techAttack } } } else detach(b, self) } },
   },
   // ---------------------------------------------------------------- Pegasus
@@ -371,7 +396,7 @@ function magPull(b: Battle, self: Unit, u: Unit) {
   const f = field(self)
   if (!f || u === self || u.destroyed || (u.kind !== 'mech' && u.kind !== 'npc') || u.role === 'Biological' || !onTile(u, f.tiles)) return
   if (!oncePerRound(u, `magfield:${self.id}`)) return
-  if (b.save(u, 'hull', self.stats.save)) return
+  if (b.save(u, 'hull', self.stats.save, 0, self)) return
   const d = chebyshev(u.pos, f.c)
   if (d > 0) b.forceMove(u, f.c, d, -1)
   if (!u.destroyed) b.addStatus(u, 'immobilized', 'until_cleared', self, { magField: self.id })

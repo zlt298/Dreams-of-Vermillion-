@@ -23,8 +23,8 @@ const nearest = (b: Battle, u: Unit, list: Unit[]) => [...list].sort((x, y) => b
 const blind = (b: Battle, t: Unit) => { t.flags.blindUntil = b.round + 1; b.say(`${t.name} is blinded (line of sight to adjacent spaces only).`, 'status') }
 const half = (b: Battle, t: Unit, src: Unit, stat: 'hull' | 'agi' | 'sys' | 'eng', dice: string, type: string, extra?: (failed: boolean) => void, ap = false) => {
   const dmg = rollDice(b.rng, dice).total
-  const ok = b.save(t, stat, src.stats.save)
-  b.applyDamage(t, [{ type, amount: ok ? Math.ceil(dmg / 2) : dmg }], { source: src, ap })
+  const ok = b.save(t, stat, src.stats.save, 0, src)
+  b.applyDamage(t, [{ type, amount: ok ? b.halfOnSave(t, dmg) : dmg }], { source: src, ap })
   extra?.(!ok)
 }
 /** Is `seg` between attacker and target, next to the target? */
@@ -107,7 +107,7 @@ const ammoScript = (id: string): ItemScript => ({
     const t = ctx.target
     if (ctx.hit && !t.destroyed) {
       if (f.k === 'thumper') b.forceMove(t, self, 1, 1)
-      if (f.k === 'jager') { b.forceMove(t, self, 2, 1); if (!t.destroyed && !b.save(t, 'hull', self.stats.save)) b.addStatus(t, 'prone', 'until_cleared', self) }
+      if (f.k === 'jager') { b.forceMove(t, self, 2, 1); if (!t.destroyed && !b.save(t, 'hull', self.stats.save, 0, self)) b.addStatus(t, 'prone', 'until_cleared', self) }
     }
     if (f.k === 'shock') for (const o of chars(b)) if (o !== t && o !== self && b.adjacent(o, t)) b.applyDamage(o, [{ type: 'Energy', amount: 1 }], { source: self, ap: true })
     if (ctx.crit && ammoTier(self) >= 3) { const s = ammoCase(self); if (s && s.usesLeft != null) s.usesLeft += f.cost; b.say('  Efficiency: no charges spent.') }
@@ -139,7 +139,7 @@ const scripts: ItemScript[] = [
         run: (bt, me, t) => {
           const target = t as Unit
           if (!bt.adjacent(me, target)) throw new Error('Must be adjacent')
-          if (bt.hostile(me, target) && !bt.has(target, 'stunned') && bt.save(target, 'hull', me.stats.save)) return
+          if (bt.hostile(me, target) && !bt.has(target, 'stunned') && bt.save(target, 'hull', me.stats.save, 0, me)) return
           me.flags.tether = target.id; target.flags.tetheredTo = me.id
           bt.say(`${me.name} winches onto ${target.name}.`)
         },
@@ -193,7 +193,7 @@ const scripts: ItemScript[] = [
         if (!hasLineOfSightToTile(bt.effectiveMap(), me, p)) throw new Error('No line of sight')
         const who = chars(bt).find(o => footprint(o).some(q => q.x === p.x && q.y === p.y))
         if (who) {
-          if (bt.hostile(me, who) && bt.save(who, 'agi', me.stats.save)) return
+          if (bt.hostile(me, who) && bt.save(who, 'agi', me.stats.save, 0, me)) return
           who.burn = 0
           bt.addStatus(who, 'slowed', 'next_turn_end_target', me)
         } else {
@@ -314,7 +314,7 @@ const scripts: ItemScript[] = [
       self.flags.flashMines = (self.flags.flashMines as Pos[]).filter(m => m !== hit)
       const tiles = burstTiles(b.map, { pos: hit, stats: { size: 1 } } as Unit, 1)
       b.emit({ type: 'area', tiles, kind: 'explosion' })
-      for (const v of unitsOnTiles(chars(b), tiles)) if (!b.save(v, 'agi', self.stats.save)) blind(b, v)
+      for (const v of unitsOnTiles(chars(b), tiles)) if (!b.save(v, 'agi', self.stats.save, 0, self)) blind(b, v)
     },
     fields: (b, u): FieldOverlay[] => [
       ...(u.flags.flash && b.round <= u.flags.flash.until ? [{ tiles: u.flags.flash.tiles, effect: 'control' as const, label: `${u.name}'s flash zone: no line of sight out` }] : []),
@@ -441,7 +441,7 @@ const scripts: ItemScript[] = [
     beforeAnyAttack(b, self, ctx) {
       const idol = self.flags.idol
       if (!idol || ctx.target.id !== idol.of || !b.hostile(self, ctx.attacker) || !hasLineOfSightToTile(b.effectiveMap(), ctx.attacker, idol.pos)) return
-      if (!b.save(ctx.attacker, 'sys', self.stats.save)) { ctx.cancelled = true; b.say(`  ${ctx.attacker.name} is fooled by the False Idol.`) }
+      if (!b.save(ctx.attacker, 'sys', self.stats.save, 0, self)) { ctx.cancelled = true; b.say(`  ${ctx.attacker.name} is fooled by the False Idol.`) }
     },
     fields: (_b, u) => (u.flags.idol ? [{ tiles: [u.flags.idol.pos], effect: 'protect' as const, label: `${u.name}'s False Idol decoy` }] : []),
   },
@@ -466,7 +466,7 @@ const scripts: ItemScript[] = [
     },
     grantActions: (b, self, other) => (other.flags.shackledBy === self.id ? [action({
       key: `shackle_break:${self.id}`, name: 'Break Celestial Shackles', activation: 'quick', target: 'none', text: 'Systems save to end the shackles.',
-      run: (bt, me) => { if (bt.save(me, 'sys', self.stats.save)) me.flags.shackledBy = undefined },
+      run: (bt, me) => { if (bt.save(me, 'sys', self.stats.save, 0, self)) me.flags.shackledBy = undefined },
       aiTarget: () => ({ ...other.pos }), aiScore: () => 1.5,
     })] : []),
     onMove(b, self, mover, path) {
@@ -507,7 +507,7 @@ const scripts: ItemScript[] = [
       return [action({
         key: 'mesmer_beacon', name: 'Mesmer Beacon', activation: 'quick', target: 'enemy', range: 5, text: 'Systems save, or the target can only move toward you until the end of its next turn.',
         usable: () => usesOk(s),
-        run: (bt, me, t) => { spend(s); const v = t as Unit; if (!bt.save(v, 'sys', me.stats.save)) { v.flags.mesmerBy = me.id; v.flags.mesmerUntil = bt.round + 1; bt.say(`${v.name} is mesmerized.`) } },
+        run: (bt, me, t) => { spend(s); const v = t as Unit; if (!bt.save(v, 'sys', me.stats.save, 0, me)) { v.flags.mesmerBy = me.id; v.flags.mesmerUntil = bt.round + 1; bt.say(`${v.name} is mesmerized.`) } },
         aiScore: (bt, me, t) => (t && 'id' in t && bt.distance(me, t) > 2 ? 2 : 0),
       }), action({
         key: 'mesmer_mine', name: 'Mesmer Mine', activation: 'quick', target: 'tile', range: 5, area: { shape: 'blast', size: 2 }, text: 'Arm a mine: Burst 2, Systems save or Immobilized until the end of the next turn.',
@@ -528,7 +528,7 @@ const scripts: ItemScript[] = [
       }),
       techOpt(u, 'slave', 'Slave Systems', 'On a hit, the target Rams an adjacent ally, or Boosts toward you.', (bt, me, t) => {
         const ally = chars(bt).find(o => o !== t && !bt.hostile(t, o) && bt.adjacent(o, t))
-        if (ally) { bt.forceMove(ally, t, 1, 1); if (!bt.save(ally, 'hull', me.stats.save)) bt.addStatus(ally, 'prone', 'until_cleared', t); bt.say(`${t.name} rams ${ally.name}!`) }
+        if (ally) { bt.forceMove(ally, t, 1, 1); if (!bt.save(ally, 'hull', me.stats.save, 0, me)) bt.addStatus(ally, 'prone', 'until_cleared', t); bt.say(`${t.name} rams ${ally.name}!`) }
         else bt.forceMove(t, me, t.stats.speed, -1)
       }),
     ],
@@ -596,7 +596,7 @@ const scripts: ItemScript[] = [
       const out = [action({
         key: 'gravity_grenade', name: 'Gravity Grenade', activation: 'quick', target: 'enemy', range: 5, text: 'Agility save or Slowed until it makes no voluntary movement for a turn.',
         usable: () => usesOk(s),
-        run: (bt, me, t) => { spend(s); const v = t as Unit; if (!bt.save(v, 'agi', me.stats.save)) bt.addStatus(v, 'slowed', 'until_cleared', me, { gravity: true }) },
+        run: (bt, me, t) => { spend(s); const v = t as Unit; if (!bt.save(v, 'agi', me.stats.save, 0, me)) bt.addStatus(v, 'slowed', 'until_cleared', me, { gravity: true }) },
         aiScore: (bt, _me, t) => (t && 'id' in t && !bt.has(t, 'slowed') ? 2 : 0),
       }), action({
         key: 'grounding_mine', name: 'Plant Grounding Mine', activation: 'quick', target: 'tile', range: 5, text: 'Plant a mine you detonate later.',
@@ -610,7 +610,7 @@ const scripts: ItemScript[] = [
           const m = me.flags.groundMine as Pos
           if (chebyshev(v.pos, m) > 5) throw new Error('Target must be within 5 of the mine')
           me.flags.groundMine = undefined
-          if (bt.save(v, 'hull', me.stats.save)) return
+          if (bt.save(v, 'hull', me.stats.save, 0, me)) return
           bt.forceMove(v, m, chebyshev(v.pos, m), -1)
           if (v.flying) v.flying = false
           bt.addStatus(v, 'prone', 'until_cleared', me)
@@ -630,7 +630,7 @@ const scripts: ItemScript[] = [
       return [action({
         key: 'clamp', name: 'Clamp Bombs', activation: 'quick', target: 'enemy', range: u.stats.sensors, text: 'Engineering save or the bombs clamp on.',
         usable: () => usesOk(s),
-        run: (bt, me, t) => { spend(s); const v = t as Unit; if (!bt.save(v, 'eng', me.stats.save)) { v.flags.clampBy = me.id; v.flags.clampMoved = 0; bt.say(`Bombs clamp onto ${v.name}!`) } },
+        run: (bt, me, t) => { spend(s); const v = t as Unit; if (!bt.save(v, 'eng', me.stats.save, 0, me)) { v.flags.clampBy = me.id; v.flags.clampMoved = 0; bt.say(`Bombs clamp onto ${v.name}!`) } },
         aiScore: (bt, _me, t) => (t && 'id' in t && !(t as Unit).flags.clampBy ? 2.5 : 0),
       })]
     },
@@ -667,7 +667,7 @@ const scripts: ItemScript[] = [
         if (bt.hostile(me, v)) {
           if (v.flags[`scene:tesseract:${me.id}`]) throw new Error('Already lifted this scene')
           v.flags[`scene:tesseract:${me.id}`] = true
-          if (bt.save(v, 'eng', me.stats.save)) return
+          if (bt.save(v, 'eng', me.stats.save, 0, me)) return
         }
         v.flags.liftedUntil = bt.round + 1
         v.flags.liftWasFlying = v.flying
@@ -778,7 +778,7 @@ function anchor(b: Battle, self: Unit, target: Unit): boolean {
 
 function swarmHit(b: Battle, self: Unit, u: Unit) {
   if (!self.flags.swarm || !b.hostile(self, u) || (u.kind !== 'mech' && u.kind !== 'npc') || b.distance(self, u) > 1 || !oncePerRound(u, `swarm:${self.id}`)) return
-  if (!b.save(u, 'sys', self.stats.save)) b.applyDamage(u, [{ type: 'Kinetic', amount: self.flags.swarm }], { source: self })
+  if (!b.save(u, 'sys', self.stats.save, 0, self)) b.applyDamage(u, [{ type: 'Kinetic', amount: self.flags.swarm }], { source: self })
 }
 
 function dismount(b: Battle, mule: Unit, r: Unit, prone: boolean) {

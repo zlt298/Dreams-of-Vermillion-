@@ -142,7 +142,9 @@ export class BattleScreen {
     }
     if (this.b.currentSide === 'player' && !this.b.activeId) {
       const ready = this.b.combatants('player').filter(u => u.activationsLeft > 0)
-      if (!this.selected || this.selected.side !== 'player' || this.selected.activationsLeft <= 0) this.selected = ready[0] ?? null
+      const chained = this.b.chainTurn ? this.b.unit(this.b.chainTurn) : undefined
+      if (chained && chained.side === 'player' && chained.activationsLeft > 0) this.selected = chained
+      else if (!this.selected || this.selected.side !== 'player' || this.selected.activationsLeft <= 0) this.selected = ready[0] ?? null
     }
     this.render()
   }
@@ -337,6 +339,7 @@ export class BattleScreen {
           this.render()
         }
         return
+      case 'shape': if (w) { (w.flags ??= {}).shape = w.flags.shape === 'line' ? 'cone' : 'line'; this.previewCache.clear(); this.render() } return
       case 'throughbolt': if (w) { (w.flags ??= {}).throughbolt = !w.flags.throughbolt; this.render() } return
       case 'profile': if (w && arg) { const i = Number(el.dataset.i); this.cmd(() => { w.profileIndex = i }) } return
       case 'reload': if (w) this.cmd(() => this.b.reload(a, w)); return
@@ -603,6 +606,7 @@ export class BattleScreen {
         btns = (w.size !== 'Superheavy' ? this.btn('skirmish', 'Skirmish [Q]', all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable, fired), w.uid) : '') + this.btn('barrage', 'Barrage [F]', all(fu, usable, fired), w.uid)
         if (!w.loaded && !w.destroyed) btns += this.btn('reload', 'Reload [Q]', b.canSpend(u, 'quick', 'reload'), w.uid)
         if (w.profiles.length > 1) btns += w.profiles.map((p, i) => (i === w.profileIndex ? '' : `<button data-act="profile" data-arg="${w.uid}" data-i="${i}" title="Switch profile">${esc(p.name)}</button>`)).join('')
+        if (pr.range.some(r => r.type === 'Line') && pr.range.some(r => r.type === 'Cone')) btns += `<button data-act="shape" data-arg="${w.uid}" title="Fire as a Cone or a Line">${w.flags?.shape === 'line' ? 'Line' : 'Cone'} (switch)</button>`
         if (w.modId === 'wm_throughbolt_rounds') btns += `<button data-act="throughbolt" data-arg="${w.uid}" class="${w.flags?.throughbolt ? 'on' : ''}" title="Throughbolt round: punch a Line 3 path through terrain (2 AP kinetic to everything on it), then attack from its end">Throughbolt: ${w.flags?.throughbolt ? 'ON' : 'off'}</button>`
       }
     }

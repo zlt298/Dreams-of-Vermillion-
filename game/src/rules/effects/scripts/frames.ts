@@ -1,5 +1,5 @@
 // Frame traits (`frame:<id>`) and CORE systems (`core:<id>`) for the 29 core-book frames.
-import { blastTiles, burstTiles, unitsOnTiles } from '../../grid'
+import { blastTiles, burstTiles, footprint, unitsOnTiles } from '../../grid'
 import { isWeaponType } from '../../stats'
 import { rollDice } from '../../rng'
 import type { Pos, Unit } from '../../types'
@@ -18,6 +18,22 @@ const alliesWithin = (b: Battle, u: Unit, r: number) => b.alive().filter(o => o 
 const heavyFrame: Pick<ItemScript, 'canBeMoved' | 'blockStatus'> = {
   canBeMoved: (b, self, src) => !src || src.stats.size >= self.stats.size,
   blockStatus: (b, self, st, src) => st === 'prone' && !!src && src.stats.size < self.stats.size,
+}
+
+const DIRS: [number, number][] = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]
+const DIR_NAMES = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+/** a Line 2 section drawn outward from the mech's edge in direction d */
+function fortressLine(b: Battle, u: Unit, d: [number, number]): Pos[] {
+  const fp = footprint(u)
+  const edge = fp.reduce((best, p) => (p.x * d[0] + p.y * d[1] > best.x * d[0] + best.y * d[1] ? p : best), fp[0])
+  return [1, 2].map(k => ({ x: edge.x + d[0] * k, y: edge.y + d[1] * k })).filter(p => p.x >= 0 && p.y >= 0 && p.x < b.map.w && p.y < b.map.h)
+}
+/** an ally getting hard cover from a Fortress Drake or its sections (adjacent to either) */
+function fortressShelters(b: Battle, drake: Unit, t: Unit): boolean {
+  if (!drake.flags.fortress || b.hostile(drake, t) || drake.destroyed) return false
+  if (b.adjacent(drake, t)) return true
+  const fp = footprint(t)
+  return b.map.tiles.some((tile, i) => tile.owner === drake.id && tile.kind === 'block' && fp.some(p => Math.max(Math.abs(p.x - i % b.map.w), Math.abs(p.y - Math.floor(i / b.map.w))) === 1))
 }
 const isAoEAttack = (b: Battle, d: { attack?: { profile?: { range: { type: string }[] } } }) =>
   !!d.attack?.profile && d.attack.profile.range.some(r => ['Blast', 'Burst', 'Line', 'Cone'].includes(r.type))
@@ -76,7 +92,7 @@ registerScripts([
     onCoreActivate(b, u) {
       for (const t of hostilesWithin(b, u, 5).filter(t => b.los(u, t))) {
         const dmg = rollDice(b.rng, '2d6').total
-        if (b.save(t, 'hull', u.stats.save)) { if (!t.isGrunt) b.applyDamage(t, [{ type: 'Kinetic', amount: Math.ceil(dmg / 2) }], { source: u }) }
+        if (b.save(t, 'hull', u.stats.save, 0, u)) { if (!t.isGrunt) b.applyDamage(t, [{ type: 'Kinetic', amount: b.halfOnSave(t, dmg) }], { source: u }) }
         else {
           b.applyDamage(t, [{ type: 'Kinetic', amount: dmg }], { source: u })
           b.addStatus(t, 'prone', 'until_cleared', u)
@@ -96,15 +112,36 @@ registerScripts([
   },
   {
     id: 'core:mf_drake',
-    partial: true,
-    note: 'Fortress Protocol: immobilized, always in hard cover, immune to forced movement/prone (cover sections not modelled)',
+    note: 'Fortress Protocol: two indestructible Line 2 cover sections (directions chosen); Immobilized, always in hard cover, immune to knockback, Prone and involuntary movement; a full action after Bracing; allies in hard cover from you or the sections share the immunities and Blast Plating; deactivate as a protocol',
     onCoreActivate(b, u) {
       u.flags.fortress = true
       b.addStatus(u, 'immobilized', 'until_cleared', u, { fortress: true })
       u.immune.push('prone')
+      const near = b.alive().filter(o => b.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc')).sort((x, y) => b.distance(u, x) - b.distance(u, y))[0]
+      const toward = near ? DIRS.findIndex(d => d[0] === Math.sign(near.pos.x - u.pos.x) && d[1] === Math.sign(near.pos.y - u.pos.y)) : 4
+      const opts = DIRS.map((d, i) => ({ label: DIR_NAMES[i], hint: `${d[0] ? (d[0] > 0 ? 'east' : 'west') : ''}${d[0] && d[1] ? '-' : ''}${d[1] ? (d[1] > 0 ? 'south' : 'north') : ''}` }))
+      const first = Math.max(0, toward)
+      const a = b.choose({ kind: 'fortress_1', unit: u, title: 'Fortress: first cover section', text: 'Direction of the first Line 2 hard-cover section.', options: opts, defaultIndex: first })
+      const c = b.choose({ kind: 'fortress_2', unit: u, title: 'Fortress: second cover section', text: 'Direction of the second Line 2 hard-cover section.', options: opts, defaultIndex: (a + 2) % 8 })
+      let n = 0
+      for (const i of [a, c]) for (const p of fortressLine(b, u, DIRS[i])) if (b.raiseCover(p, { indestructible: true, owner: u.id })) n++
+      b.say(`${u.name} deploys Fortress stabilizers (${n} cover sections).`)
     },
     adjustCover: (b, self, attacker, target, c) => (target === self && self.flags.fortress ? 'hard' : c),
     canBeMoved: (b, self) => !self.flags.fortress,
+    preventAnyMove: (b, self, target) => target !== self && fortressShelters(b, self, target),
+    blockAnyStatus: (b, self, target, st) => st === 'prone' && target !== self && fortressShelters(b, self, target),
+    modifyAnyIncoming: (b, self, target, d) => { if (target !== self && fortressShelters(b, self, target) && isAoEAttack(b, d)) d.amount = Math.ceil(d.amount / 2) },
+    actions: (_b, u) => (u.flags.fortress ? [action({
+      key: 'fortress_off', name: 'Deactivate Fortress', activation: 'protocol', target: 'none', text: 'Fold the stabilizers away: you can move again (the cover sections stay).',
+      run: (bt, self) => {
+        delete self.flags.fortress
+        bt.removeStatus(self, 'immobilized')
+        const i = self.immune.indexOf('prone'); if (i >= 0) self.immune.splice(i, 1)
+        bt.say(`${self.name} deactivates Fortress.`)
+      },
+      aiScore: () => -1,
+    })] : []),
   },
   // ---------------- IPS-N Lancaster
   {
@@ -301,9 +338,9 @@ registerScripts([
     onCoreActivate(b, u) {
       for (const t of hostilesWithin(b, u, 50)) {
         const dmg = rollDice(b.rng, '1d6+4').total
-        const ok = b.save(t, 'agi', u.stats.save)
+        const ok = b.save(t, 'agi', u.stats.save, 0, u)
         if (ok && t.isGrunt) continue
-        b.applyDamage(t, [{ type: 'Explosive', amount: ok ? Math.ceil(dmg / 2) : dmg }], { source: u })
+        b.applyDamage(t, [{ type: 'Explosive', amount: ok ? b.halfOnSave(t, dmg) : dmg }], { source: u })
       }
     },
   },
@@ -319,8 +356,8 @@ registerScripts([
   },
   {
     id: 'core:mf_mourning_cloak',
-    partial: true,
-    note: 'Blinkspace Jump (teleport 3d6); Stabilize Singularity (teleporting moves: ignore engagement)',
+    note: 'Blinkspace Jump (full action: teleport within 3d6, no line of sight needed; occupied space: the action is lost; triples: gone until the rest); Stabilize Singularity: Boosts and standard moves teleport for the scene',
+    onCoreActivate(b, u) { u.flags.teleportMoves = true; b.say(`${u.name} stabilizes its singularity: its moves now teleport.`) },
     actions: (b, u) => [action({
       key: 'mc-blink', name: 'Blinkspace Jump', activation: 'full', target: 'tile', range: 18,
       text: 'Teleport to a space within range 3d6 (rolled). Occupied space: you stay put. Triples: you vanish until the end of the scene.',
@@ -329,7 +366,12 @@ registerScripts([
         const dice = [bt.rng.d(6), bt.rng.d(6), bt.rng.d(6)]
         const r = dice[0] + dice[1] + dice[2]
         bt.say(`  Blinkspace range ${r} [${dice.join(',')}]`)
-        if (dice[0] === dice[1] && dice[1] === dice[2]) { bt.say(`${self.name} vanishes into blinkspace!`); bt.destroy(self, 'lost in blinkspace'); return }
+        if (dice[0] === dice[1] && dice[1] === dice[2]) {
+          bt.say(`${self.name} vanishes into blinkspace — it will reappear after the rest.`)
+          self.flags.vanished = { hp: self.hp, structure: self.structure, stress: self.stress }
+          bt.destroy(self, 'lost in blinkspace')
+          return
+        }
         const d = Math.max(Math.abs(p.x - self.pos.x), Math.abs(p.y - self.pos.y))
         if (d > r) { bt.say('  Out of range: the jump fails.'); return }
         const occupied = bt.alive().some(o => o !== self && o.pos.x === p.x && o.pos.y === p.y)
@@ -387,10 +429,26 @@ registerScripts([
   // ---------------- HORUS Goblin
   {
     id: 'frame:mf_goblin',
-    partial: true,
-    note: 'Liturgicode & Fragile via bonuses; Reactive Code (auto: copy a tech action used on an ally, approximated as +1 accuracy to next tech)',
-    afterAttack(b, self, ctx, role) { if (role === 'target' && ctx.tech && b.canSpend(self, 'reaction') === true && once(self, 'reactive')) { self.reactionsLeft--; self.flags.reactiveCode = true } },
-    beforeAttack(b, self, ctx, role) { if (role === 'attacker' && ctx.tech && self.flags.reactiveCode) { ctx.accuracy++; delete self.flags.reactiveCode } },
+    note: 'Liturgicode & Fragile via bonuses; Reactive Code: when hit by a tech attack, take any Quick Tech option against the attacker as a reaction (1/round)',
+    afterAnyRoll(b, self, ctx) {
+      if (ctx.target !== self || !ctx.tech || !ctx.hit || ctx.attacker === self || ctx.attacker.destroyed || !b.hostile(self, ctx.attacker)) return
+      if (self.flags['round:reactive'] || b.canSpend(self, 'reaction') !== true || b.techTargetValid(self, ctx.attacker) !== true) return
+      const att = ctx.attacker
+      const invades = b.customActions(self).filter(a => a.techOption === 'invade' && a.target !== 'none' && a.target !== 'tile')
+      const opts = [{ label: 'Lock On' }, { label: 'Invade: Fragment Signal', hint: '2 heat, Impaired and Slowed' }, ...invades.map(a => ({ label: `Invade: ${a.name}` })), { label: 'Scan' }, { label: 'No reaction' }]
+      if ((self.policies.reactions ?? 'ask') === 'off' && self.side === 'player') return
+      const pick = b.choose({ kind: 'reactive_code', unit: self, policy: 'reactions', title: 'Reactive Code', text: `${att.name} hit ${self.name} with a tech attack. Take a Quick Tech option against it as a reaction?`, options: opts, defaultIndex: 1 })
+      if (pick === opts.length - 1) return
+      self.flags['round:reactive'] = true
+      self.reactionsLeft--
+      b.say(`${self.name}'s Reactive Code answers ${att.name}.`)
+      b.withFreeTech(self, () => {
+        if (pick === 0) b.lockOn(self, att)
+        else if (pick === 1) b.invade(self, att)
+        else if (pick === opts.length - 2) b.scan(self, att)
+        else { const a = invades[pick - 2]; b.say(`  ${a.name}`); a.run(b, self, att) }
+      })
+    },
   },
   // ---------------- HORUS Gorgon
   {
@@ -411,7 +469,7 @@ registerScripts([
     beforeAnyAttack(b, self, ctx) {
       if (!self.flags.basilisk || !b.hostile(self, ctx.attacker) || ctx.attacker.flags[`basilisk:${self.id}`]) return
       if (ctx.target !== self && (b.hostile(self, ctx.target) || b.distance(self, ctx.target) > 3)) return
-      if (!b.save(ctx.attacker, 'sys', self.stats.save)) {
+      if (!b.save(ctx.attacker, 'sys', self.stats.save, 0, self)) {
         ctx.attacker.flags[`basilisk:${self.id}`] = true
         b.addStatus(ctx.attacker, 'stunned', 'next_turn_end_target', self)
         ctx.cancelled = true
@@ -447,9 +505,9 @@ registerScripts([
           b.emit({ type: 'area', tiles, kind: 'explosion' })
           for (const t of unitsOnTiles(b.alive(), tiles)) if (t !== u) {
             const dmg = rollDice(b.rng, '6d6').total
-            const ok = b.save(t, 'eng', u.stats.save)
+            const ok = b.save(t, 'eng', u.stats.save, 0, u)
             if (ok && t.isGrunt) continue
-            b.applyDamage(t, [{ type: 'Energy', amount: ok ? Math.ceil(dmg / 2) : dmg }], { source: u, ap: true })
+            b.applyDamage(t, [{ type: 'Energy', amount: ok ? b.halfOnSave(t, dmg) : dmg }], { source: u, ap: true })
           }
         }
       }
@@ -475,7 +533,7 @@ registerScripts([
     onAnyTurnEnd(b, self, u) {
       const s = u.statuses.find(s => s.id === 'stunned' && s.data?.maze && s.source === self.id)
       if (!s) return
-      if (b.save(u, 'sys', self.stats.save, u.flags.mazeAcc ?? -3)) b.removeStatus(u, 'stunned')
+      if (b.save(u, 'sys', self.stats.save, u.flags.mazeAcc ?? -3, self)) b.removeStatus(u, 'stunned')
       else u.flags.mazeAcc = (u.flags.mazeAcc ?? -3) + 1
     },
   },
@@ -531,8 +589,7 @@ registerScripts([
   // ---------------- HA Napoleon
   {
     id: 'frame:mf_napoleon',
-    partial: true,
-    note: 'Flash Aegis (brace → damage 1); Heavy Shielding approximated in saves',
+    note: 'Heavy Shielding (half damage on a successful check or save becomes 1); Flash Aegis (Bracing reduces incoming damage to 1 instead of Resistance)',
     init: u => { u.flags.flashAegis = true; u.flags.heavyShielding = true },
   },
   {

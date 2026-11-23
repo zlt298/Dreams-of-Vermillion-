@@ -296,7 +296,7 @@ const scripts: ItemScript[] = [
     actions: (b, u) => droneKit(b, u, { ...TEMPEST, aiScore: earlyWhenEngaged() }),
     ...fieldTriggers('tempest', (b, self, u) => mine(b, self, 'Tempest Drone').some(d => b.distance(d, u) <= 1), (b, self, u) => {
       const d = mine(b, self, 'Tempest Drone').find(x => b.distance(x, u) <= 1)!
-      if (b.save(u, 'hull', self.stats.save)) return
+      if (b.save(u, 'hull', self.stats.save, 0, self)) return
       b.applyDamage(u, [{ type: 'Energy', amount: 4 }], { source: self })
       if (!u.destroyed) b.forceMove(u, d, 3, 1)
     }),
@@ -353,22 +353,22 @@ const scripts: ItemScript[] = [
     ...fieldTriggers('pcp', (b, self, u) => mine(b, self, 'Perimeter Command Plate').some(d => footprint(d).some(p => footprint(u).some(q => q.x === p.x && q.y === p.y))), (b, self, u) => {
       const d = mine(b, self, 'Perimeter Command Plate')[0]
       if (d.flags.pcp === 'repulse') {
-        if (!b.hostile(self, u) || b.save(u, 'hull', self.stats.save)) return
+        if (!b.hostile(self, u) || b.save(u, 'hull', self.stats.save, 0, self)) return
         b.forceMove(u, d, 3, 1)
-      } else if (!b.save(u, 'hull', self.stats.save)) b.addStatus(u, 'immobilized', 'until_cleared', self, { pcp: d.id })
+      } else if (!b.save(u, 'hull', self.stats.save, 0, self)) b.addStatus(u, 'immobilized', 'until_cleared', self, { pcp: d.id })
     }),
     onAnyTurnEnd(b, self, u) {
       if (u.kind !== 'mech' && u.kind !== 'npc') return
       const d = mine(b, self, 'Perimeter Command Plate').find(x => footprint(x).some(p => footprint(u).some(q => q.x === p.x && q.y === p.y)))
       if (!d) return
-      if (d.flags.pcp === 'repulse') { if (b.hostile(self, u) && !b.save(u, 'hull', self.stats.save)) b.forceMove(u, d, 3, 1) }
-      else if (!b.has(u, 'immobilized') && !b.save(u, 'hull', self.stats.save)) b.addStatus(u, 'immobilized', 'until_cleared', self, { pcp: d.id })
+      if (d.flags.pcp === 'repulse') { if (b.hostile(self, u) && !b.save(u, 'hull', self.stats.save, 0, self)) b.forceMove(u, d, 3, 1) }
+      else if (!b.has(u, 'immobilized') && !b.save(u, 'hull', self.stats.save, 0, self)) b.addStatus(u, 'immobilized', 'until_cleared', self, { pcp: d.id })
     },
     grantActions: (b, self, other) => (other.statuses.some(s => s.id === 'immobilized' && s.data?.pcp && mine(b, self, 'Perimeter Command Plate').some(d => d.id === s.data.pcp))
       ? [{
         key: `pcp_free:${self.id}`, name: 'Break free of the command plate', activation: 'quick', target: 'none', text: 'Hull save to clear Immobilized.',
         usable: () => true,
-        run: (bt, me) => { if (bt.save(me, 'hull', self.stats.save)) me.statuses = me.statuses.filter(s => !s.data?.pcp) },
+        run: (bt, me) => { if (bt.save(me, 'hull', self.stats.save, 0, self)) me.statuses = me.statuses.filter(s => !s.data?.pcp) },
         aiTarget: () => ({ x: other.pos.x, y: other.pos.y }), aiScore: () => 3,
       }] : []),
     onDestroyed(b, self, v) { if (v.flags.pcp) for (const u of b.alive()) u.statuses = u.statuses.filter(s => s.data?.pcp !== v.id) },
@@ -471,7 +471,7 @@ const scripts: ItemScript[] = [
       aiScore: (bt, me) => (!me.flags.interdiction && hostiles(bt, me).filter(h => bt.distance(me, h) <= 4).length >= 2 ? 2.5 : 0),
     }],
     ...fieldTriggers('interdiction', (b, self, u) => !!self.flags.interdiction && b.hostile(self, u) && b.distance(self, u) <= 3, (b, self, u) => {
-      if (!b.save(u, 'sys', self.stats.save)) b.addStatus(u, 'slowed', 'next_turn_end_target', self)
+      if (!b.save(u, 'sys', self.stats.save, 0, self)) b.addStatus(u, 'slowed', 'next_turn_end_target', self)
     }),
   },
 ]
@@ -554,6 +554,35 @@ const merge = (...parts: Partial<ItemScript>[]): Partial<ItemScript> => {
   return out
 }
 
+// ---------------------------------------------------------------- Ghast Nexus (a weapon that can deploy as a drone)
+const ghastSpec = (): DeploySpec => ({
+  sysId: 'mw_ghast_nexus', dep: Lancer.weapons.get('mw_ghast_nexus')!.deployables![0] as any, activation: 'free', placement: 'sensors', los: true,
+  text: 'Deploy the Ghast nexus as a stationary drone within Sensors and line of sight; it still attacks as a weapon, with range and line of sight traced from the drone.',
+  aiScore: () => -1,
+})
+registerScripts([
+  {
+    id: 'mw_ghast_nexus',
+    note: 'Attack normally, or deploy as a drone (free action, Sensors and line of sight): Skirmish/Barrage with it trace range and line of sight from the drone; recall or redeploy as a quick action; if the drone is destroyed the weapon is unusable until repaired',
+    actions: (b, u) => {
+      if (!u.weapons.some(x => x.dataId === 'mw_ghast_nexus' && !x.destroyed)) return []
+      const live = mine(b, u, 'Ghast Drone')
+      if (!live.length) { const a = deployAction(b, u, ghastSpec()); return a ? [a] : [] }
+      return [recallAction(u, live[0]), redeployAction(b, u, live[0], { ...ghastSpec(), activation: 'quick' })]
+    },
+    attackOrigin(b, self, w) {
+      if (w.dataId !== 'mw_ghast_nexus') return null
+      const d = mine(b, self, 'Ghast Drone')[0]
+      return d ? { ...d.pos } : null
+    },
+    onDestroyed(b, self, victim) {
+      if (victim.ownerId !== self.id || victim.name !== 'Ghast Drone' || victim.flags.removed) return
+      const w = self.weapons.find(x => x.dataId === 'mw_ghast_nexus' && !x.destroyed)
+      if (w) { w.destroyed = true; b.say(`${self.name}'s Ghast nexus is destroyed with its drone.`, 'damage') }
+    },
+  },
+])
+
 registerScripts([
   {
     id: 'core:mf_hydra',
@@ -613,13 +642,13 @@ registerScripts([
     grantActions: (b, self, other) => (other.statuses.some(s => s.id === 'immobilized' && s.data?.snare) ? [{
       key: `snare_free:${self.id}`, name: 'Break free of the snare', activation: 'quick', target: 'none', text: 'Agility save to clear Immobilized.',
       usable: () => true,
-      run: (bt, me) => { if (bt.save(me, 'agi', self.stats.save)) me.statuses = me.statuses.filter(s => !s.data?.snare) },
+      run: (bt, me) => { if (bt.save(me, 'agi', self.stats.save, 0, self)) me.statuses = me.statuses.filter(s => !s.data?.snare) },
       aiTarget: () => ({ x: other.pos.x, y: other.pos.y }), aiScore: () => 3,
     }] : []),
     ...(merge(
-      orochiTrigger('Snare', (b, self, u, d) => { if (!b.save(u, 'agi', self.stats.save)) b.addStatus(u, 'immobilized', 'until_cleared', self, { snare: d.id }) }),
-      orochiTrigger('Shredder', (b, self, u) => { if (!b.save(u, 'hull', self.stats.save)) { b.applyDamage(u, [{ type: 'Kinetic', amount: 1 }], { source: self }); b.addStatus(u, 'shredded', 'next_turn_end_target', self) } }),
-      orochiTrigger('Hunter', (b, self, u) => { if (!b.save(u, 'sys', self.stats.save)) b.addStatus(u, 'lockon', 'until_cleared', self) }),
+      orochiTrigger('Snare', (b, self, u, d) => { if (!b.save(u, 'agi', self.stats.save, 0, self)) b.addStatus(u, 'immobilized', 'until_cleared', self, { snare: d.id }) }),
+      orochiTrigger('Shredder', (b, self, u) => { if (!b.save(u, 'hull', self.stats.save, 0, self)) { b.applyDamage(u, [{ type: 'Kinetic', amount: 1 }], { source: self }); b.addStatus(u, 'shredded', 'next_turn_end_target', self) } }),
+      orochiTrigger('Hunter', (b, self, u) => { if (!b.save(u, 'sys', self.stats.save, 0, self)) b.addStatus(u, 'lockon', 'until_cleared', self) }),
       {
         // snared characters go free once the drone is gone or no longer adjacent
         onAnyTurnStart(b: Battle, self: Unit, u: Unit) {

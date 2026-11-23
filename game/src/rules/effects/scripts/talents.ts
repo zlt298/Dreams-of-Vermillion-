@@ -60,7 +60,7 @@ registerScripts([
         const target = t as Unit
         if (!bt.adjacent(self, target)) throw new Error('Must be adjacent')
         self.flags.brawlerDie = 6
-        if (!bt.save(target, 'hull', self.stats.save)) bt.addStatus(target, 'stunned', 'next_turn_end_target', self)
+        if (!bt.save(target, 'hull', self.stats.save, 0, self)) bt.addStatus(target, 'stunned', 'next_turn_end_target', self)
         else bt.addStatus(target, 'prone', 'until_cleared', self)
       },
     })],
@@ -111,7 +111,7 @@ registerScripts([
     id: 't_crack_shot:3', partial: true, note: 'Watch This (auto: Limb Shot → Immobilized, or Body Shot → Prone)',
     afterAttack(b, self, ctx, role) {
       if (role !== 'attacker' || !ctx.crit || ctx.weapon?.type !== 'Rifle' || !self.flags.steady || ctx.target.destroyed || !once(self, 'watchthis')) return
-      if (!b.save(ctx.target, 'hull', self.stats.save)) b.addStatus(ctx.target, 'immobilized', 'next_turn_end_target', self)
+      if (!b.save(ctx.target, 'hull', self.stats.save, 0, self)) b.addStatus(ctx.target, 'immobilized', 'next_turn_end_target', self)
     },
   },
   // ---------------- Centimane
@@ -120,7 +120,7 @@ registerScripts([
     afterAttack(b, self, ctx, role) {
       if (self.talents.some(t => t.id === 't_centimane' && t.rank >= 3)) return // replaced by Tidal Suppression
       if (role !== 'attacker' || !ctx.crit || ctx.weapon?.type !== 'Nexus' || ctx.target.destroyed || !once(self, 'teeth')) return
-      if (!b.save(ctx.target, 'sys', self.stats.save)) { b.addStatus(ctx.target, 'impaired', 'next_turn_end_target', self); b.addStatus(ctx.target, 'slowed', 'next_turn_end_target', self) }
+      if (!b.save(ctx.target, 'sys', self.stats.save, 0, self)) { b.addStatus(ctx.target, 'impaired', 'next_turn_end_target', self); b.addStatus(ctx.target, 'slowed', 'next_turn_end_target', self) }
     },
   },
   {
@@ -381,7 +381,7 @@ registerScripts([
     afterAttack(b, self, ctx, role) {
       if (role !== 'attacker' || !self.flags['turn:ambush']) return
       delete self.flags['turn:ambush']
-      if (ctx.hit && !ctx.target.destroyed && !b.save(ctx.target, 'hull', self.stats.save)) {
+      if (ctx.hit && !ctx.target.destroyed && !b.save(ctx.target, 'hull', self.stats.save, 0, self)) {
         for (const s of ['slowed', 'impaired'] as const) b.addStatus(ctx.target, s, 'next_turn_end_target', self)
         ctx.target.reactionsLeft = 0
       }
@@ -424,7 +424,7 @@ registerScripts([
     id: 't_siege_specialist:2', note: 'Impact',
     beforeAttack(b, self, ctx, role) {
       if (role !== 'attacker' || ctx.weapon?.type !== 'Cannon' || !once(self, 'impact')) return
-      for (const o of b.alive()) if (o !== self && b.adjacent(self, o) && o.kind !== 'deployable' && !b.save(o, 'hull', self.stats.save)) { b.forceMove(o, self, 1, 1); b.addStatus(o, 'prone', 'until_cleared', self) }
+      for (const o of b.alive()) if (o !== self && b.adjacent(self, o) && o.kind !== 'deployable' && !b.save(o, 'hull', self.stats.save, 0, self)) { b.forceMove(o, self, 1, 1); b.addStatus(o, 'prone', 'until_cleared', self) }
     },
   },
   {

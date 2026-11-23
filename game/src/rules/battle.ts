@@ -120,6 +120,8 @@ export class Battle {
   private txDepth = 0
   /** set while resolving a Blast attack: cover is measured from here */
   private blastCentre: Pos | null = null
+  /** the aim of the most recent weapon attack (scripts read it after the attack) */
+  lastAim: AttackAim | null = null
   /** set while an attack is measured from somewhere other than the attacker (Throughbolt) */
   attackOrigin: Pos | null = null
   /** prevents infinite reaction chains */
@@ -284,6 +286,7 @@ export class Battle {
     this.say(`${u.name} is ${id.toUpperCase()}.`, 'status')
     if (source && source !== u) for (const sc of scriptsFor(source)) sc.onStatusInflicted?.(this, source, u, id)
     if (id === 'stunned' || id === 'shutdown') { u.flags.wasStunned = true }
+    for (const o of this.alive()) if (o !== u) for (const sc of scriptsFor(o)) sc.onAnyStatusAdded?.(this, o, u, id, duration, source)
     return true
   }
   removeStatus(u: Unit, id: StatusId) {
@@ -345,7 +348,7 @@ export class Battle {
     return ok
   }
   /** Save vs a source's save target. */
-  save(u: Unit, stat: Stat, target: number, extraAcc = 0): boolean {
+  save(u: Unit, stat: Stat, target: number, extraAcc = 0, source?: Unit): boolean {
     if ((stat === 'hull' || stat === 'agi') && this.has(u, 'stunned')) { this.say(`${u.name} automatically fails the ${stat.toUpperCase()} save (stunned).`); return false }
     if ((stat === 'hull' || stat === 'agi') && u.flags.autoSaveUntil != null && this.round <= u.flags.autoSaveUntil) { this.say(`${u.name} automatically passes the ${stat.toUpperCase()} save.`); return true }
     const acc = this.accuracyFromStatuses(u, 'save', stat) + extraAcc
@@ -353,6 +356,7 @@ export class Battle {
     const total = d + u.stats[stat] + a.bonus
     const ok = total >= target
     this.say(`${u.name} ${stat.toUpperCase()} save vs ${target}: ${total} — ${ok ? 'success' : 'failure'}.`)
+    if (!ok && source && source !== u && !source.destroyed) for (const sc of scriptsFor(source)) sc.onSaveFailed?.(this, source, u, stat)
     return ok
   }
 
@@ -388,12 +392,16 @@ export class Battle {
     if (u.destroyed) return 'Destroyed'
     if (u.side !== this.currentSide) return 'Not your side’s turn'
     if (u.activationsLeft <= 0) return 'Already activated this round'
+    if (this.chainTurn && this.chainTurn !== u.id && this.unit(this.chainTurn)?.activationsLeft) return `${this.unit(this.chainTurn)!.name} acts next`
     return true
   }
+  /** a unit that takes its turn right after the current one (Goblin INSTINCT Rig on its host's turn) */
+  chainTurn: string | null = null
 
   beginTurn(u: Unit) {
     const ok = this.canActivate(u)
     if (ok !== true) throw new Error(ok)
+    if (this.chainTurn === u.id) this.chainTurn = null
     this.activeId = u.id
     u.activationsLeft--
     u.activeTurn = true
@@ -460,6 +468,9 @@ export class Battle {
     this.removeStatusIfExpiredRecovery(u)
     this.checkVictory()
     if (this.winner) return
+    const chain = this.chainTurn ? this.unit(this.chainTurn) : undefined
+    if (chain && !chain.destroyed && chain.activationsLeft > 0) { this.currentSide = chain.side; return }
+    this.chainTurn = null
     const opp = other(u.side)
     if (this.hasActivations(opp)) this.currentSide = opp
     else if (this.hasActivations(u.side)) this.currentSide = u.side
@@ -534,7 +545,10 @@ export class Battle {
       if (action && this.quickUsed(u, action)) return (u.flags.bonusQuick ?? 0) > 0 ? true : `${actionLabel(action)} already taken this turn (repeat it via Overcharge or another free action)`
       return u.actionsLeft >= 1 || (u.flags.bonusQuick ?? 0) > 0 ? true : 'No actions left'
     }
-    if (cost === 'full') return u.actionsLeft >= 2 && !this.has(u, 'bracing_recovery') ? true : 'Needs a full action'
+    if (cost === 'full') {
+      if (this.has(u, 'bracing_recovery')) return u.flags.fortress && u.actionsLeft >= 1 ? true : 'Needs a full action' // Drake Fortress: a full action after Bracing
+      return u.actionsLeft >= 2 ? true : 'Needs a full action'
+    }
     return true
   }
   spend(u: Unit, cost: 'quick' | 'full' | 'protocol' | 'free' | 'reaction', action?: string) {
@@ -542,11 +556,13 @@ export class Battle {
     if (ok !== true) throw new Error(ok)
     if (cost === 'reaction') {
       u.reactionsLeft--
+      if (u.flags.ghostweave && this.has(u, 'invisible')) this.removeStatus(u, 'invisible')
       if (action) u.flags[`react:${action}`] = true
       if (this.has(u, 'hidden')) this.removeStatus(u, 'hidden') // taking reactions reveals you
       return
     }
     if (cost !== 'protocol') u.actedThisTurn = true
+    ;(u.flags['turn:spent'] ??= []).push(action ?? cost)
     if (cost === 'quick') {
       // a repeated action must be paid from the free-action pool
       if ((action && this.quickUsed(u, action)) || (u.flags.payWithBonus && (u.flags.bonusQuick ?? 0) > 0)) u.flags.bonusQuick--
@@ -554,7 +570,7 @@ export class Battle {
       else u.flags.bonusQuick--
       delete u.flags.payWithBonus
       if (action) u.flags['turn:quickUsed'] = [...(u.flags['turn:quickUsed'] ?? []), action]
-    } else if (cost === 'full') u.actionsLeft -= 2
+    } else if (cost === 'full') u.actionsLeft = Math.max(0, u.actionsLeft - 2)
   }
 
   // ------------------------------------------------------------------ heat, damage, structure
@@ -565,6 +581,7 @@ export class Battle {
     u.heat += amount
     this.emit({ type: 'damage', unitId: u.id, amount, kind: 'heat' })
     for (const s of scriptsFor(u)) s.onHeat?.(this, u, amount)
+    for (const o of this.alive()) if (o !== u) for (const sc of scriptsFor(o)) sc.onAnyHeat?.(this, o, u, amount, source)
     while (u.heat > u.stats.heatcap && !u.destroyed) {
       if (scriptsFor(u).some(s => s.beforeOverheat?.(this, u))) break
       const excess = u.heat - u.stats.heatcap
@@ -620,7 +637,7 @@ export class Battle {
     return score(alt) > score(dice) ? alt : dice
   }
   private structureCheck(u: Unit) {
-    if (u.structure <= 0) { this.destroy(u, 'structure'); return }
+    if (u.structure <= 0 && !u.flags.briareosZero) { this.destroy(u, 'structure'); return }
     if (u.isGrunt) { this.destroy(u, 'structure'); return }
     const dice = this.tableDice(u, u.stats.structure - u.structure)
     const ones = dice.filter(d => d === 1).length
@@ -668,7 +685,7 @@ export class Battle {
     const dmg = rollDice(this.rng, '4d6').total
     for (const t of unitsOnTiles(this.alive(), tiles)) {
       if (t === u) continue
-      const ok = this.save(t, 'agi', u.stats.save || 10)
+      const ok = this.save(t, 'agi', u.stats.save || 10, 0, u)
       if (ok && t.isGrunt) continue
       this.applyDamage(t, [{ type: 'Explosive', amount: ok ? this.halfOnSave(t, dmg) : dmg }], { source: u })
     }
@@ -778,9 +795,19 @@ export class Battle {
     t.hp -= amount
     this.emit({ type: 'damage', unitId: t.id, amount, kind: 'hp' })
     this.say(`${t.name} takes ${amount} damage (${Math.max(0, t.hp)}/${t.stats.hp} HP).`, 'damage')
+    // Briareos Frame: at 0 HP and 0 Structure the mech holds together; each hit forces a structure check
+    if (t.flags.briareosZero) { t.hp = 0; this.structureCheck(t); return }
     while (t.hp <= 0 && !t.destroyed) {
       if (t.kind === 'deployable' || t.kind === 'drone' || t.isGrunt || t.stats.structure <= 1) {
         this.destroy(t, 'HP depleted')
+        return
+      }
+      if (t.flags.briareos && t.structure <= 1) {
+        t.structure = 0
+        t.hp = 0
+        t.flags.briareosZero = true
+        this.emit({ type: 'damage', unitId: t.id, amount: 1, kind: 'structure' })
+        this.say(`${t.name} is reduced to 0 Structure but the Briareos frame holds together!`, 'warn')
         return
       }
       const excess = -t.hp
@@ -796,6 +823,7 @@ export class Battle {
 
   heal(u: Unit, amount: number) {
     if (u.destroyed) return
+    if (u.flags.briareosZero) { this.say(`${u.name} can't regain HP until a Full Repair (Briareos).`); return }
     u.hp = Math.min(u.stats.hp, u.hp + amount)
     this.say(`${u.name} recovers ${amount} HP.`)
   }
@@ -846,6 +874,19 @@ export class Battle {
     dist.set(startKey, { pos: u.pos, cost: 0, terminal: false, stop: true })
     const open: string[] = [startKey]
     const mover = new Set([u.id])
+    if (u.flags.teleportMoves) {
+      // teleporting: every free space within range, ignoring terrain, obstacles and engagement
+      const out = new Map<string, { pos: Pos; cost: number; prev?: string }>()
+      out.set(startKey, { pos: u.pos, cost: 0 })
+      for (let y = u.pos.y - budget; y <= u.pos.y + budget; y++) for (let x = u.pos.x - budget; x <= u.pos.x + budget; x++) {
+        const np = { x, y }
+        const c = Math.max(Math.abs(x - u.pos.x), Math.abs(y - u.pos.y))
+        if (!c || c > budget || this.passable(u, np, mover) !== 'ok') continue
+        out.set(key(np), { pos: np, cost: c, prev: startKey })
+      }
+      ;(out as any).all = out
+      return out
+    }
     while (open.length) {
       open.sort((a, b) => dist.get(a)!.cost - dist.get(b)!.cost)
       const k = open.shift()!
@@ -1164,9 +1205,11 @@ export class Battle {
     const burst = rs.find(r => r.type === 'Burst')
     const line = rs.find(r => r.type === 'Line')
     const cone = rs.find(r => r.type === 'Cone')
-    if (burst) return burstTiles(this.map, u, Number(burst.val))
-    if (line) return lineTiles(this.map, u, aim, Number(line.val))
-    if (cone) return coneTiles(this.map, u, aim, Number(cone.val))
+    if (burst) return burstTiles(this.map, this.attackOrigin ? { ...u, pos: this.attackOrigin, stats: { ...u.stats, size: 1 } } : u, Number(burst.val))
+    // weapons that can fire as either Line or Cone (Plasma Thrower): the weapon card toggle picks
+    const shape = line && cone ? (w.flags?.shape === 'line' ? 'line' : 'cone') : line ? 'line' : cone ? 'cone' : null
+    if (shape === 'line') return lineTiles(this.map, u, aim, Number(line!.val))
+    if (shape === 'cone') return coneTiles(this.map, u, aim, Number(cone!.val))
     if (blast) {
       const range = rs.find(r => r.type === 'Range')
       const reach = range ? Number(range.val) : 1
@@ -1463,12 +1506,13 @@ export class Battle {
       this.attackOrigin = opts.from
       try { return this.weaponAttack(u, w, aim, mode, { ...opts, from: undefined }) } finally { this.attackOrigin = prev }
     }
-    if (!this.attackOrigin && aim.targetId) for (const sc of scriptsFor(u)) {
+    if (!this.attackOrigin) for (const sc of scriptsFor(u)) {
       const o = sc.attackOrigin?.(this, u, w, aim)
       if (o) return this.weaponAttack(u, w, aim, mode, { ...opts, from: o })
     }
     const usable = this.weaponUsable(u, w, mode === 'skirmish' || mode === 'barrage' || mode === 'overwatch')
     if (usable !== true) return { ctxs: [], ok: false, reason: usable }
+    this.lastAim = { ...aim }
     const pr = this.profile(w)
     let targets: Unit[] = []
     let tiles: Pos[] | null = null
@@ -1535,6 +1579,13 @@ export class Battle {
           if (multi) a = Math.ceil(a / 2)
           base.push({ type: e.type ?? pr.damage[0]?.type ?? 'Kinetic', amount: a })
         }
+        // Combat Drill: each Overkill activation adds +1d6, chaining while the new die is a 1
+        if (ctx.overkillBonus && overkillHeat > 0) {
+          let n = overkillHeat, extra = 0, chained = 0
+          while (n-- > 0 && chained < 50) { const r = this.rng.d(6); extra += r; if (r === 1) { n++; chained++ } }
+          overkillHeat += chained
+          if (extra) { base.push({ type: pr.damage[0]?.type ?? 'Kinetic', amount: extra }); this.say(`  Overkill drill: +${extra} bonus damage.`) }
+        }
         // Deadly (Veteran trait / Ultra): +1d6 damage on critical hits
         if (ctx.crit && u.traits?.includes('deadly')) base.push({ type: pr.damage[0]?.type ?? 'Kinetic', amount: this.rng.d(6) })
         const burnTag = tagVal(pr.tags, 'tg_burn')
@@ -1568,7 +1619,7 @@ export class Battle {
     }
     // costs
     const heatSelf = tagVal(pr.tags, 'tg_heat_self')
-    if (heatSelf) this.addHeat(u, heatSelf)
+    if (heatSelf && !w.flags?.delayedImpact) this.addHeat(u, heatSelf)
     if (overkillHeat) { this.say(`  Overkill: +${overkillHeat} heat.`); this.addHeat(u, overkillHeat) }
     if (hasTag(pr.tags, 'tg_loading')) w.loaded = false
     if (w.usesLeft != null) w.usesLeft--
@@ -1630,7 +1681,7 @@ export class Battle {
       const who = e.do !== 'text' && e.do !== 'bonus_damage' && e.do !== 'teleport' && (e as any).target === 'self' ? src : target
       if (who.destroyed && e.do !== 'text') continue
       if ('save' in e && e.save && this.hostile(src, who) && this.has(src, 'hidden')) this.removeStatus(src, 'hidden')
-      const saved = 'save' in e && e.save ? this.save(who, e.save, st) : false
+      const saved = 'save' in e && e.save ? this.save(who, e.save, st, 0, src) : false
       switch (e.do) {
         case 'text':
           this.say(`  ${stripHtml(e.text)}`)
@@ -1811,7 +1862,7 @@ export class Battle {
   /** Damage a terrain block. Every 10 damage knocks one level off; a block with no levels left becomes rubble. */
   damageTerrain(p: Pos, amount: number, opts: { source?: Unit; quiet?: boolean } = {}): boolean {
     const t = tileAt(this.map, p)
-    if (!t || t.kind !== 'block' || amount <= 0) return false
+    if (!t || t.kind !== 'block' || amount <= 0 || t.indestructible) return false
     const k = `${p.x},${p.y}`
     let dmg = (this.terrainDamage.get(k) ?? 0) + amount
     let levels = 0
@@ -1830,11 +1881,13 @@ export class Battle {
     for (const p of tiles) this.damageTerrain(p, amount, { source: opts.source, quiet: true })
   }
   /** Raise a size-1 section of hard cover on a free ground space (debris, barricades). */
-  raiseCover(p: Pos): boolean {
+  raiseCover(p: Pos, opts: { indestructible?: boolean; owner?: string } = {}): boolean {
     const t = tileAt(this.map, p)
     if (!t || t.kind === 'block' || this.alive().some(o => !o.flags.flat && footprint(o).some(q => q.x === p.x && q.y === p.y))) return false
     t.h += 1
     t.kind = 'block'
+    if (opts.indestructible) t.indestructible = true
+    if (opts.owner) t.owner = opts.owner
     this.terrainDamage.delete(`${p.x},${p.y}`)
     this.invalidateTerrain()
     this.emit({ type: 'terrain', tiles: [{ ...p }] })
@@ -1893,7 +1946,7 @@ export class Battle {
   overcharge(u: Unit) {
     if (u.kind !== 'mech') throw new Error('Only mechs can overcharge')
     if (!u.activeTurn || u.overchargedThisTurn) throw new Error('Already overcharged this turn')
-    if (this.has(u, 'stunned') || this.has(u, 'bracing_recovery')) throw new Error('Cannot overcharge')
+    if (this.has(u, 'stunned') || this.has(u, 'bracing_recovery') || u.flags.noOvercharge) throw new Error('Cannot overcharge')
     const track = (u.bonuses.find(b => b.id === 'overcharge')?.val as string[]) ?? (Lancer.rules.overcharge as string[])
     const cost = rollDice(this.rng, track[Math.min(u.overchargeLevel, track.length - 1)]).total
     u.overchargeLevel = Math.min(u.overchargeLevel + 1, track.length - 1)
@@ -1907,6 +1960,7 @@ export class Battle {
     const c = this.canSpend(u, 'full')
     if (c !== true) throw new Error(c)
     if (mode === 'repair' && u.repairs <= 0) throw new Error('No repairs left')
+    if (mode === 'repair' && u.flags.briareosZero) throw new Error("Can't regain HP until a Full Repair (Briareos Frame)")
     this.spend(u, 'full')
     for (const s of scriptsFor(u)) s.onStabilize?.(this, u)
     if (mode === 'cool') {
@@ -2204,13 +2258,20 @@ export class Battle {
   /** Quick Tech can be taken more than once per turn, but a different option must be chosen each time
    * (Full Tech may pick the same option twice). Invasion options all count as the 'invade' option. */
   private spendTech(u: Unit, option: string) {
+    if (u.flags.freeTech) { delete u.flags.freeTech; return }
     if ((u.flags.fullTechLeft ?? 0) > 0) { u.flags.fullTechLeft--; u.actedThisTurn = true; return }
     this.spend(u, 'quick', `quick_tech:${option}`)
   }
   canQuickTech(u: Unit, option?: string): true | string {
     if (this.inIceout(u)) return 'Inside an ICEOUT field: no tech actions'
+    if (u.flags.freeTech) return true
     if ((u.flags.fullTechLeft ?? 0) > 0) return true
     return this.canSpend(u, 'quick', option ? `quick_tech:${option}` : undefined)
+  }
+  /** Take one Quick Tech option without spending an action (reactions like Reactive Code). */
+  withFreeTech<T>(u: Unit, fn: () => T): T {
+    u.flags.freeTech = true
+    try { return fn() } finally { delete u.flags.freeTech }
   }
   /** Full Tech: two quick tech actions. */
   fullTech(u: Unit) {
@@ -2387,7 +2448,7 @@ export class Battle {
     this.emit({ type: 'area', tiles, kind: 'explosion' })
     const parts = m.damage.map(d => ({ type: d.type, amount: rollDice(this.rng, d.val).total }))
     for (const t of unitsOnTiles(this.alive(), tiles)) {
-      const ok = m.save ? this.save(t, m.save, owner?.stats.save ?? 10) : false
+      const ok = m.save ? this.save(t, m.save, owner?.stats.save ?? 10, 0, owner) : false
       if (!ok && m.effects?.length && owner) this.runEffects(owner, t, m.effects)
       if (ok && (!m.saveHalf || t.isGrunt)) continue
       this.applyDamage(t, ok ? parts.map(p => ({ ...p, amount: this.halfOnSave(t, p.amount) })) : parts, { source: owner })

@@ -404,6 +404,8 @@ function safe(f: () => unknown) {
 
 /** Pick which unit on `side` should activate next. */
 export function pickNextUnit(b: Battle, side: 'player' | 'enemy'): Unit | undefined {
+  const chained = b.chainTurn ? b.unit(b.chainTurn) : undefined
+  if (chained && chained.side === side && chained.activationsLeft > 0 && !chained.destroyed) return chained
   const ready = b.combatants(side).filter(u => u.activationsLeft > 0)
   if (ready.length <= 1) return ready[0]
   // prefer units that are already in contact, then artillery/support

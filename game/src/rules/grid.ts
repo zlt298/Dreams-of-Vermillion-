@@ -3,7 +3,7 @@ import type { Pos, Unit } from './types'
 
 export type TileKind = 'ground' | 'block' | 'forest' | 'rubble' | 'water' | 'hazard'
 /** `skin` only changes how a tile looks (e.g. 'mars': regolith breaking through a cleanroom floor). */
-export interface Tile { h: number; kind: TileKind; skin?: 'mars' }
+export interface Tile { h: number; kind: TileKind; skin?: 'mars'; indestructible?: boolean; owner?: string }
 
 export interface GridMap {
   w: number
@@ -27,6 +27,8 @@ export interface AreaEffect {
   expiresAfterTurnOf?: string
   damage?: string
   ownerId?: string
+  /** script marker (e.g. 'plasma') */
+  tag?: string
 }
 
 export const key = (p: Pos) => `${p.x},${p.y}`

@@ -118,11 +118,11 @@ registerScripts([
     afterAttack(b, self, ctx, role) {
       if (role !== 'attacker' || !ctx.crit || ctx.weapon?.type !== 'Nexus' || ctx.target.destroyed || !once(self, 'tidal')) return
       const t = ctx.target
-      if (b.save(t, 'sys', self.stats.save)) return
+      if (b.save(t, 'sys', self.stats.save, 0, self)) return
       const near = chars(b).filter(o => o !== t && o !== self && b.hostile(self, o) && b.adjacent(o, t))
       if (near.length) {
         b.addStatus(t, 'shredded', 'next_turn_end_target', self)
-        for (const o of near) if (!b.save(o, 'sys', self.stats.save)) b.addStatus(o, 'shredded', 'next_turn_end_target', self)
+        for (const o of near) if (!b.save(o, 'sys', self.stats.save, 0, self)) b.addStatus(o, 'shredded', 'next_turn_end_target', self)
         b.say('  Virulent swarm!')
       } else {
         b.addStatus(t, 'impaired', 'next_turn_end_target', self)
@@ -168,7 +168,7 @@ registerScripts([
     onStatusRemoved(b, self, status) {
       if (status !== 'hidden' || self.destroyed) return
       const t = hostiles(b, self).find(h => b.adjacent(self, h))
-      if (t && !b.save(t, 'sys', self.stats.save)) { t.flags.blindBy = self.id; t.flags.blindUntil = b.round + 1; b.say(`${self.name}'s flash bomb blinds ${t.name}!`) }
+      if (t && !b.save(t, 'sys', self.stats.save, 0, self)) { t.flags.blindBy = self.id; t.flags.blindUntil = b.round + 1; b.say(`${self.name}'s flash bomb blinds ${t.name}!`) }
       self.flags.mastermindMove = true
     },
     beforeAnyAttack(b, self, ctx) {
@@ -211,7 +211,7 @@ registerScripts([
       const dir = { x: Math.sign(t.pos.x - self.pos.x), y: Math.sign(t.pos.y - self.pos.y) }
       const behind = { x: t.pos.x + dir.x * t.stats.size, y: t.pos.y + dir.y * t.stats.size }
       const other = chars(b).find(o => o !== t && footprint(o).some(q => q.x === behind.x && q.y === behind.y))
-      if (other) { if (!b.save(other, 'hull', self.stats.save)) b.addStatus(other, 'prone', 'until_cleared', self) }
+      if (other) { if (!b.save(other, 'hull', self.stats.save, 0, self)) b.addStatus(other, 'prone', 'until_cleared', self) }
       else b.applyDamage(t, [{ type: 'Kinetic', amount: rollDice(b.rng, '1d6').total }], { source: self })
     },
   },
@@ -226,7 +226,7 @@ registerScripts([
         me.flags['round:unstoppable'] = true
         me.flags['round:boosted'] = true
         const passed = charge(bt, me, p, me.stats.speed)
-        for (const o of passed) if (!bt.save(o, 'hull', me.stats.save)) bt.addStatus(o, 'prone', 'until_cleared', me)
+        for (const o of passed) if (!bt.save(o, 'hull', me.stats.save, 0, me)) bt.addStatus(o, 'prone', 'until_cleared', me)
         bt.addHeat(me, rollDice(bt.rng, '1d3+3').total)
       },
       aiTarget: (bt, me) => {
@@ -317,7 +317,7 @@ registerScripts([
         if (!bt.los(me, target) || bt.distance(me, target) > 15) throw new Error('Needs line of sight and range 15')
         me.flags.torrent = 6
         const dmg = rollDice(bt.rng, '2d6').total
-        if (bt.save(target, 'agi', me.stats.save)) bt.applyDamage(target, [{ type: 'Explosive', amount: Math.ceil(dmg / 2) }], { source: me })
+        if (bt.save(target, 'agi', me.stats.save, 0, me)) bt.applyDamage(target, [{ type: 'Explosive', amount: bt.halfOnSave(target, dmg) }], { source: me })
         else { bt.applyDamage(target, [{ type: 'Explosive', amount: dmg }], { source: me }); if (!target.destroyed) bt.addStatus(target, 'stunned', 'next_turn_end_target', me) }
         if (!target.destroyed) bt.addStatus(target, 'prone', 'until_cleared', me)
       },

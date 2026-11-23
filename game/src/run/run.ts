@@ -185,10 +185,13 @@ export function recordBattle(run: RunState, node: RunNode, units: Unit[], won: b
     const pid = u.flags.pilotId as string | undefined
     if (!pid || u.kind !== 'mech') continue
     const c = run.condition[pid]
-    c.destroyed = u.destroyed
-    c.hp = u.destroyed ? 0 : u.hp
-    c.structure = u.destroyed ? 0 : u.structure
-    c.stress = u.destroyed ? 0 : u.stress
+    // lost in blinkspace (Mourning Cloak): gone for the scene, back after the rest
+    const v = u.flags.vanished as { hp: number; structure: number; stress: number } | undefined
+    const gone = u.destroyed && !v
+    c.destroyed = gone
+    c.hp = gone ? 0 : v ? v.hp : u.hp
+    c.structure = gone ? 0 : v ? v.structure : u.structure
+    c.stress = gone ? 0 : v ? v.stress : u.stress
     c.repairs = u.repairs
     c.overchargeLevel = u.overchargeLevel
     c.coreAvailable = u.coreAvailable

@@ -38,7 +38,7 @@ function invade(id: string, name: string, text: string, onHit: (b: Battle, self:
 
 function aoeSave(b: Battle, self: Unit, tiles: Pos[], stat: 'hull' | 'agi' | 'sys' | 'eng', onFail: (t: Unit) => void, filter = (t: Unit) => b.hostile(self, t)) {
   b.emit({ type: 'area', tiles, kind: 'attack' })
-  for (const t of unitsOnTiles(b.alive(), tiles)) if (t !== self && filter(t) && !b.save(t, stat, self.stats.save)) onFail(t)
+  for (const t of unitsOnTiles(b.alive(), tiles)) if (t !== self && filter(t) && !b.save(t, stat, self.stats.save, 0, self)) onFail(t)
 }
 
 registerScripts([
@@ -211,7 +211,7 @@ registerScripts([
       if (role === 'attacker' && self.flags.reloaded && ctx.profile?.tags.some(t => t.id === 'tg_loading')) { ctx.bonusDamage.push({ type: 'Explosive', val: '1d6' }); self.flags.roland = true; delete self.flags.reloaded }
     },
     afterAttack(b, self, ctx, role) {
-      if (role === 'attacker' && self.flags.roland) { delete self.flags.roland; if (ctx.hit && !ctx.target.destroyed && !b.save(ctx.target, 'hull', self.stats.save)) b.addStatus(ctx.target, 'prone', 'until_cleared', self) }
+      if (role === 'attacker' && self.flags.roland) { delete self.flags.roland; if (ctx.hit && !ctx.target.destroyed && !b.save(ctx.target, 'hull', self.stats.save, 0, self)) b.addStatus(ctx.target, 'prone', 'until_cleared', self) }
     },
   },
   {
@@ -254,7 +254,7 @@ registerScripts([
       run: (bt, self, t) => {
         const target = t as Unit
         if (!bt.adjacent(self, target)) throw new Error('Must be adjacent')
-        if (bt.save(target, 'hull', self.stats.save)) return
+        if (bt.save(target, 'hull', self.stats.save, 0, self)) return
         bt.applyDamage(target, [{ type: 'Energy', amount: rollDice(bt.rng, '1d6').total }], { source: self, ap: true })
         bt.addStatus(target, 'immobilized', 'until_cleared', self, { stake: true })
         target.flags.impaledBy = self.id
@@ -264,7 +264,7 @@ registerScripts([
     onAnyTurnEnd(b, self, u) {
       if (u.flags.impaledBy !== self.id || u.destroyed) return
       b.applyDamage(u, [{ type: 'Energy', amount: rollDice(b.rng, '1d6').total }], { source: self, ap: true })
-      if (b.save(u, 'hull', self.stats.save)) { delete u.flags.impaledBy; u.statuses = u.statuses.filter(s => !s.data?.stake); b.say(`${u.name} tears the stake free.`) }
+      if (b.save(u, 'hull', self.stats.save, 0, self)) { delete u.flags.impaledBy; u.statuses = u.statuses.filter(s => !s.data?.stake); b.say(`${u.name} tears the stake free.`) }
     },
   },
   // ------------------------------------------------------------ SSC
@@ -275,7 +275,7 @@ registerScripts([
       run: (bt, self, t) => {
         const target = t as Unit
         if (bt.distance(self, target) > 8 || !bt.los(self, target)) throw new Error('Out of range/LoS')
-        if (bt.hostile(self, target) && bt.save(target, 'agi', self.stats.save)) return
+        if (bt.hostile(self, target) && bt.save(target, 'agi', self.stats.save, 0, self)) return
         bt.forceMove(target, self, 5, -1)
       },
       aiScore: () => 1.5,
@@ -338,8 +338,8 @@ registerScripts([
           spend(s)
           for (const t of unitsOnTiles(bt.alive(), burstTiles(bt.map, self, 3))) {
             if (!bt.hostile(self, t) || !bt.los(t, self) || bt.cover(self, t) !== 'none') continue
-            if (!bt.save(t, 'agi', self.stats.save)) bt.addStatus(t, 'jammed', 'next_turn_end_target', self)
-            if (!bt.save(t, 'sys', self.stats.save)) bt.addStatus(t, 'impaired', 'next_turn_end_target', self)
+            if (!bt.save(t, 'agi', self.stats.save, 0, self)) bt.addStatus(t, 'jammed', 'next_turn_end_target', self)
+            if (!bt.save(t, 'sys', self.stats.save, 0, self)) bt.addStatus(t, 'impaired', 'next_turn_end_target', self)
           }
         },
         aiScore: (bt, self) => hostile(bt, self).filter(h => bt.distance(self, h) <= 3).length * 3,
@@ -464,7 +464,7 @@ registerScripts([
     actions: (b, u) => [
       invade('smite', 'Smite', 'You take 1d6 AP energy; target Systems save or Stunned (1/scene per target).', (bt, self, t) => {
         bt.applyDamage(self, [{ type: 'Energy', amount: rollDice(bt.rng, '1d6').total }], { ap: true })
-        if (!t.flags.smitten && !bt.save(t, 'sys', self.stats.save)) { t.flags.smitten = true; bt.addStatus(t, 'stunned', 'next_turn_end_target', self) }
+        if (!t.flags.smitten && !bt.save(t, 'sys', self.stats.save, 0, self)) { t.flags.smitten = true; bt.addStatus(t, 'stunned', 'next_turn_end_target', self) }
       })(b, u),
       invade('smite', 'Sear', 'You take 1d6 AP energy; target takes 2 heat per adjacent character (max 6).', (bt, self, t) => {
         bt.applyDamage(self, [{ type: 'Energy', amount: rollDice(bt.rng, '1d6').total }], { ap: true })
@@ -479,7 +479,7 @@ registerScripts([
       key: 'emp', name: 'EMP Pulse', activation: 'quick', target: 'self', area: { shape: 'burst', size: 1 }, text: 'You are Stunned; non-biological characters in burst 1: Systems save or Stunned (1/scene each).',
       run: (bt, self) => {
         bt.addStatus(self, 'stunned', 'next_turn_end_target', self)
-        for (const t of unitsOnTiles(bt.alive(), burstTiles(bt.map, self, 1))) if (t !== self && t.role !== 'Biological' && !t.flags.emped && !bt.save(t, 'sys', self.stats.save)) { t.flags.emped = true; bt.addStatus(t, 'stunned', 'next_turn_end_target', self) }
+        for (const t of unitsOnTiles(bt.alive(), burstTiles(bt.map, self, 1))) if (t !== self && t.role !== 'Biological' && !t.flags.emped && !bt.save(t, 'sys', self.stats.save, 0, self)) { t.flags.emped = true; bt.addStatus(t, 'stunned', 'next_turn_end_target', self) }
       },
     })],
   },
@@ -500,7 +500,7 @@ registerScripts([
     id: 'ms_viral_logic_suite', note: 'Logic Bomb / Banish invades',
     actions: (b, u) => [
       invade('vls', 'Logic Bomb', 'Characters of your choice within burst 2 of the target: Systems save or Slowed.', (bt, self, t) => {
-        for (const o of unitsOnTiles(bt.alive(), burstTiles(bt.map, t, 2))) if (bt.hostile(self, o) && !bt.save(o, 'sys', self.stats.save)) bt.addStatus(o, 'slowed', 'next_turn_end_target', self)
+        for (const o of unitsOnTiles(bt.alive(), burstTiles(bt.map, t, 2))) if (bt.hostile(self, o) && !bt.save(o, 'sys', self.stats.save, 0, self)) bt.addStatus(o, 'slowed', 'next_turn_end_target', self)
       })(b, u),
       invade('vls', 'Banish', 'Target takes 2 heat per space it voluntarily moves (max 6) until the end of its next turn.', (bt, self, t) => { t.flags.banished = bt.round + 1 })(b, u),
     ],
@@ -557,7 +557,7 @@ registerScripts([
     actions: (b, u) => [action({
       key: 'flak', name: 'Flak Launcher', activation: 'quick', target: 'enemy', range: 15, text: 'A flying character must pass an Agility save or land, becoming Slowed and unable to fly.',
       usable: (bt, self) => (hostile(bt, self).some(h => h.flying) ? true : 'No flying targets'),
-      run: (bt, self, t) => { const target = t as Unit; if (!target.flying) throw new Error('Target is not flying'); if (!bt.save(target, 'agi', self.stats.save)) { target.flying = false; bt.addStatus(target, 'slowed', 'next_turn_end_target', self) } },
+      run: (bt, self, t) => { const target = t as Unit; if (!target.flying) throw new Error('Target is not flying'); if (!bt.save(target, 'agi', self.stats.save, 0, self)) { target.flying = false; bt.addStatus(target, 'slowed', 'next_turn_end_target', self) } },
     })],
   },
   {
@@ -606,7 +606,7 @@ registerScripts([
         const target = t as Unit
         if (target.flags.stasisUsed) throw new Error('Already used on this character this scene')
         target.flags.stasisUsed = true
-        if (bt.hostile(self, target) && bt.save(target, 'eng', self.stats.save)) return
+        if (bt.hostile(self, target) && bt.save(target, 'eng', self.stats.save, 0, self)) return
         bt.addStatus(target, 'stunned', 'next_turn_end_target', self, { stasis: true })
         target.flags.stasisUntilRound = bt.round + 1
       },
@@ -686,7 +686,7 @@ registerScripts([
         if (!bt.adjacent(self, target)) throw new Error('Must be adjacent')
         spend(sys(self, 'ms_plasma_gauntlet'))
         const dmg = rollDice(bt.rng, '4d6').total
-        const ok = bt.save(target, 'agi', self.stats.save)
+        const ok = bt.save(target, 'agi', self.stats.save, 0, self)
         bt.applyDamage(target, [{ type: 'Energy', amount: ok ? bt.halfOnSave(target, dmg) : dmg }], { source: self, ap: true })
         if (!ok) bt.addStatus(target, 'prone', 'until_cleared', self)
         bt.addHeat(self, Math.ceil(dmg / 2))
