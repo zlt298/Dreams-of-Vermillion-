@@ -99,6 +99,7 @@ function excomm(b: Battle, self: Unit, u: Unit) {
   b.applyDamage(u, [{ type: 'Heat', amount: 3 }], { source: self })
   b.applyDamage(ally, [{ type: 'Heat', amount: 3 }], { source: self })
 }
+const mineRange = (u: Unit) => (u.flags.assaultLauncher ? 15 : 1)
 registerScripts([
   // ------------------------------------------------------------ GMS
   narrative('ms_comp_con_class_assistant_unit', 'AI tag; COMP/CON can pilot while you are out of the mech'),
@@ -118,7 +119,7 @@ registerScripts([
     },
   },
   {
-    id: 'ms_pattern_a_smoke_charges', note: 'Smoke grenade (blast 2 soft cover) and smoke mine (burst 3 soft cover on deploy)',
+    id: 'ms_pattern_a_smoke_charges', note: 'Smoke Grenade (Blast 2 soft cover until the end of your next turn); Smoke Mine (planted adjacent; when an ally moves next to it, Burst 3 soft cover until the end of that ally\'s next turn)',
     init: u => { const s = sys(u, 'ms_pattern_a_smoke_charges'); if (s) s.usesLeft = 3 + u.stats.limitedBonus },
     actions: (b, u) => {
       const s = sys(u, 'ms_pattern_a_smoke_charges')
@@ -128,10 +129,17 @@ registerScripts([
         run: (bt, self, t) => { spend(s); bt.addArea({ kind: 'soft_cover', tiles: blastTiles(bt.map, t as Pos, 2), expiresRound: bt.round + 1, ownerId: self.id }) },
         aiScore: (bt, self) => (bt.round <= 2 ? 2 : 0.5),
       }), action({
-        key: 'smoke-mine', name: 'Smoke Mine', activation: 'quick', target: 'tile', range: 5, area: { shape: 'blast', size: 3 },
-        text: 'Detonates when allies move near it: burst 3 soft cover (resolved immediately).', usable: () => usesOk(s),
-        run: (bt, self, t) => { spend(s); bt.addArea({ kind: 'soft_cover', tiles: blastTiles(bt.map, t as Pos, 3), expiresRound: bt.round + 1, ownerId: self.id }) },
+        key: 'smoke-mine', name: 'Smoke Mine', activation: 'quick', target: 'tile', range: mineRange(u), area: { shape: 'blast', size: 3 },
+        text: 'Plant a mine: when an ally moves next to it, Burst 3 of soft cover until the end of that ally\'s next turn.', usable: () => usesOk(s),
+        run: (bt, self, t) => { bt.placeMine(self, t as Pos, { name: 'Smoke Mine', radius: 3, damage: [], trigger: 'ally', tag: 'smoke' }, { range: mineRange(self) }); spend(s) },
+        aiScore: () => -1,
       })]
+    },
+    onMineDetonate(b, self, m, by) {
+      if (m.tag !== 'smoke') return false
+      const tiles = blastTiles(b.map, m.pos, 3)
+      b.addArea({ kind: 'soft_cover', tiles, ownerId: self.id, ...(by ? { expiresAfterTurnOf: by.id, turnsLeft: by.activeTurn ? 2 : 1 } : { expiresRound: b.round + 1 }) })
+      return true
     },
   },
   {
@@ -343,14 +351,40 @@ registerScripts([
     modifyIncoming(b, self, d) { if (self.flags.hyperdense && d.source && b.distance(self, d.source) > 3) d.amount = Math.ceil(d.amount / 2) },
   },
   {
-    id: 'ms_webjaw_snare', note: 'Snare mine: Hull save or 1d6 AP + Immobilized',
+    id: 'ms_webjaw_snare', note: 'Webjaw Snare: an adjacent Deployable (10 HP, Evasion 5) that doesn\'t obstruct and can\'t be attacked until triggered; a hostile moving over it saves (Hull) or takes 1d6 AP kinetic and is Immobilized until the snare is destroyed',
     actions: (b, u) => {
       const s = sys(u, 'ms_webjaw_snare')
       return [action({
-        key: 'webjaw', name: 'Deploy Webjaw Snare', activation: 'quick', target: 'tile', range: 1, text: 'Adjacent snare: hostiles entering it must pass a Hull save or take 1d6 AP kinetic and become Immobilized.', usable: () => usesOk(s),
-        run: (bt, self, t) => { spend(s); bt.placeMine(self, t as Pos, { name: 'Webjaw Snare', radius: 0, damage: [{ type: 'Kinetic', val: '1d6' }], save: 'hull', effects: [{ do: 'status', status: 'immobilized', duration: 'until_cleared' }] }) },
+        key: 'webjaw', name: 'Deploy Webjaw Snare', activation: 'quick', target: 'tile', range: 1, text: 'An adjacent snare: a hostile that moves over it saves (Hull) or takes 1d6 AP kinetic and is Immobilized until the snare is destroyed.', usable: () => usesOk(s),
+        run: (bt, self, t) => {
+          const p = t as Pos
+          if (Math.max(Math.abs(p.x - self.pos.x), Math.abs(p.y - self.pos.y)) > 1 && !footprint(self).some(q => chebyshev(q, p) === 1)) throw new Error('Must be adjacent')
+          if (bt.alive().some(o => footprint(o).some(q => q.x === p.x && q.y === p.y))) throw new Error('Space occupied')
+          const d = deployableUnit(self, { name: 'Webjaw Snare', type: 'Deployable', size: 1, hp: 10, evasion: 5 } as any, p)
+          d.flags.flat = true
+          d.flags.isCover = false
+          d.flags.intangible = true // can't be attacked until triggered
+          d.flags.webjaw = true
+          bt.spawn(d)
+          spend(s)
+          bt.say(`${self.name} sets a Webjaw Snare.`)
+        },
       })]
     },
+    onMove(b, self, mover, path) {
+      if (mover.kind !== 'mech' && mover.kind !== 'npc' || !b.hostile(self, mover) || mover.destroyed) return
+      for (const d of b.alive().filter(o => o.ownerId === self.id && o.flags.webjaw && o.flags.intangible)) {
+        if (!path.slice(1).some(p => footprint({ pos: p, stats: mover.stats }).some(q => q.x === d.pos.x && q.y === d.pos.y))) continue
+        d.flags.intangible = false
+        b.say(`${mover.name} springs the Webjaw Snare!`, 'attack')
+        if (!b.save(mover, 'hull', self.stats.save, 0, self)) {
+          b.applyDamage(mover, [{ type: 'Kinetic', amount: rollDice(b.rng, '1d6').total }], { source: self, ap: true })
+          if (!mover.destroyed) b.addStatus(mover, 'immobilized', 'until_cleared', self, { snare: d.id })
+        }
+        return
+      }
+    },
+    onDestroyed(b, self, v) { if (v.flags.webjaw) for (const u of b.alive()) u.statuses = u.statuses.filter(st => st.data?.snare !== v.id) },
   },
   {
     id: 'ms_caltrop_launcher', note: 'Burst 1 difficult terrain + 1d3 damage zone for the scene',

@@ -20,6 +20,7 @@ const SHARED = {
   window: new THREE.BoxGeometry(1.01, 0.08, 1.01),
   wreck: new THREE.BoxGeometry(0.6, 0.15, 0.5),
   rock: new THREE.DodecahedronGeometry(1, 0),
+  mine: new THREE.CylinderGeometry(0.16, 0.2, 0.08, 10),
 }
 const SHARED_GEOMETRIES = new Set<THREE.BufferGeometry>(Object.values(SHARED))
 
@@ -65,6 +66,8 @@ export class BattleView {
   tileMeshes: THREE.Mesh[] = []
   units = new Map<string, UnitVisual>()
   highlightGroup = new THREE.Group()
+  /** markers for the mines the player side knows about */
+  mineGroup = new THREE.Group()
   fxGroup = new THREE.Group()
   overlay: HTMLDivElement
   labels = new Map<string, HTMLDivElement>()
@@ -122,7 +125,7 @@ export class BattleView {
     Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 1, far: 120 })
     sun.target.position.set(this.map.w / 2, 0, this.map.h / 2)
     this.scene.add(sun, sun.target)
-    this.scene.add(this.highlightGroup, this.fxGroup)
+    this.scene.add(this.highlightGroup, this.fxGroup, this.mineGroup)
     this.buildTerrain()
     this.buildZones()
     for (const u of battle.units) this.addUnit(u)
@@ -452,6 +455,7 @@ export class BattleView {
   }
 
   syncUnits() {
+    this.syncMines()
     for (const u of this.battle.units) {
       if (!this.units.has(u.id)) this.addUnit(u)
       const vis = this.units.get(u.id)!
@@ -473,6 +477,30 @@ export class BattleView {
     const elev = elevationAt(this.map, u, p) + (u.flying ? 1 : 0)
     vis.group.position.set(p.x + fs / 2, elev * LEVEL, p.y + fs / 2)
     vis.shown = { ...p }
+  }
+
+  /** Rebuild the mine markers: own-side mines (dimmed until armed) and detected hostile mines. */
+  syncMines() {
+    this.mineGroup.clear()
+    for (const m of this.battle.mines) {
+      if (!this.battle.mineVisibleTo(m, 'player')) continue
+      const own = m.side === 'player'
+      const mat = own ? this.basic(m.armed ? 0xffb347 : 0x8a6a3a, m.armed ? 1 : 0.6) : this.basic(0xd04ad0)
+      const mesh = new THREE.Mesh(SHARED.mine, mat)
+      const h = tileAt(this.map, m.pos)?.h ?? 0
+      mesh.position.set(m.pos.x + 0.5, h * LEVEL + 0.05, m.pos.y + 0.5)
+      this.mineGroup.add(mesh)
+    }
+    // Javelin Rocket marks of the player side
+    for (const u of this.battle.units) {
+      if (u.side !== 'player' || u.destroyed || !Array.isArray(u.flags.javelins)) continue
+      for (const p of u.flags.javelins as { x: number; y: number }[]) {
+        const mesh = new THREE.Mesh(SHARED.mine, this.basic(0xff5a3c, 0.7))
+        mesh.scale.set(0.7, 3, 0.7)
+        mesh.position.set(p.x + 0.5, (tileAt(this.map, p)?.h ?? 0) * LEVEL + 0.15, p.y + 0.5)
+        this.mineGroup.add(mesh)
+      }
+    }
   }
 
   // --------------------------------------------------------------- highlights
@@ -613,6 +641,9 @@ export class BattleView {
         break
       case 'terrain':
         this.enqueue(async () => { this.rebuildTiles(e.tiles); this.syncUnits() }, true)
+        break
+      case 'mine':
+        this.enqueue(async () => this.syncMines(), true)
         break
       case 'spawn':
         this.enqueue(async () => { const u = this.battle.unit(e.unitId); if (u) this.addUnit(u) }, true)

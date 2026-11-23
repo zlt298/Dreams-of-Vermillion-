@@ -165,6 +165,7 @@ function settleStraddler(b: Battle, owner: Unit, u: Unit, tiles: Pos[]) {
     return
   }
 }
+const mineRange = (u: Unit) => (u.flags.assaultLauncher ? 15 : 1)
 const scripts: ItemScript[] = [
   // ---------------- SEKHMET
   {
@@ -306,25 +307,28 @@ const scripts: ItemScript[] = [
         usable: () => usesOk(s),
         run: (bt, me, t) => { spend(s); const tiles = blastTiles(bt.map, at(t), 1); bt.emit({ type: 'area', tiles, kind: 'explosion' }); for (const v of unitsOnTiles(chars(bt), tiles)) if (v !== me) half(bt, v, me, 'agi', '1d6', 'Energy'); bt.damageObjectsIn(tiles, 10, { source: me, ap: true }) },
       }), action({
-        key: 'breach_charge', name: 'Plant Breaching Charge', activation: 'quick', target: 'tile', range: 1, text: 'Plant a breaching charge next to you; detonate it later as a quick action.',
-        usable: () => (u.flags.breach ? 'Already planted' : usesOk(s)),
-        run: (_bt, me, t) => { spend(s); me.flags.breach = at(t) },
+        key: 'breach_charge', name: 'Plant Breaching Charge', activation: 'quick', target: 'tile', range: 1, text: 'Plant a breaching charge in an adjacent space, wall or piece of cover; detonate it later as a quick action.',
+        usable: () => usesOk(s),
+        run: (bt, me, t) => { bt.placeMine(me, at(t), { name: 'Breaching Charge', radius: 1, damage: [], trigger: 'remote', tag: 'breach' }, { onWalls: true }); spend(s) },
+        aiScore: () => -1,
       })]
-      if (u.flags.breach) out.push(action({
-        key: 'breach_boom', name: 'Detonate Breaching Charge', activation: 'quick', target: 'none', text: 'Burst 1: Agility save or 2d6 AP explosive (half on success).',
-        run: (bt, me) => {
-          const tiles = blastTiles(bt.map, me.flags.breach, 1)
-          me.flags.breach = undefined
-          bt.emit({ type: 'area', tiles, kind: 'explosion' })
-          for (const v of unitsOnTiles(chars(bt), tiles)) half(bt, v, me, 'agi', '2d6', 'Explosive', undefined, true)
-          bt.damageObjectsIn(tiles, 30, { source: me, ap: true })
-        },
-        aiTarget: (bt, me) => (unitsOnTiles(hostiles(bt, me), blastTiles(bt.map, me.flags.breach, 1)).length ? { ...me.pos } : null),
+      for (const m of b.mines.filter(x => x.ownerId === u.id && x.tag === 'breach')) out.push(action({
+        key: `breach_boom:${m.id}`, name: 'Detonate Breaching Charge', activation: 'quick', target: 'none', text: 'Burst 1: Agility save or 2d6 AP explosive (half on success); objects and terrain take 30 AP explosive.',
+        usable: (bt) => (bt.mines.includes(m) ? true : 'Gone'),
+        run: (bt) => bt.detonateMine(m),
+        aiTarget: (bt, me) => (unitsOnTiles(hostiles(bt, me), blastTiles(bt.map, m.pos, 1)).length && !unitsOnTiles(allies(bt, me), blastTiles(bt.map, m.pos, 1)).length ? { ...me.pos } : null),
         aiScore: () => 4,
       }))
       return out
     },
-    fields: (b, u) => (u.flags.breach ? [{ tiles: blastTiles(b.map, u.flags.breach, 1), effect: 'harm' as const, label: `${u.name}'s breaching charge` }] : []),
+    onMineDetonate(b, self, m) {
+      if (m.tag !== 'breach') return false
+      const tiles = blastTiles(b.map, m.pos, 1)
+      b.emit({ type: 'area', tiles, kind: 'explosion' })
+      for (const v of unitsOnTiles(chars(b), tiles)) half(b, v, self, 'agi', '2d6', 'Explosive', undefined, true)
+      b.damageObjectsIn(tiles, 30, { source: self, ap: true })
+      return true
+    },
   },
   // ---------------- Magnetic Shield
   {
@@ -376,23 +380,20 @@ const scripts: ItemScript[] = [
         aiTarget: (bt, me) => { const h = nearest(bt, me, hostiles(bt, me).filter(h => bt.distance(me, h) <= 7)); return h ? { ...h.pos } : null },
         aiScore: (bt, me, t) => (t && 'x' in t ? unitsOnTiles(hostiles(bt, me), blastTiles(bt.map, t, 3)).length * 1.5 : 0),
       }), action({
-        key: 'flash_mine', name: 'Flash Mine', activation: 'quick', target: 'tile', range: 5, text: 'Arm a mine: characters moving adjacent to or over it save (Agility) or are blinded.',
+        key: 'flash_mine', name: 'Flash Mine', activation: 'quick', target: 'tile', range: mineRange(u), text: 'Plant a mine: when a hostile comes next to it, characters in Burst 1 save (Agility) or see only adjacent spaces until the end of their next turn.',
         usable: () => usesOk(s),
-        run: (_bt, me, t) => { spend(s); me.flags.flashMines = [...(me.flags.flashMines ?? []), at(t)] },
+        run: (bt, me, t) => { bt.placeMine(me, at(t), { name: 'Flash Mine', radius: 1, damage: [], tag: 'flash' }, { range: mineRange(me) }); spend(s) },
       })]
     },
-    onMove(b, self, mover, path) {
-      if (!self.flags.flashMines?.length || mover === self || (mover.kind !== 'mech' && mover.kind !== 'npc')) return
-      const hit = (self.flags.flashMines as Pos[]).find(m => path.some(p => chebyshev(p, m) <= 1))
-      if (!hit) return
-      self.flags.flashMines = (self.flags.flashMines as Pos[]).filter(m => m !== hit)
-      const tiles = burstTiles(b.map, { pos: hit, stats: { size: 1 } } as Unit, 1)
+    onMineDetonate(b, self, m) {
+      if (m.tag !== 'flash') return false
+      const tiles = blastTiles(b.map, m.pos, 1)
       b.emit({ type: 'area', tiles, kind: 'explosion' })
       for (const v of unitsOnTiles(chars(b), tiles)) if (!b.save(v, 'agi', self.stats.save, 0, self)) blind(b, v)
+      return true
     },
     fields: (b, u): FieldOverlay[] => [
       ...(u.flags.flash && b.round <= u.flags.flash.until ? [{ tiles: u.flags.flash.tiles, effect: 'control' as const, label: `${u.name}'s flash zone: no line of sight out` }] : []),
-      ...((u.flags.flashMines ?? []) as Pos[]).map(m => ({ tiles: [m], effect: 'harm' as const, label: `${u.name}'s flash mine` })),
     ],
   },
   // ---------------- Javelin Rockets
@@ -575,7 +576,7 @@ const scripts: ItemScript[] = [
     },
   },
   {
-    id: 'ms_h0r_os_system_upgrade_iii', note: 'H0R_OS III invades: Dimensional Emblems (three constructs by the target; passing through one deals 2 heat); Celestial Shackles (teleport the target back to its marked space)',
+    id: 'ms_h0r_os_system_upgrade_iii', note: 'H0R_OS III invades: Dimensional Emblems (three Size 1 constructs next to the target, not next to each other: passing through one deals 2 heat and removes it; an adjacent character can destroy one with a Systems check as a quick action; you can delete them as a free action; a new use replaces them); Celestial Shackles (teleport the target back to its marked space)',
     actions: (b, u) => {
       const out: CustomAction[] = [invadeOpt(u, 'emblems', 'Dimensional Emblems', 'Three constructs next to the target; passing through one deals 2 heat.', (bt, me, t) => {
         const spots: Pos[] = []
@@ -583,7 +584,12 @@ const scripts: ItemScript[] = [
           const p = { x: t.pos.x + dx, y: t.pos.y + dy }
           if (spots.length < 3 && free(bt, p) && !spots.some(s => chebyshev(s, p) <= 1)) spots.push(p)
         }
-        me.flags.emblems = spots
+        for (const old of bt.alive().filter(o => o.ownerId === me.id && o.flags.emblem)) bt.removeUnit(old, 'fades')
+        for (const p of spots) {
+          const d = deployableUnit(me, { name: 'Dimensional Emblem', type: 'Deployable', size: 1, hp: 10, evasion: 5 } as any, p)
+          d.flags.emblem = true; d.flags.flat = true; d.flags.isCover = false
+          bt.spawn(d)
+        }
       }), invadeOpt(u, 'shackles', 'Celestial Shackles', 'Mark the target’s space; teleport it back there later (free action on your turn).', (_bt, me, t) => { t.flags.shackledBy = me.id; t.flags.shackleAt = { ...t.pos } })]
       for (const t of b.alive().filter(o => o.flags.shackledBy === u.id && (o.pos.x !== o.flags.shackleAt.x || o.pos.y !== o.flags.shackleAt.y))) out.push(action({
         key: `shackle_pull:${t.id}`, name: `Shackles: return ${t.name}`, activation: 'free', target: 'none', text: 'Teleport the shackled character back to its marked space.',
@@ -591,21 +597,30 @@ const scripts: ItemScript[] = [
         run: (bt) => { const p = free(bt, t.flags.shackleAt, t) ? t.flags.shackleAt : tileNear(bt, t, t.flags.shackleAt, 2); t.flags.shackledBy = undefined; if (p) { const from = t.pos; t.pos = p; bt.emit({ type: 'move', unitId: t.id, path: [from, p] }) } },
         aiTarget: () => ({ ...t.pos }), aiScore: () => 2,
       }))
+      if (b.alive().some(o => o.ownerId === u.id && o.flags.emblem)) out.push(action({
+        key: 'emblems_delete', name: 'Delete Dimensional Emblems', activation: 'free', target: 'none', text: 'Remove your dimensional emblems.',
+        run: (bt, me) => { for (const o of bt.alive().filter(x => x.ownerId === me.id && x.flags.emblem)) bt.removeUnit(o, 'is deleted') },
+        aiScore: () => -1,
+      }))
       return out
     },
-    grantActions: (b, self, other) => (other.flags.shackledBy === self.id ? [action({
+    grantActions: (b, self, other) => [...b.alive().filter(o => o.ownerId === self.id && o.flags.emblem && b.adjacent(other, o)).map(o => action({
+      key: `emblem_break:${o.id}`, name: 'Destroy Dimensional Emblem', activation: 'quick', target: 'none', text: 'Systems check: on a success the construct is destroyed.',
+      run: (bt, me) => { if (bt.check(me, 'sys')) bt.removeUnit(o, 'is destroyed') },
+      aiScore: (bt, me) => (bt.hostile(me, self) ? 1 : 0),
+    })), ...(other.flags.shackledBy === self.id ? [action({
       key: `shackle_break:${self.id}`, name: 'Break Celestial Shackles', activation: 'quick', target: 'none', text: 'Systems save to end the shackles.',
       run: (bt, me) => { if (bt.save(me, 'sys', self.stats.save, 0, self)) me.flags.shackledBy = undefined },
       aiTarget: () => ({ ...other.pos }), aiScore: () => 1.5,
-    })] : []),
+    })] : [])],
     onMove(b, self, mover, path) {
-      if (!self.flags.emblems?.length || mover === self) return
-      for (const e of [...self.flags.emblems as Pos[]]) if (path.some(p => footprint({ pos: p, stats: mover.stats }).some(q => q.x === e.x && q.y === e.y))) {
-        self.flags.emblems = (self.flags.emblems as Pos[]).filter(x => x !== e)
+      if (mover.kind !== 'mech' && mover.kind !== 'npc') return
+      for (const e of b.alive().filter(o => o.ownerId === self.id && o.flags.emblem)) if (path.slice(1).some(p => footprint({ pos: p, stats: mover.stats }).some(q => q.x === e.pos.x && q.y === e.pos.y))) {
+        b.removeUnit(e, 'disperses')
         b.applyDamage(mover, [{ type: 'Heat', amount: 2 }], { source: self })
       }
     },
-    fields: (_b, u) => (u.flags.emblems?.length ? [{ tiles: u.flags.emblems, effect: 'harm' as const, label: `${u.name}'s dimensional emblem: 2 heat when passed through` }] : []),
+    fields: (b, u) => { const es = b.alive().filter(o => o.ownerId === u.id && o.flags.emblem); return es.length ? [{ tiles: es.map(e => e.pos), effect: 'harm' as const, label: `${u.name}'s dimensional emblem: 2 heat when passed through` }] : [] },
   },
   // ---------------- Monitor Module
   {
@@ -639,9 +654,9 @@ const scripts: ItemScript[] = [
         run: (bt, me, t) => { spend(s); const v = t as Unit; if (!bt.save(v, 'sys', me.stats.save, 0, me)) { v.flags.mesmerBy = me.id; v.flags.mesmerUntil = bt.round + 1; bt.say(`${v.name} is mesmerized.`) } },
         aiScore: (bt, me, t) => (t && 'id' in t && bt.distance(me, t) > 2 ? 2 : 0),
       }), action({
-        key: 'mesmer_mine', name: 'Mesmer Mine', activation: 'quick', target: 'tile', range: 5, area: { shape: 'blast', size: 2 }, text: 'Arm a mine: Burst 2, Systems save or Immobilized until the end of the next turn.',
+        key: 'mesmer_mine', name: 'Mesmer Mine', activation: 'quick', target: 'tile', range: mineRange(u), area: { shape: 'blast', size: 2 }, text: 'Plant a mine: Burst 2, Systems save or Immobilized until the end of the next turn.',
         usable: () => usesOk(s),
-        run: (bt, me, t) => { spend(s); bt.placeMine(me, at(t), { name: 'Mesmer Mine', radius: 2, damage: [], save: 'sys', effects: [{ do: 'status', status: 'immobilized', duration: 'next_turn_end_target' }] }) },
+        run: (bt, me, t) => { bt.placeMine(me, at(t), { name: 'Mesmer Mine', radius: 2, damage: [], save: 'sys', effects: [{ do: 'status', status: 'immobilized', duration: 'next_turn_end_target' }] }, { range: mineRange(me) }); spend(s) },
       })]
     },
   },
@@ -735,19 +750,17 @@ const scripts: ItemScript[] = [
           }
         },
       }), action({
-        key: 'bouncing_mine', name: 'Bouncing Mine', activation: 'quick', target: 'tile', range: 5, text: 'Arm a mine against flyers passing over or next to it: Systems save or 2d6 explosive and grounded.',
+        key: 'bouncing_mine', name: 'Bouncing Mine', activation: 'quick', target: 'tile', range: mineRange(u), text: 'Plant a mine against flyers passing over or next to it: Systems save or 2d6 explosive and grounded.',
         usable: () => usesOk(s),
-        run: (_bt, me, t) => { spend(s); me.flags.bounceMines = [...(me.flags.bounceMines ?? []), at(t)] },
+        run: (bt, me, t) => { bt.placeMine(me, at(t), { name: 'Bouncing Mine', radius: 1, damage: [], trigger: 'flying', tag: 'bounce' }, { range: mineRange(me) }); spend(s) },
       })]
     },
-    onMove(b, self, mover, path) {
-      if (!self.flags.bounceMines?.length || !mover.flying || mover === self) return
-      const m = (self.flags.bounceMines as Pos[]).find(x => path.some(p => chebyshev(p, x) <= 1))
-      if (!m) return
-      self.flags.bounceMines = (self.flags.bounceMines as Pos[]).filter(x => x !== m)
-      const tiles = burstTiles(b.map, { pos: m, stats: { size: 1 } } as Unit, 1)
+    onMineDetonate(b, self, m) {
+      if (m.tag !== 'bounce') return false
+      const tiles = burstTiles(b.map, { pos: m.pos, stats: { size: 1 } } as Unit, 1)
       b.emit({ type: 'area', tiles, kind: 'explosion' })
       for (const v of unitsOnTiles(chars(b), tiles)) half(b, v, self, 'sys', '2d6', 'Explosive', failed => { if (failed && !v.destroyed) { const fl = v.flying || v.flags.landed; if (v.flying) b.land(v, 'bouncing mine'); v.flags.landed = false; if (fl) { v.flags.groundedUntil = b.round + 1; v.flags.wasFlying = true } } })
+      return true
     },
     onAnyTurnEnd(b, _self, u) { if (u.flags.wasFlying && b.round > (u.flags.groundedUntil ?? 0)) { u.flying = true; u.flags.wasFlying = false } },
   },
@@ -762,28 +775,33 @@ const scripts: ItemScript[] = [
         run: (bt, me, t) => { spend(s); const v = t as Unit; if (!bt.save(v, 'agi', me.stats.save, 0, me)) bt.addStatus(v, 'slowed', 'until_cleared', me, { gravity: true }) },
         aiScore: (bt, _me, t) => (t && 'id' in t && !bt.has(t, 'slowed') ? 2 : 0),
       }), action({
-        key: 'grounding_mine', name: 'Plant Grounding Mine', activation: 'quick', target: 'tile', range: 5, text: 'Plant a mine you detonate later.',
-        usable: () => (u.flags.groundMine ? 'Already planted' : usesOk(s)),
-        run: (_bt, me, t) => { spend(s); me.flags.groundMine = at(t) },
+        key: 'grounding_mine', name: 'Plant Grounding Mine', activation: 'quick', target: 'tile', range: mineRange(u), text: 'Plant a mine you detonate later (quick action).',
+        usable: () => usesOk(s),
+        run: (bt, me, t) => { bt.placeMine(me, at(t), { name: 'Grounding Mine', radius: 5, damage: [], trigger: 'remote', tag: 'ground' }, { range: mineRange(me) }); spend(s) },
+        aiScore: () => -1,
       })]
-      if (u.flags.groundMine) out.push(action({
-        key: 'grounding_boom', name: 'Detonate Grounding Mine', activation: 'quick', target: 'enemy', range: 50, text: 'One character within 5 of the mine: Hull save or pulled to it and Prone.',
+      for (const m of b.mines.filter(x => x.ownerId === u.id && x.tag === 'ground')) out.push(action({
+        key: `grounding_boom:${m.id}`, name: 'Detonate Grounding Mine', activation: 'quick', target: 'unit', range: 99, text: 'One character within 5 of the mine: Hull save or pulled as far as possible toward it and knocked Prone (flyers land).',
+        usable: (bt) => (bt.mines.includes(m) ? true : 'Gone'),
         run: (bt, me, t) => {
           const v = t as Unit
-          const m = me.flags.groundMine as Pos
-          if (chebyshev(v.pos, m) > 5) throw new Error('Target must be within 5 of the mine')
-          me.flags.groundMine = undefined
-          if (bt.save(v, 'hull', me.stats.save, 0, me)) return
-          bt.forceMove(v, m, chebyshev(v.pos, m), -1)
-          if (v.flying) v.flying = false
-          bt.addStatus(v, 'prone', 'until_cleared', me)
+          if (!v || chebyshev(v.pos, m.pos) > 5) throw new Error('Target must be within 5 of the mine')
+          bt.detonateMine(m, v)
         },
-        aiScore: (bt, me, t) => (t && 'id' in t && chebyshev((t as Unit).pos, me.flags.groundMine) <= 5 ? 3 : 0),
+        aiTarget: (bt, me) => hostiles(bt, me).filter(h => chebyshev(h.pos, m.pos) <= 5)[0] ?? null,
+        aiScore: () => 3,
       }))
       return out
     },
+    onMineDetonate(b, self, m, v) {
+      if (m.tag !== 'ground') return false
+      if (!v || v.destroyed || b.save(v, 'hull', self.stats.save, 0, self)) return true
+      b.forceMove(v, m.pos, chebyshev(v.pos, m.pos), -1)
+      if (v.flying) { b.land(v, 'grounding mine'); v.flags.landed = false }
+      b.addStatus(v, 'prone', 'until_cleared', self)
+      return true
+    },
     onAnyTurnEnd(b, _self, u) { if (!u.flags['turn:moved']) u.statuses = u.statuses.filter(s => !s.data?.gravity) },
-    fields: (_b, u) => (u.flags.groundMine ? [{ tiles: [u.flags.groundMine], effect: 'control' as const, label: `${u.name}'s grounding mine` }] : []),
   },
   // ---------------- Clamp Bombs
   {

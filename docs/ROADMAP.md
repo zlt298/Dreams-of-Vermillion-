@@ -239,6 +239,17 @@ The 32 systems that used to be resolved by hand now have scripts (`scripts/syste
 - **Talents:** all 16 partial ranks; the Bondmate is chosen once and kept for the run.
 - **Engine additions:** save sources, line-of-sight zones, per-type resistance, straight-line moves, teleport lockout, chained turns, forced actions, attack rerolls and max damage.
 
+### Mines and charges
+- **One mine model** following the core book's MINE tag, plus a house rule that your own side never sets off your mines:
+  - planted in an adjacent space, not next to another mine
+  - arms at the end of your turn
+  - triggers on entering an adjacent space (not on leaving) and bursts from its own space
+  - Hidden from the other side until found
+- **Search for Mines** (quick: a Systems check finds hostile mines within Sensors) and **Disarm** (quick, adjacent; a failure sets it off), for every mech and NPC, used by the AI too.
+- Your mines (and detected enemy ones) appear as markers on the map and in the field overlays; Javelin Rocket marks are drawn too.
+- **Charges moved onto mines:** Flash, Bouncing (flyers only), Smoke (set off by allies), Breaching and Grounding (remote detonation; Breaching can go on walls), HAVOK (Line 5 toward whoever set it off), Mesmer, Pattern-B.
+- **Real objects:** the Webjaw Snare is a deployable that can't be attacked until sprung, and its Immobilized lasts until it is destroyed. Dimensional Emblems are objects an adjacent character can destroy with a Systems check.
+
 ### Rules fidelity snapshot
 Out of the 392 items in lancer-data, 390 (99%) are fully executed and 2 are approximated (Goblin INSTINCT Rig turn timing, PUPPETMASTER group moves). The rest show a `*` and log their rules text for you to resolve by hand.
 
@@ -265,8 +276,7 @@ Out of the 392 items in lancer-data, 390 (99%) are fully executed and 2 are appr
 ### 1. Deployables and drones
 ✅ The framework and 16 drone/deployable items are done (see Done).
 
-Remaining here:
-- Using the framework for the remaining deployable-based player items (Javelin Rockets, charges, NHP-driven drones).
+✅ Mines and the remaining charges are done (see Done).
 
 ### 2. Player content (L, in batches, each with a test)
 Driven by `npm run coverage -- --list`.

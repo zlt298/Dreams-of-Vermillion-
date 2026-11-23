@@ -4,7 +4,7 @@
 //   systems/weapons/mods/core bonuses: their lancer-data id
 //   talents: `<talentId>:<rank>`          npc features: `npc:<featureKey>`
 import type { DamageData } from '../../data/lancer'
-import type { Battle } from '../battle'
+import type { Battle, Mine } from '../battle'
 import type { Duration, Pos, Profile, StatusId, Unit, Weapon } from '../types'
 
 export interface AttackCtx {
@@ -110,6 +110,8 @@ export interface ItemScript {
   onDamaged?(b: Battle, self: Unit, d: DamageCtx): void
   /** measure this weapon attack from another point (Throughbolt); may apply its own effects first */
   attackOrigin?(b: Battle, self: Unit, w: Weapon, aim: { targetId?: string; tile?: Pos }): Pos | null | undefined
+  /** one of your tagged mines went off (return true when you handled the explosion) */
+  onMineDetonate?(b: Battle, self: Unit, mine: Mine, by?: Unit): boolean
   /** any character spent an action or reaction */
   onAnyAction?(b: Battle, self: Unit, actor: Unit, cost: string): void
   /** your voluntary moves must follow straight lines (Ramjet, OASIS Wall) */

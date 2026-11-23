@@ -121,6 +121,7 @@ To add fidelity, register a script keyed by the item id in `game/src/rules/effec
 - Square grid with diagonals counting as 1. Range and threat include the vertical gap.
 - Rules follow the core book: hard cover must be adjacent to the target and at least as large as it (distant obstructions give soft cover); Blast cover is measured from the blast centre; armor comes off an attack's total once; one reaction per turn, each type once per round; wreckage is hard cover and difficult terrain. Being 2+ levels above cover negates it.
 - Wreckage can be crossed (as difficult terrain) but you can't end a move on it.
+- Mines follow the core book (planted adjacent, not next to another mine; arm at the end of your turn; set off by entering an adjacent space; Hidden from the other side until found with Search for Mines, then disarmable), with one house rule: **your own side never sets off your mines** (the Smoke Mine, which is meant for allies, excepted).
 - Destructible terrain is a house rule: each level of a terrain block has 10 HP and Evasion 5, and a block with no levels left becomes rubble.
 - Two items are simplified: the Goblin's INSTINCT Rig acts right after its host's turn (not at any point during it), and PUPPETMASTER's Guide the Flock moves drones as a group toward one space.
 - Player decisions (reactions, firing modes, effect choices) appear in an in-HUD picker. Per-mech policies (auto / ask / off) cover Brace, Overwatch and other reactions; the AI and Auto turns take the default.

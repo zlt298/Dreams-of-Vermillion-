@@ -25,6 +25,8 @@ export interface AreaEffect {
   tiles: Pos[]
   expiresRound?: number
   expiresAfterTurnOf?: string
+  /** with expiresAfterTurnOf: how many of that character's turn ends remain */
+  turnsLeft?: number
   damage?: string
   ownerId?: string
   /** script marker (e.g. 'plasma') */

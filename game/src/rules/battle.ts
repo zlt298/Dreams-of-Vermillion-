@@ -24,6 +24,7 @@ export type BattleEvent =
   | { type: 'area'; tiles: Pos[]; kind: string }
   | { type: 'spawn'; unitId: string }
   | { type: 'terrain'; tiles: Pos[] }
+  | { type: 'mine'; mineId: string; pos: Pos; added: boolean }
   | { type: 'end'; winner: Side }
   | { type: 'text'; unitId?: string; text: string }
 
@@ -74,6 +75,17 @@ export interface Mine {
   name: string
   /** extra effects applied to characters that fail the save */
   effects?: Effect[]
+  /** mines arm at the end of the turn they were planted on */
+  armed?: boolean
+  /** sides that have found this mine (it is Hidden from everyone else on the other side) */
+  detectedBy?: Side[]
+  /** adjacent (default): a character enters an adjacent space; over: moves onto it; flying: a flyer enters an adjacent space;
+   *  ally: one of the owner's allies enters an adjacent space (Smoke Mine); remote: only its Detonate action */
+  trigger?: 'adjacent' | 'over' | 'flying' | 'ally' | 'remote'
+  /** fires a Line of this length toward the triggering character instead of a burst (HAVOK) */
+  line?: number
+  /** the owner's script handles the explosion (onMineDetonate) */
+  tag?: string
 }
 
 export interface MoveOpts { mode: 'standard' | 'boost' | 'free' | 'disengage' | 'involuntary'; ignoreEngagement?: boolean; flyingOk?: boolean }
@@ -497,6 +509,13 @@ export class Battle {
     u.activeTurn = false
     this.activeId = null
     this.removeStatusIfExpiredRecovery(u)
+    // areas that last until the end of a character's (next) turn
+    if (this.areas.some(a => a.expiresAfterTurnOf === u.id)) {
+      for (const a of this.areas) if (a.expiresAfterTurnOf === u.id) a.turnsLeft = (a.turnsLeft ?? 1) - 1
+      this.areas = this.areas.filter(a => a.expiresAfterTurnOf !== u.id || (a.turnsLeft ?? 0) > 0)
+      this.invalidateTerrain()
+    }
+    for (const m of this.mines) if (m.ownerId === u.id && !m.armed) { m.armed = true; this.say(`${m.name} arms.`); this.emit({ type: 'mine', mineId: m.id, pos: m.pos, added: true }) }
     this.checkVictory()
     if (this.winner) return
     const chain = this.chainTurn ? this.unit(this.chainTurn) : undefined
@@ -1073,16 +1092,18 @@ export class Battle {
     let maxDrop = 0
     let prevE = elevationAt(this.map, u, path[0])
     let lowest = prevE
-    for (const step of path.slice(1)) {
+    for (let si = 1; si < path.length; si++) {
+      const step = path[si]
       const e = elevationAt(this.map, u, step)
       if (e < prevE) maxDrop = Math.max(maxDrop, prevE - e)
       prevE = e
       lowest = Math.min(lowest, e)
+      const before = footprint(u, path[si - 1])
       u.pos = step
-      // mines
-      for (const m of [...this.mines]) {
-        if (m.side === u.side || u.flags.skeletonKey) continue
-        if (footprint(u).some(q => chebyshev(q, m.pos) <= m.radius)) this.detonateMine(m)
+      // mines: triggered on entering a space next to them (or over them), never on leaving
+      if (this.mines.length && (u.kind === 'mech' || u.kind === 'npc')) for (const m of [...this.mines]) {
+        if (this.mineTriggeredBy(m, u, before)) this.detonateMine(m, u)
+        if (u.destroyed) break
       }
       // hazard tiles
       const hz = footprint(u).some(q => tileAt(this.map, q)?.kind === 'hazard')
@@ -2492,6 +2513,13 @@ export class Battle {
         label: `${a.kind === 'damage' ? 'Damaging area' : a.kind === 'difficult' ? 'Difficult terrain' : a.kind === 'zero_g' ? "Zero-g: everyone can fly and can't fall; Slowed without a flight system" : 'Soft cover (obscured)'}${owner ? ` — ${owner.name}` : ''}`,
       })
     }
+    // mines the player side knows about: its own, and detected hostile ones
+    for (const m of this.mines) {
+      if (!this.mineVisibleTo(m, 'player')) continue
+      const owner = this.unit(m.ownerId)
+      const how = m.trigger === 'remote' ? 'detonated remotely' : m.trigger === 'over' ? 'goes off when a hostile moves onto it' : m.trigger === 'flying' ? 'goes off when a hostile flyer comes next to it' : m.trigger === 'ally' ? 'goes off when an ally comes next to it' : 'goes off when a hostile enters an adjacent space'
+      out.push({ tiles: [m.pos], effect: 'harm', ownerId: m.ownerId, label: m.side === 'player' ? `${m.name}${owner ? ` (${owner.name})` : ''}: ${m.armed ? how : 'arms at the end of the turn'}` : `Hostile ${m.name} (detected): disarm it from an adjacent space` })
+    }
     for (const o of this.alive()) {
       if (o.flags.revealRadius) out.push({ tiles: burstTiles(this.map, o, o.flags.revealRadius), effect: 'reveal', ownerId: o.ownerId, label: `${o.name}: hostiles can't Hide or stay Invisible` })
       if (o.flags.iceoutRadius) out.push({ tiles: burstTiles(this.map, o, o.flags.iceoutRadius), effect: 'control', ownerId: o.ownerId, label: `${o.name}: no tech actions in or into the field` })
@@ -2557,23 +2585,84 @@ export class Battle {
     this.invalidateTerrain()
     this.emit({ type: 'spawn', unitId: u.id })
   }
-  placeMine(owner: Unit, pos: Pos, m: Omit<Mine, 'id' | 'ownerId' | 'side' | 'pos'>) {
-    this.mines.push({ ...m, id: nextUid('mine'), ownerId: owner.id, side: owner.side, pos })
-    this.say(`${owner.name} arms ${m.name}.`)
+  /**
+   * Plant a mine (core book MINE tag): a free space within `range` (adjacent by default) that isn't next to another
+   * mine; it arms at the end of the owner's turn and is Hidden from the other side until detected.
+   */
+  placeMine(owner: Unit, pos: Pos, m: Omit<Mine, 'id' | 'ownerId' | 'side' | 'pos'>, opts: { range?: number; onWalls?: boolean; noCheck?: boolean } = {}): Mine {
+    if (!opts.noCheck) {
+      const t = tileAt(this.map, pos)
+      if (!t) throw new Error('Off the map')
+      if (distanceToTile(this.map, owner, pos) > (opts.range ?? 1)) throw new Error(opts.range ? `Out of range (${opts.range})` : 'Mines are planted in an adjacent space')
+      if (!opts.onWalls && (t.kind === 'block' || this.alive().some(o => !o.flags.flat && footprint(o).some(q => q.x === pos.x && q.y === pos.y)))) throw new Error('The space must be free')
+      if (this.mines.some(x => chebyshev(x.pos, pos) <= 1)) throw new Error("Mines can't be planted next to another mine")
+    }
+    const mine: Mine = { ...m, id: nextUid('mine'), ownerId: owner.id, side: owner.side, pos: { ...pos }, armed: m.armed ?? !owner.activeTurn, detectedBy: [] }
+    this.mines.push(mine)
+    this.say(`${owner.name} plants ${m.name}${mine.armed ? '' : ' (it arms at the end of the turn)'}.`)
+    this.emit({ type: 'mine', mineId: mine.id, pos: mine.pos, added: true })
+    return mine
   }
-  detonateMine(m: Mine) {
+  mineVisibleTo(m: Mine, side: Side): boolean {
+    return m.side === side || !!m.detectedBy?.includes(side)
+  }
+  private mineTriggeredBy(m: Mine, u: Unit, before: Pos[]): boolean {
+    if (!m.armed || u.flags.skeletonKey) return false
+    const trig = m.trigger ?? 'adjacent'
+    if (trig === 'remote') return false
+    // house rule: your own side never sets off your mines (except mines meant for allies)
+    if (trig === 'ally' ? u.side !== m.side : u.side === m.side) return false
+    const now = footprint(u)
+    if (trig === 'over') return now.some(q => q.x === m.pos.x && q.y === m.pos.y) && !before.some(q => q.x === m.pos.x && q.y === m.pos.y)
+    if (trig === 'flying' && !u.flying) return false
+    const near = (fp: Pos[]) => fp.some(q => chebyshev(q, m.pos) <= 1)
+    return near(now) && !near(before)
+  }
+  /** Detonate a mine (triggered by `by`, or remotely). */
+  detonateMine(m: Mine, by?: Unit) {
     this.mines = this.mines.filter(x => x !== m)
+    this.emit({ type: 'mine', mineId: m.id, pos: m.pos, added: false })
     const owner = this.unit(m.ownerId)
     this.say(`${m.name} DETONATES!`, 'attack')
-    const tiles = blastTiles(this.map, m.pos, m.radius)
+    if (m.tag && owner && scriptsFor(owner).some(sc => sc.onMineDetonate?.(this, owner, m, by))) return
+    const src: Unit = owner ?? ({ id: m.ownerId, pos: m.pos, stats: { size: 1 } } as Unit)
+    const tiles = m.line && by
+      ? lineTiles(this.map, { ...src, pos: m.pos, stats: { ...src.stats, size: 1 } } as Unit, by.pos, m.line)
+      : blastTiles(this.map, m.pos, m.radius)
     this.emit({ type: 'area', tiles, kind: 'explosion' })
     const parts = m.damage.map(d => ({ type: d.type, amount: rollDice(this.rng, d.val).total }))
     for (const t of unitsOnTiles(this.alive(), tiles)) {
+      if (t.kind !== 'mech' && t.kind !== 'npc' && t.kind !== 'drone') continue
       const ok = m.save ? this.save(t, m.save, owner?.stats.save ?? 10, 0, owner) : false
       if (!ok && m.effects?.length && owner) this.runEffects(owner, t, m.effects)
-      if (ok && (!m.saveHalf || t.isGrunt)) continue
+      if (!parts.length || (ok && (!m.saveHalf || t.isGrunt))) continue
       this.applyDamage(t, ok ? parts.map(p => ({ ...p, amount: this.halfOnSave(t, p.amount) })) : parts, { source: owner })
     }
+  }
+  /** Search for Mines (quick): a Systems check finds every hostile mine within Sensors. */
+  searchMines(u: Unit, paid = false): number {
+    if (!paid) {
+      const c = this.canSpend(u, 'quick', 'search_mines')
+      if (c !== true) throw new Error(c)
+      this.spend(u, 'quick', 'search_mines')
+    }
+    if (!this.check(u, 'sys')) { this.say(`${u.name} scans for mines but finds nothing.`); return 0 }
+    let n = 0
+    for (const m of this.mines) if (m.side !== u.side && !m.detectedBy?.includes(u.side) && distanceToTile(this.map, u, m.pos) <= u.stats.sensors) { (m.detectedBy ??= []).push(u.side); n++; this.emit({ type: 'mine', mineId: m.id, pos: m.pos, added: true }) }
+    this.say(n ? `${u.name} detects ${n} mine${n > 1 ? 's' : ''}.` : `${u.name} finds no mines within Sensors.`)
+    return n
+  }
+  /** Disarm Mine (quick): a detected mine in an adjacent space; a failed Systems check sets it off. */
+  disarmMine(u: Unit, m: Mine, paid = false) {
+    if (!paid) { const c = this.canSpend(u, 'quick', 'disarm_mine'); if (c !== true) throw new Error(c) }
+    if (!this.mineVisibleTo(m, u.side)) throw new Error('No known mine there')
+    if (!footprint(u).some(q => chebyshev(q, m.pos) === 1 || (q.x === m.pos.x && q.y === m.pos.y))) throw new Error('Must be adjacent to the mine')
+    if (!paid) this.spend(u, 'quick', 'disarm_mine')
+    if (this.check(u, 'sys')) {
+      this.mines = this.mines.filter(x => x !== m)
+      this.emit({ type: 'mine', mineId: m.id, pos: m.pos, added: false })
+      this.say(`${u.name} disarms ${m.name}.`)
+    } else { this.say(`${u.name} fumbles the disarm!`, 'warn'); this.detonateMine(m, u) }
   }
   addArea(a: Omit<AreaEffect, 'id'>) {
     const area = { ...a, id: nextUid('area') }

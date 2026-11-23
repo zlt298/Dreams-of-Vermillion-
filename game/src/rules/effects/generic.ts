@@ -166,7 +166,8 @@ export function deployableUnit(owner: Unit, d: DeployableData, pos: Pos): Unit {
 function deployAction(b: Battle, u: Unit, d: DeployableData, keyBase: string, sys?: SystemInst, parentActivation?: string): CustomAction | null {
   const act = activationOf(d.activation ?? parentActivation ?? 'Quick') ?? 'quick'
   const isMine = d.type === 'Mine'
-  const range = isMine && u.flags.assaultLauncher ? 15 : rangeVal(d, 'Range') ?? 5
+  // mines are planted in an adjacent space unless a range is given (Assault Launcher: thrown 15)
+  const range = isMine ? (u.flags.assaultLauncher ? 15 : rangeVal(d, 'Range') ?? 1) : rangeVal(d, 'Range') ?? 5
   const radius = rangeVal(d, 'Burst') ?? rangeVal(d, 'Blast') ?? 1
   const live = () => b.alive().filter(x => x.ownerId === u.id && x.flags.dataName === d.name).length
   return {
@@ -187,13 +188,15 @@ function deployAction(b: Battle, u: Unit, d: DeployableData, keyBase: string, sy
     run: (bt, self, target) => {
       const p = target && 'x' in target ? target : self.pos
       if (distanceToTile(bt.map, self, p) > range) throw new Error('Out of range')
-      spendUse(sys)
       if (isMine) {
         const dmg = d.damage ?? []
-        bt.placeMine(self, p, { name: d.name, radius, damage: dmg, save: statOf(dmg[0]?.save), saveHalf: (dmg[0] as any)?.save_half })
+        const line = rangeVal(d, 'Line')
+        bt.placeMine(self, p, { name: d.name, radius, damage: dmg, save: statOf(dmg[0]?.save), saveHalf: (dmg[0] as any)?.save_half, line: line ?? undefined }, { range })
+        spendUse(sys)
         if (!dmg.length) bt.say(`  [manual] ${stripHtml(d.detail ?? '')}`, 'warn')
         return
       }
+      spendUse(sys)
       const unit = deployableUnit(self, d, p)
       const occupied = footprint(unit).some(q => bt.alive().some(o => footprint(o).some(z => z.x === q.x && z.y === q.y)))
       if (occupied) throw new Error('Space occupied')
@@ -204,9 +207,33 @@ function deployAction(b: Battle, u: Unit, d: DeployableData, keyBase: string, sy
   }
 }
 
+/** Search for Mines (quick, Systems check within Sensors) and Disarm Mine (quick, adjacent, Systems check). */
+function mineActions(b: Battle, u: Unit): CustomAction[] {
+  const out: CustomAction[] = [{
+    key: 'search_mines', name: 'Search for Mines', activation: 'quick', target: 'none',
+    text: 'Systems check — on a success you find every hostile mine within Sensors.',
+    usable: () => true,
+    run: (bt, self) => { bt.searchMines(self, true) },
+    // the AI only bothers when there is something to find
+    aiScore: (bt, self) => (bt.mines.some(m => m.side !== self.side && !m.detectedBy?.includes(self.side) && distanceToTile(bt.map, self, m.pos) <= Math.min(self.stats.sensors, 6)) ? 1.5 : -1),
+  }]
+  for (const m of b.mines) {
+    if (m.side === u.side || !b.mineVisibleTo(m, u.side) || !footprint(u).some(q => Math.max(Math.abs(q.x - m.pos.x), Math.abs(q.y - m.pos.y)) <= 1)) continue
+    out.push({
+      key: `disarm_mine:${m.id}`, name: `Disarm ${m.name}`, activation: 'quick', target: 'none',
+      text: 'Systems check — success removes the mine, failure sets it off.',
+      usable: () => true,
+      run: (bt, self) => { bt.disarmMine(self, m, true) },
+      aiScore: () => 2,
+    })
+  }
+  return out
+}
+
 /** Generic, data-driven actions for a unit (skips items that have a script providing actions). */
 export function genericActionsFor(b: Battle, u: Unit): CustomAction[] {
   const out: CustomAction[] = []
+  if (u.kind === 'mech' || u.kind === 'npc') out.push(...mineActions(b, u))
   if (u.kind !== 'mech') return out
   for (const s of u.systems) {
     if (s.destroyed || s.feature) continue

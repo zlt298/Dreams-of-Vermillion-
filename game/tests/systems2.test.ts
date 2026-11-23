@@ -76,9 +76,9 @@ describe('systems', () => {
   })
   it('Flash Mine blinds a character that approaches it', () => {
     const { a, e, b } = setup(['ms_flash_charges'])
-    b.useCustom(a, act(b, a, /Flash Mine/), { x: 5, y: 6 })
+    b.useCustom(a, act(b, a, /Flash Mine/), { x: 5, y: 5 })
     toEnemyTurn(b, a, e)
-    b.move(e, { x: 5, y: 7 })
+    b.move(e, { x: 5, y: 6 })
     expect(b.isBlinded(e)).toBe(true)
     expect(b.validTarget(e, rifle(e), a)).toMatch(/Blinded/)
   })
