@@ -161,7 +161,11 @@ function customValue(b: Battle, u: Unit, a: CustomAction, from: Pos): { value: n
         let v = f ? effectValue(b, u, t, effects) * (f.save ? 0.6 : 1) : (a.aiScore?.(b, u, t) ?? 0) * 0.6
         // scripted tech attacks (system invades, full techs): weigh by the hit chance, and count an invade's
         // own 2 heat, so they compare fairly with Fragment Signal (which is valued the same way)
-        if (!f && a.aiScore && /tech/.test(a.activation)) v = techHitChance(u, t) * ((a.aiScore(b, u, t) ?? 0) + (a.techOption === 'invade' ? invadeHeatValue(t) : 0))
+        if (!f && a.aiScore && /tech/.test(a.activation)) {
+          // the engine refuses tech actions on Biological, shut-down, hidden or out-of-range targets: don't plan them
+          if (b.techTargetValid(u, t, a.techOption) !== true) continue
+          v = techHitChance(u, t) * ((a.aiScore(b, u, t) ?? 0) + (a.techOption === 'invade' ? invadeHeatValue(t) : 0))
+        }
         if (!best || v > best.value) best = { value: v, target: t }
       }
       return best ? { ...best, value: best.value - heatPenalty } : null
@@ -219,13 +223,16 @@ function hazardCost(b: Battle, u: Unit, p: Pos): number {
  * approach. Long-ranged teams that hang back can otherwise freeze both sides just outside each
  * other's reach until the round cap; the advance pull grows with this so somebody commits.
  */
+/**
+ * Rounds this unit has gone without making an attack, beyond the same grace period. The AI plans one turn
+ * at a time, so a cautious unit two moves from the fight never commits while its allies are fighting (the
+ * battle as a whole isn't stalled); this grows its advance pull the same way.
+ */
+export function unitIdleRounds(b: Battle, u: Unit, grace = 3): number {
+  return Math.max(0, b.round - (u.flags.lastAttackRound ?? 0) - grace)
+}
 export function stallRounds(b: Battle, grace = 3): number {
-  let last = b.log[0]?.round ?? 0
-  for (let i = b.log.length - 1; i >= 0; i--) {
-    const e = b.log[i]
-    if (e.kind === 'attack' || e.kind === 'damage') { last = e.round; break }
-  }
-  return Math.max(0, b.round - last - grace)
+  return Math.max(0, b.round - b.lastAttackRound - grace)
 }
 let stall = 0
 
@@ -314,6 +321,7 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
       continue
     }
     if (a.text && a.name.startsWith('Deploy') && !u.flags[`ai_deployed_${a.key}`]) {
+      if (a.usable(b, u) !== true) continue
       // deploy cover/drones once, early
       const tgt = a.target === 'tile' ? { x: Math.max(0, Math.min(b.map.w - 1, p.x + 1)), y: p.y } : undefined
       opts.push({ kind: 'custom', action: a, target: tgt, value: b.round <= 2 ? 1.5 : 0.3, cost: c })
@@ -342,7 +350,10 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
     const near = hostiles.filter(h => (h.kind === 'mech' || h.kind === 'npc') && Math.max(Math.abs(h.pos.x - p.x), Math.abs(h.pos.y - p.y)) <= 10).length
     // Drake Fortress Protocol roots the mech: only worth it with a hostile already inside its own reach
     const rooted = u.frameId === 'mf_drake' && !hostiles.some(h => (h.kind === 'mech' || h.kind === 'npc') && Math.max(Math.abs(h.pos.x - p.x), Math.abs(h.pos.y - p.y)) <= weaponReachOf(b, u))
-    if (near && b.round >= 2 && !rooted) opts.push({ kind: 'core', value: 4 + near, cost: act === 'protocol' ? 'protocol' : act === 'full' ? 'full' : act === 'free' ? 'free' : 'quick' })
+    // value from where the unit stands now (capped), not from the candidate tile: counting hostiles around the
+    // destination rewarded diving into the enemy blob just to spend the CORE, whatever the CORE does
+    const nearNow = Math.min(3, hostiles.filter(h => (h.kind === 'mech' || h.kind === 'npc') && Math.max(Math.abs(h.pos.x - u.pos.x), Math.abs(h.pos.y - u.pos.y)) <= 10).length)
+    if (near && b.round >= 2 && !rooted) opts.push({ kind: 'core', value: 4 + nearNow, cost: act === 'protocol' ? 'protocol' : act === 'full' ? 'full' : act === 'free' ? 'free' : 'quick' })
   }
   return opts
 }
@@ -376,7 +387,7 @@ export function planFor(b: Battle, u: Unit): Plan {
   for (const v of all.values()) cands.push({ pos: v.pos, boost: v.cost > u.moveLeft })
   // prune candidates for speed: keep the most promising ones by position value
   const threats = threatsAgainst(b, u)
-  stall = stallRounds(b)
+  stall = Math.max(stallRounds(b), unitIdleRounds(b, u))
   let scored = cands.map(c => ({ ...c, pv: positionValue(b, u, c.pos, threats) }))
   if (scored.length > 70) {
     scored.sort((a, b2) => b2.pv - a.pv)
@@ -405,7 +416,10 @@ function execute(b: Battle, u: Unit, o: Option) {
       const auxes = b.auxFollowUps(u, [o.a.weapon, ...(o.b ? [o.b.weapon] : [])]).map(w => ({ weapon: w, aim: o.a.aim }))
       return b.barrage(u, o.a, o.b, auxes)
     }
-    case 'custom': return b.useCustom(u, o.action, o.target)
+    case 'custom':
+      // generic "deploy once, early" options are tried once (a failed placement must not repeat every turn)
+      if (o.action.name.startsWith('Deploy') && !o.action.aiTarget) u.flags[`ai_deployed_${o.action.key}`] = true
+      return b.useCustom(u, o.action, o.target)
     case 'invade': return b.invade(u, o.target)
     case 'lockon': return b.lockOn(u, o.target)
     case 'reload': return b.reload(u, o.weapon)

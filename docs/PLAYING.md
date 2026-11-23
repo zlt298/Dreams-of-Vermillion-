@@ -22,11 +22,10 @@ During a run, each pilot on the campaign map has an **Edit build** button. Build
 - **Starting a run.** A chosen pilot at another level gets a run-only copy fitted to LL0. The copy keeps what LL0 allows; gear its licenses no longer cover is removed. The **Squad preparation** screen then asks you to finish each fitted build in the builder. The run starts once every pilot is legal, has all points spent and has at least one weapon.
 - **After each act boss.** The squad moves to the new level, and the level-up screen holds the run until every pilot is ready again. Use **Level up** for each pilot, or re-import a COMP/CON pilot (or a pre-built squad) at the right level; these match by id or callsign.
 
-**Pre-built squads.** The hangar's squad picker adds a ready-made squad to the roster and picks it. There are four themed squads at LL0, LL5 and LL10, each with four legal pilots that have every point spent:
-- **Brawlers:** melee and armour.
-- **Long Guns:** rifles, cannons and missiles.
-- **Ghosts:** tech and stealth.
-- **Drone Wing:** drones and deployables.
+**Pre-built squads.** The hangar's squad picker adds a ready-made squad to the roster and picks it. There are three themed squads at LL0, LL5 and LL10, each with four legal pilots that have every point spent and one Striker, Defender, Controller and Artillery frame. Each is labelled by how hard it plays (AI-vs-AI sims against every enemy team at its act level):
+- **Brawlers (Easy):** melee and armour.
+- **Long Guns (Medium):** rifles, cannons and missiles.
+- **Drone Wing (Hard):** drones and deployables.
 
 The picker also has the COMP/CON pregens and the LL5/LL10 sample squads. The themed squads are generated and checked by `npx tsx scripts/make-squads.ts`.
 

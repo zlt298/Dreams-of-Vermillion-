@@ -271,6 +271,7 @@ export function loseHp(bt: Battle, t: Unit, amount: number, _source?: Unit) {
     if (a) bt.say(`${t.name}'s overshield absorbs ${a}.`)
   }
   if (amount <= 0) return
+  bt.lastAttackRound = bt.round
   t.hp -= amount
   bt.emit({ type: 'damage', unitId: t.id, amount, kind: 'hp' })
   bt.say(`${t.name} takes ${amount} damage (${Math.max(0, t.hp)}/${t.stats.hp} HP).`, 'damage')
