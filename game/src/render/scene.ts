@@ -116,6 +116,9 @@ export class BattleView {
   private clock = new THREE.Clock()
   slowMotion = reducedMotion()
   private fx!: FX
+  private critTarget: string | null = null
+  /** where the last unit fell (the end-of-battle camera beat) */
+  lastFallen: THREE.Vector3 | null = null
   private shakeAmp = 0
   private shakeUntil = 0
 
@@ -255,6 +258,22 @@ export class BattleView {
     }
   }
 
+  /** End-of-battle beat: ease the camera in on where the last unit fell. */
+  async cinematic() {
+    if (this.slowMotion || this.speed === 0) return
+    const to = this.lastFallen
+    const z0 = this.zoom, z1 = Math.min(3, z0 * 1.35)
+    const t0 = this.target.clone()
+    for (let i = 1; i <= 30; i++) {
+      if (this.disposed) return
+      const k = 1 - Math.pow(1 - i / 30, 3)
+      if (to) this.target.set(t0.x + (to.x - t0.x) * k, 0, t0.z + (to.z - t0.z) * k)
+      this.zoom = z0 + (z1 - z0) * k
+      this.resize()
+      await new Promise(r => setTimeout(r, 33))
+    }
+  }
+
   /** Brief camera shake (off under reduced motion and when skipping). */
   shake(amount: number, ms: number) {
     if (this.slowMotion || this.skipping) return
@@ -291,6 +310,7 @@ export class BattleView {
     this.layers.clear()
     this.units.clear()
     this.labels.clear()
+    this.labelParts.clear()
     this.scene.clear()
     this.renderer.renderLists.dispose()
     this.renderer.forceContextLoss()
@@ -541,6 +561,17 @@ export class BattleView {
     this.labels.set(u.id, label)
   }
 
+  /** Label DOM is built once per unit and patched in place, so bar widths can animate (damage trail). */
+  private labelParts = new Map<string, { nm: HTMLElement; hp: HTMLElement; ghost: HTMLElement; os: HTMLElement; heatBar: HTMLElement; heat: HTMLElement; pips: HTMLElement; st: HTMLElement; last: string }>()
+  private labelDom(id: string, label: HTMLDivElement) {
+    let p = this.labelParts.get(id)
+    if (p) return p
+    label.innerHTML = '<div class="ln"></div><div class="bar hp"><u></u><i></i><b></b></div><div class="bar heat"><i></i></div><div class="pips"></div><div class="st"></div>'
+    const q = (sel: string) => label.querySelector(sel) as HTMLElement
+    p = { nm: q('.ln'), hp: q('.bar.hp i'), ghost: q('.bar.hp u'), os: q('.bar.hp b'), heatBar: q('.bar.heat'), heat: q('.bar.heat i'), pips: q('.pips'), st: q('.st'), last: '' }
+    this.labelParts.set(id, p)
+    return p
+  }
   private updateLabels() {
     const w = this.renderer.domElement.clientWidth, h = this.renderer.domElement.clientHeight
     const v = new THREE.Vector3()
@@ -554,10 +585,24 @@ export class BattleView {
       label.style.display = v.z > 1 ? 'none' : 'block'
       label.style.transform = `translate(${((v.x + 1) / 2) * w}px, ${((1 - v.y) / 2) * h}px) translate(-50%, -100%)`
       const hpPct = Math.max(0, u.hp / u.stats.hp) * 100
+      const osPct = u.overshield ? Math.min(100, (u.overshield / u.stats.hp) * 100) : 0
       const heatPct = u.stats.heatcap ? Math.min(100, (u.heat / u.stats.heatcap) * 100) : 0
       const st = u.statuses.map(s => s.id).filter(s => s !== 'bracing_recovery')
-      const html = `<div class="ln">${u.name}${u.activeTurn ? ' ◆' : ''}</div><div class="bar hp"><i style="width:${hpPct}%"></i>${u.overshield ? `<b style="width:${Math.min(100, (u.overshield / u.stats.hp) * 100)}%"></b>` : ''}</div>${u.stats.heatcap ? `<div class="bar heat"><i style="width:${heatPct}%"></i></div>` : ''}${u.kind === 'mech' || u.stats.structure > 1 ? `<div class="pips">${'■'.repeat(Math.max(0, u.structure))}<span>${'■'.repeat(Math.max(0, u.stats.structure - u.structure))}</span> ${'◆'.repeat(Math.max(0, u.stress))}<span>${'◆'.repeat(Math.max(0, u.stats.stress - u.stress))}</span></div>` : ''}${st.length ? `<div class="st">${st.join(' · ')}</div>` : ''}`
-      if (label.dataset.html !== html) { label.innerHTML = html; label.dataset.html = html }
+      const showPips = u.kind === 'mech' || u.stats.structure > 1
+      const key = `${u.name}|${u.activeTurn}|${hpPct}|${osPct}|${heatPct}|${u.structure}|${u.stress}|${st.join(',')}`
+      const p = this.labelDom(id, label)
+      if (p.last === key) continue
+      p.last = key
+      p.nm.textContent = `${u.name}${u.activeTurn ? ' ◆' : ''}`
+      p.hp.style.width = `${hpPct}%`
+      p.ghost.style.width = `${hpPct}%` // trails behind via a delayed CSS transition
+      p.os.style.width = `${osPct}%`
+      p.heatBar.style.display = u.stats.heatcap ? '' : 'none'
+      p.heat.style.width = `${heatPct}%`
+      p.heatBar.classList.toggle('hot', heatPct >= 75)
+      p.pips.style.display = showPips ? '' : 'none'
+      if (showPips) p.pips.innerHTML = `<span class="s">${'▮'.repeat(Math.max(0, u.structure))}</span><span class="off">${'▮'.repeat(Math.max(0, u.stats.structure - u.structure))}</span> <span class="r">${'◆'.repeat(Math.max(0, u.stress))}</span><span class="off">${'◆'.repeat(Math.max(0, u.stats.stress - u.stress))}</span>`
+      p.st.textContent = st.join(' · ')
       label.classList.toggle('active', u.activeTurn)
       label.classList.toggle('dead', u.destroyed)
     }
@@ -737,11 +782,17 @@ export class BattleView {
         break
       }
       case 'attack':
+        if (e.hit && e.crit) this.critTarget = e.targetId
         this.enqueue(() => this.animateAttack(e.attackerId, e.targetId, e.hit, e.crit, e.weapon))
         break
       case 'damage':
         if (e.kind === 'structure' || e.kind === 'stress') this.enqueue(async () => { const v = this.units.get(e.unitId); if (v && !this.skipping) this.fx.hurt(v.group.position.clone().setY(v.group.position.y + v.height * 0.6), e.kind as 'structure' | 'stress') }, true)
-        if (e.kind === 'hp' || e.kind === 'heat' || e.kind === 'structure' || e.kind === 'stress') this.enqueue(() => this.floatText(e.unitId, e.kind === 'hp' ? `-${e.amount}` : e.kind === 'heat' ? `+${e.amount} heat` : e.kind.toUpperCase(), e.kind === 'hp' ? '#ff6b6b' : e.kind === 'heat' ? '#ffae42' : '#ff3355'), true)
+        if (e.kind === 'hp' || e.kind === 'heat' || e.kind === 'structure' || e.kind === 'stress') {
+          const crit = e.kind === 'hp' && this.critTarget === e.unitId
+          if (crit) this.critTarget = null
+          const cls = crit ? 'hp crit' : e.kind === 'structure' ? 'struct' : e.kind
+          this.enqueue(() => this.floatText(e.unitId, e.kind === 'hp' ? `-${e.amount}` : e.kind === 'heat' ? `+${e.amount} heat` : e.kind.toUpperCase(), e.kind === 'hp' ? '#ff6b6b' : e.kind === 'heat' ? '#ffae42' : '#ff3355', cls), true)
+        }
         break
       case 'destroyed':
         this.enqueue(() => this.animateDestroyed(e.unitId))
@@ -851,6 +902,7 @@ export class BattleView {
     const u = this.battle.unit(id)
     const fs = u ? footprintSize(u) : 1
     const floor = vis.group.position.y
+    this.lastFallen = vis.group.position.clone()
     const at = vis.group.position.clone().add(new THREE.Vector3(0, Math.max(0.4, vis.height * 0.5), 0))
     if (!this.skipping) {
       const boom = this.fx.explode(at, 0.8 + fs * 0.4, floor)
@@ -880,19 +932,19 @@ export class BattleView {
     l.count = 0
     l.visible = false
   }
-  private async floatText(id: string, text: string, color: string) {
+  private async floatText(id: string, text: string, color: string, cls = '') {
     const vis = this.units.get(id)
     if (!vis || this.skipping) return
     const el = document.createElement('div')
-    el.className = 'float-text'
+    el.className = `float-text ${cls || (text === 'MISS' ? 'miss' : '')}`
     el.textContent = text
     el.style.color = color
     this.overlay.appendChild(el)
-    const v = vis.group.position.clone().add(new THREE.Vector3(0, 1.4, 0)).project(this.camera)
+    const v = vis.group.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.3, vis.height + 0.55, 0)).project(this.camera)
     const w = this.renderer.domElement.clientWidth, h = this.renderer.domElement.clientHeight
     el.style.left = `${((v.x + 1) / 2) * w}px`
     el.style.top = `${((1 - v.y) / 2) * h}px`
-    setTimeout(() => el.remove(), 1100)
+    setTimeout(() => el.remove(), 1400)
     await this.wait(60)
   }
 

@@ -307,3 +307,92 @@ code { background: #1d222c; padding: 1px 4px; }
 .iteration-failed .band { color: var(--bad); }
 @media (max-width: 900px) { .opsboard { flex-direction: column-reverse; } .telemetry { position: static; width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .title-eye, .glitch::after { animation: none; } }
+
+/* ---------------------------------------------------------------- battle HUD polish */
+/* LANCER-style frames: clipped corners and a thin act-tinted header strip (stays fixed while scrolling) */
+.battle .panel {
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  background-color: var(--panel);
+  background-image: linear-gradient(90deg, var(--accent) 0, var(--accent2) 18%, transparent 55%);
+  background-size: 100% 2px; background-repeat: no-repeat;
+  backdrop-filter: blur(3px);
+}
+.battle .panel.log { background-color: rgba(14, 16, 22, 0.78); }
+.battle .panel h4 { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 2px; }
+.battle .topbar { background: linear-gradient(#000d, #0000); border-bottom: 1px solid transparent; border-image: linear-gradient(90deg, transparent, var(--accent) 30%, var(--accent2) 70%, transparent) 1; }
+.battle .card .bar { height: 5px; }
+.battle .card .bar i { background: linear-gradient(90deg, #2fae6a, var(--good)); transition: width 0.35s ease-out; }
+.initiative .chip { clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%); padding: 2px 9px; }
+.initiative .chip.acting { animation: chip-pulse 1.4s ease-in-out infinite; }
+@keyframes chip-pulse { 50% { box-shadow: 0 0 14px #f2a33acc; } }
+
+/* unit labels: name plate, HP with a lagging damage trail, overshield cap, heat, pips */
+.unit-label .ln { background: #0009; padding: 0 5px; border-radius: 1px; letter-spacing: 0.04em; }
+.unit-label.active .ln { background: #3a2a10e0; box-shadow: 0 0 8px #f2a33a88; }
+.unit-label .bar { width: 56px; height: 5px; margin: 2px auto 1px; background: #000b; box-shadow: 0 0 0 1px #0008; overflow: hidden; }
+.unit-label .bar.hp i { background: linear-gradient(90deg, #2fae6a, #6ef0a4); z-index: 2; transition: width 0.12s linear; }
+.unit-label.enemy .bar.hp i { background: linear-gradient(90deg, #c0392b, #ff7a6b); }
+.unit-label .bar.hp u { position: absolute; left: 0; top: 0; bottom: 0; background: #fff2c0; z-index: 1; transition: width 0.7s ease-in 0.45s; }
+.unit-label .bar.hp b { z-index: 3; background: linear-gradient(90deg, #6fd8ff, #c8f2ff); box-shadow: 0 0 6px #6fd8ff; }
+.unit-label .bar.heat { height: 3px; }
+.unit-label .bar.heat i { background: linear-gradient(90deg, #f2a33a, #ff5a1a); transition: width 0.25s; }
+.unit-label .bar.heat.hot i { animation: heat-throb 0.8s ease-in-out infinite; }
+@keyframes heat-throb { 50% { filter: brightness(1.8); } }
+.unit-label .pips { font-size: 8px; letter-spacing: 0; }
+.unit-label .pips .s { color: #e8e2d0; }
+.unit-label .pips .r { color: #ffb347; }
+.unit-label .pips .off { color: #4a4a4a; }
+
+/* floating combat text */
+.float-text { font-family: 'Rajdhani', sans-serif; font-size: 18px; letter-spacing: 0.04em; -webkit-text-stroke: 0.5px #0008; animation-duration: 1.3s; }
+.float-text.crit { font-size: 30px; color: #fff066 !important; text-shadow: 0 0 10px #ff8a00, 0 2px 4px #000; animation: floatcrit 1.3s ease-out forwards; }
+.float-text.heat { font-size: 14px; }
+.float-text.struct, .float-text.stress { font-size: 20px; letter-spacing: 0.15em; -webkit-text-stroke: 1px #000; text-shadow: 0 0 8px #ff3355; }
+.float-text.miss { font-size: 14px; letter-spacing: 0.2em; opacity: 0.85; }
+@keyframes floatcrit {
+  0% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
+  12% { transform: translate(-50%, -60%) scale(1); opacity: 1; }
+  20% { transform: translate(-46%, -64%); } 28% { transform: translate(-54%, -66%); } 36% { transform: translate(-50%, -70%); }
+  100% { transform: translate(-50%, -190%); opacity: 0; }
+}
+
+/* round / side banner */
+.battle .banner {
+  position: absolute; top: 38%; left: 0; right: 0; z-index: 6; pointer-events: none; display: flex; justify-content: center; align-items: baseline; gap: 14px;
+  padding: 10px 0; opacity: 0; font-family: 'Rajdhani', sans-serif; letter-spacing: 0.28em; text-shadow: 0 0 18px #000;
+  background: linear-gradient(90deg, transparent, #000a 25%, #000a 75%, transparent);
+}
+.battle .banner .r { font-size: 30px; font-weight: 700; color: var(--text); }
+.battle .banner .t { font-size: 16px; }
+.battle .banner.player .t { color: var(--blue); }
+.battle .banner.enemy .t { color: var(--bad); }
+.battle .banner.enemy { border-top: 1px solid #ff5a5a55; border-bottom: 1px solid #ff5a5a55; }
+.battle .banner.player { border-top: 1px solid #4fb0ff55; border-bottom: 1px solid #4fb0ff55; }
+.battle .banner.show { animation: banner-sweep 1.7s ease-out forwards; }
+@keyframes banner-sweep {
+  0% { opacity: 0; transform: translateX(-6%) scaleY(0.2); }
+  14% { opacity: 1; transform: translateX(0) scaleY(1); }
+  72% { opacity: 1; transform: translateX(0.5%); }
+  100% { opacity: 0; transform: translateX(4%); }
+}
+
+/* end-of-battle stamp */
+.battle .stamp-layer { position: absolute; inset: 0; z-index: 7; pointer-events: none; display: flex; align-items: center; justify-content: center; opacity: 0; }
+.battle .stamp-layer.on { animation: stamp-in 0.9s ease-out forwards; background: radial-gradient(ellipse at center, transparent 30%, #000c 100%); }
+.battle .stamp { text-align: center; padding: 14px 34px; border: 3px solid currentColor; transform: rotate(-4deg); font-family: 'Rajdhani', sans-serif; background: #0009; box-shadow: 0 0 40px #000; }
+.battle .stamp .big { font-size: 46px; font-weight: 700; letter-spacing: 0.18em; line-height: 1; }
+.battle .stamp .small { font-size: 13px; letter-spacing: 0.3em; margin-top: 6px; }
+.battle .stamp.won { color: #8fd3ff; text-shadow: 0 0 16px #4fb0ff; }
+.battle .stamp.lost { color: #ff5a5a; text-shadow: 0 0 16px #e8442e; }
+@keyframes stamp-in { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 1; } }
+.battle .stamp-layer.on .stamp { animation: stamp-slam 0.5s cubic-bezier(.2, 1.6, .4, 1) both; }
+@keyframes stamp-slam { 0% { transform: rotate(-4deg) scale(2.2); opacity: 0; } 100% { transform: rotate(-4deg) scale(1); opacity: 1; } }
+.battle .topbar, .battle .panel.bottom { z-index: 8; }
+
+@media (prefers-reduced-motion: reduce) {
+  .battle .banner.show { animation: banner-fade 1.7s linear forwards; }
+  @keyframes banner-fade { 0%, 100% { opacity: 0; } 15%, 75% { opacity: 1; } }
+  .float-text.crit { animation: floatup 1.3s ease-out forwards; }
+  .battle .stamp-layer.on .stamp { animation: none; }
+  .initiative .chip.acting, .unit-label .bar.heat.hot i { animation: none; }
+}

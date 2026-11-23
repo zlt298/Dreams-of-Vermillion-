@@ -46,7 +46,7 @@ export class BattleScreen {
     this.b = b
     this.onEnd = opts.onEnd
     this.title = opts.title ?? 'Engagement'
-    root.innerHTML = `<div class="battle"><div class="viewport"></div><div class="hud"></div><div class="tooltip"></div></div>`
+    root.innerHTML = `<div class="battle"><div class="viewport"></div><div class="hud"></div><div class="tooltip"></div><div class="banner" aria-live="polite"></div><div class="stamp-layer"></div></div>`
     this.view = new BattleView(root.querySelector('.viewport') as HTMLElement, b)
     this.hud = root.querySelector('.hud') as HTMLDivElement
     this.tooltip = root.querySelector('.tooltip') as HTMLDivElement
@@ -135,7 +135,7 @@ export class BattleScreen {
     if (this.b.winner && !this.ended) {
       this.render()
       await this.view.idle(4000)
-      await sleep(600)
+      await sleep(1500)
       if (this.ended) return
       this.ended = true
       this.onEnd(this.b.winner as 'player' | 'enemy')
@@ -507,8 +507,35 @@ export class BattleScreen {
   }
 
   // ------------------------------------------------------------------ HUD
+  private bannerKey = ''
+  private stamped = false
+  /** Sweeping banner at the start of each round, and the end-of-battle stamp. */
+  private ceremony() {
+    const b = this.b
+    if (b.winner) {
+      if (this.stamped) return
+      this.stamped = true
+      const won = b.winner === 'player'
+      const layer = this.root.querySelector('.stamp-layer') as HTMLElement
+      layer.innerHTML = `<div class="stamp ${won ? 'won' : 'lost'}"><div class="big">${won ? 'ENGAGEMENT CLOSED' : 'SIGNAL LOST'}</div><div class="small">${won ? 'VICTORY // HOSTILES NEUTRALIZED' : 'DEFEAT // LANCE OCHRE DOWN'}</div></div>`
+      layer.classList.add('on')
+      void this.view.cinematic()
+      return
+    }
+    const key = String(b.round) // once per round: sides alternate every activation, which would be noise
+    if (key === this.bannerKey) return
+    this.bannerKey = key
+    const el = this.root.querySelector('.banner') as HTMLElement
+    const mine = b.currentSide === 'player'
+    el.className = `banner ${mine ? 'player' : 'enemy'}`
+    el.innerHTML = `<span class="r">ROUND ${b.round}</span><span class="t">${mine ? '// LANCE OCHRE — YOUR MOVE' : '// HOSTILE ACTIVITY'}</span>`
+    void el.offsetWidth // restart the animation
+    el.classList.add('show')
+  }
+
   render() {
     this.updateHighlights()
+    this.ceremony()
     const b = this.b
     const a = b.active
     const sel = this.selected && !this.selected.destroyed ? this.selected : a ?? null
