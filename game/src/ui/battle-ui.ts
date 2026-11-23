@@ -96,6 +96,9 @@ export class BattleScreen {
     window.addEventListener('keydown', this.onKey)
     const first = b.combatants('player')[0]
     if (first) this.view.focus(first.pos)
+    // mounted mid-turn (after an undo, or resuming a saved battle): pick up the lancer that is acting, ready to move
+    const acting = b.active
+    if (acting && acting.side === 'player' && !b.winner) { this.selected = acting; this.mode = { k: 'move' }; this.view.focus(acting.pos) }
     this.render()
     void this.advance()
   }
@@ -546,6 +549,7 @@ export class BattleScreen {
         if (sel && (arg === 'brace' || arg === 'overwatch' || arg === 'reactions')) {
           const order = ['auto', 'ask', 'off'] as const
           this.b.setPolicy(sel, arg, order[(order.indexOf(sel.policies[arg] ?? 'ask') + 1) % order.length])
+          this.opts.onSaved?.(this.b) // recorded as a command: save it, or a reload loses the setting
           this.render()
         }
         return
@@ -561,8 +565,8 @@ export class BattleScreen {
           this.render()
         }
         return
-      case 'shape': if (w && a) { this.b.setWeaponFlag(a, w, 'shape', w.flags?.shape === 'line' ? 'cone' : 'line'); this.previewCache.clear(); this.render() } return
-      case 'throughbolt': if (w && a) { this.b.setWeaponFlag(a, w, 'throughbolt', !w.flags?.throughbolt); this.render() } return
+      case 'shape': if (w && a) { this.b.setWeaponFlag(a, w, 'shape', w.flags?.shape === 'line' ? 'cone' : 'line'); this.opts.onSaved?.(this.b); this.previewCache.clear(); this.render() } return
+      case 'throughbolt': if (w && a) { this.b.setWeaponFlag(a, w, 'throughbolt', !w.flags?.throughbolt); this.opts.onSaved?.(this.b); this.render() } return
       case 'profile': if (w && arg && a) { const i = Number(el.dataset.i); this.cmd(() => { this.b.setProfile(a, w, i) }) } return
       case 'reload': if (w) this.cmd(() => this.b.reload(a, w)); return
       case 'boost': this.cmd(() => this.b.boost(a)); return

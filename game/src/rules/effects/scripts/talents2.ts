@@ -283,12 +283,14 @@ registerScripts([
           }
         },
         aiTarget: (bt, me) => {
-          // hit a space next to a clump of hostiles
+          // hit a space next to a clump of hostiles, and never next to an ally (they take the 2 kinetic and knockback too)
           let best: Pos | null = null, n = 0
+          const near = (o: Unit, p: Pos) => footprint(o).some(q => chebyshev(q, p) === 1)
           for (const h of hostiles(bt, me)) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
             const p = { x: h.pos.x + dx, y: h.pos.y + dy }
             if (!tileAt(bt.map, p) || chebyshev(p, me.pos) > range) continue
-            const k = hostiles(bt, me).filter(o => footprint(o).some(q => chebyshev(q, p) === 1)).length
+            if (chars(bt).some(o => o !== me && !bt.hostile(me, o) && near(o, p))) continue
+            const k = hostiles(bt, me).filter(o => near(o, p)).length
             if (k > n) { n = k; best = p }
           }
           return n >= 2 ? best : null

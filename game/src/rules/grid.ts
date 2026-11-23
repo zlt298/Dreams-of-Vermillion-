@@ -232,15 +232,17 @@ export function blastTiles(map: GridMap, c: Pos, r: number): Pos[] {
 export function lineTiles(map: GridMap, u: Unit, toward: Pos, len: number): Pos[] {
   const c = center(u)
   const dx = toward.x + 0.5 - c.x, dy = toward.y + 0.5 - c.y
-  const l = Math.hypot(dx, dy) || 1
-  const fp = new Set(footprint(u).map(key))
+  // one tile per step along the major axis (Bresenham): Line N covers exactly N spaces and reaches distance N on any bearing
+  const m = Math.max(Math.abs(dx), Math.abs(dy))
+  if (m === 0) return []
+  const sx = dx / m, sy = dy / m
+  const half = footprintSize(u) / 2
   const out: Pos[] = []
-  const seen = new Set<string>()
-  for (let t = 0.5; out.length < len && t < len + 3; t += 0.25) {
-    const p = { x: Math.floor(c.x + (dx / l) * t), y: Math.floor(c.y + (dy / l) * t) }
-    const k = key(p)
-    if (fp.has(k) || seen.has(k) || !tileAt(map, p)) continue
-    seen.add(k)
+  for (let i = 1; i <= len; i++) {
+    const t = half - 0.5 + i
+    // a hair off exact tile edges so floor() doesn't flip on the minor axis
+    const p = { x: Math.floor(c.x + sx * t + 1e-9 * Math.sign(sx)), y: Math.floor(c.y + sy * t + 1e-9 * Math.sign(sy)) }
+    if (!tileAt(map, p)) break
     out.push(p)
   }
   return out

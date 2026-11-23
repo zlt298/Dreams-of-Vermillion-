@@ -36,7 +36,7 @@ export function bestThreatWeapon(bt: Battle, o: Unit, target: Unit): Weapon | nu
   for (const w of o.weapons) {
     if (!bt.weaponReady(o, w)) continue
     const pr = w.profiles[w.profileIndex]
-    if (bt.isAoE(pr)) continue
+    if (bt.isAoE(pr) || hasTag(pr.tags, 'tg_ordnance')) continue // Ordnance can't be used for Overwatch
     const threat = bt.weaponThreat(o, w)
     if (threat <= 0 || bt.distance(o, target) > threat) continue
     // a target the attack would refuse (Hidden, intangible, no line of sight) doesn't provoke the reaction
@@ -119,6 +119,9 @@ export function weaponUsable(bt: Battle, u: Unit, w: Weapon, normalAttack = true
   // Jammed stops weapon attacks, but Improvised Attacks, Grapple and Ram are still allowed
   if (bt.has(u, 'jammed') && w.type !== 'Improvised' && !(u.flags.shieldedMagazines && !bt.isMelee(w))) return 'Jammed'
   const pr = bt.profile(w)
+  // Ordnance: only before the user moves or takes any other action on its turn (protocols excepted). Skirmish and
+  // Barrage spend their action before rolling, so they open a 'turn:ordnanceWindow' when nothing came before them.
+  if (normalAttack && hasTag(pr.tags, 'tg_ordnance') && u.activeTurn && u.actedThisTurn && !u.flags['turn:ordnanceWindow']) return 'Ordnance: fire before moving or taking other actions'
   if (!pr.damage.length && !pr.onHit.length && !w.tech) {
     const d = w.dataId ? Lancer.weapons.get(w.dataId) : undefined
     if (d?.no_attack) return 'This weapon cannot attack'
@@ -133,6 +136,7 @@ export function validTarget(bt: Battle, u: Unit, w: Weapon, t: Unit, from: Pos =
   if (t.flags.intangible) return 'Intangible'
   if (bt.isBlinded(u) && chebyshev(from, t.pos) > 1 && distanceBetween(bt.map, { ...u, pos: from }, t) > 1) return 'Blinded: can only see adjacent spaces'
   if (bt.has(t, 'hidden') && bt.hostile(u, t)) return 'Hidden'
+  if (hasTag(bt.profile(w).tags, 'tg_ordnance') && bt.hostile(u, t) && bt.adjacent({ ...u, pos: from } as Unit, t)) return 'Ordnance can’t target characters engaged with you'
   const pr = bt.profile(w)
   const tags = pr.tags
   const reach = bt.weaponReach(u, w)

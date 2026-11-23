@@ -22,6 +22,10 @@ export function skirmish(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, aux?: {
   if (pre !== true) return { ctxs: [], ok: false, reason: pre }
   if (bt.firedThisTurn(u, w)) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
   const refund = bt.checkpoint()
+  if (!u.actedThisTurn) u.flags['turn:ordnanceWindow'] = true // nothing came before this attack (see Ordnance)
+  try { return skirmishInner(bt, u, w, aim, aux, refund) } finally { delete u.flags['turn:ordnanceWindow'] }
+}
+function skirmishInner(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, aux: { weapon: Weapon; aim: AttackAim } | undefined, refund: () => void): AttackSummary {
   bt.spend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish')
   bt.markFired(u, w)
   const r = bt.weaponAttack(u, w, aim, 'skirmish')
@@ -43,6 +47,10 @@ export function barrage(bt: Battle, u: Unit, a: { weapon: Weapon; aim: AttackAim
   const ua = bt.weaponUsable(u, a.weapon)
   if (ua !== true) return { ctxs: [], ok: false, reason: ua }
   const refund = bt.checkpoint()
+  if (!u.actedThisTurn) u.flags['turn:ordnanceWindow'] = true // nothing came before this attack (see Ordnance)
+  try { return barrageInner(bt, u, a, b, auxes, refund) } finally { delete u.flags['turn:ordnanceWindow'] }
+}
+function barrageInner(bt: Battle, u: Unit, a: { weapon: Weapon; aim: AttackAim }, b: { weapon: Weapon; aim: AttackAim } | undefined, auxes: { weapon: Weapon; aim: AttackAim }[], refund: () => void): AttackSummary {
   bt.markFired(u, a.weapon)
   if (b) bt.markFired(u, b.weapon)
   if (a.weapon.size !== 'Superheavy' && !b) {

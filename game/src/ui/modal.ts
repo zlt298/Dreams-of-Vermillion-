@@ -33,10 +33,12 @@ function open(o: DialogOpts): Promise<{ ok: boolean; value: string }> {
       else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(o.cancel === null) }
       else if (!input || e.target !== input) e.stopPropagation() // the game behind ignores keys while a dialog is open
     }
+    // the second click of a double-click on the button that opened the dialog lands on the backdrop: don't let it cancel
+    const opened = performance.now()
     el.addEventListener('click', e => {
       const b = (e.target as HTMLElement).closest('button[data-r]') as HTMLElement | null
       if (b) done(b.dataset.r === '1')
-      else if (e.target === el && o.cancel !== null) done(false)
+      else if (e.target === el && o.cancel !== null && performance.now() - opened > 400) done(false)
     })
     window.addEventListener('keydown', key, true)
     document.body.appendChild(el)
