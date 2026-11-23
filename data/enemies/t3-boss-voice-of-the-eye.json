@@ -261,6 +261,82 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Frenzy Blade",
+      "role": "Striker",
+      "templates": [
+        "Veteran"
+      ],
+      "veteranTrait": "feign_death",
+      "count": 1,
+      "color": "#b3122e",
+      "description": "It sang through its own destruction once already.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Chain Glaive",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "2d6+4"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Ecstatic Frenzy",
+          "hooks": [
+            {
+              "on": "damaged",
+              "effects": [
+                {
+                  "do": "clear_status",
+                  "status": "any_negative"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Answering Stroke",
+          "trigger": "hit_by_melee",
+          "frequency": "1/round",
+          "attackWith": "Chain Glaive"
+        },
+        {
+          "type": "trait",
+          "name": "Blood-Red Plate",
+          "stats": {
+            "armor": 1
+          }
+        },
+        {
+          "type": "weapon",
+          "name": "Thrown Blades",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Thrown",
+              "val": 5
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+3"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

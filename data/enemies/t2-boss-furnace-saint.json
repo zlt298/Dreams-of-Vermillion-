@@ -146,7 +146,7 @@
     {
       "name": "Ember Zealot",
       "role": "Striker",
-      "count": 2,
+      "count": 3,
       "color": "#e0562b",
       "features": [
         {
@@ -204,7 +204,7 @@
       "templates": [
         "Grunt"
       ],
-      "count": 4,
+      "count": 5,
       "color": "#9c4a35",
       "features": [
         {

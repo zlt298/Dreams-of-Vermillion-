@@ -33,7 +33,7 @@ describe('AI: Drake Fortress Protocol', () => {
     b.activateCore(d)
     expect(d.flags.fortress).toBe(true)
     e.pos = { x: 28, y: 28 }
-    b.endTurn(d); b.startRound?.()
+    b.endTurn(d)
     const off = b.customActions(d).find(a => a.key === 'fortress_off')!
     expect(off.aiScore!(b, d)).toBeGreaterThan(0)
     e.pos = { x: 3, y: 3 }
