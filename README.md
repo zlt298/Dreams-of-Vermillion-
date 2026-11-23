@@ -1,226 +1,50 @@
 # Dreams of Vermillion
 
-A personal, non-commercial **LANCER** tactics roguelike. You build lancers in **COMP/CON**, import them, and fight increasingly dangerous enemy teams on a 2.5D isometric grid in the style of XCOM. The rules engine follows the LANCER core book.
+A personal, non-commercial **LANCER** tactics roguelike that runs in the browser. Build a lance of up to four pilots in the in-game builder or in COMP/CON, then fight through three acts of increasingly dangerous enemy teams on a 2.5D isometric grid. The rules engine follows the LANCER core book.
 
-> Unofficial, non-commercial fan project, not affiliated with or endorsed by Massif Press. LANCER is © Massif Press. COMP/CON and `@massif/lancer-data` are GPL-3.0, so this project is GPL-3.0 too (see [License](#license)).
+![A battle in act 1: four lancers engaging Choir strikers among the trees and buildings](docs/img/battle.jpg)
 
-## Play online
+## Features
 
-Once GitHub Pages is enabled, the game is at **https://zlt298.github.io/Dreams-of-Vermillion-/**. Nothing to install: it runs in the browser and saves to that browser's local storage. Build pilots in the [COMP/CON web app](https://compcon.app) and import the exported `.json` in the Hangar.
+- **A campaign in three acts**, each with a branching map of combat, elite, supply, rest and boss nodes, plus between-battle events. Damage, Repairs and spent gear carry over between fights.
+- **Fixed act levels.** Act 1 is fought at License Level 0, act 2 at LL5 and act 3 at LL10, and the squad must be levelled up properly between acts.
+- **Pilots your way.** Use the in-game builder (checked live against the build rules), import COMP/CON exports, or pick one of the pre-built squads.
+- **Full mech combat.** Every LANCER player frame, CORE, weapon, system, mod, talent rank and core bonus is run by the engine, with cover, line of sight on a height map, reactions, statuses, structure and overheating.
+- **Original enemies.** The enemies are built from an original NPC ruleset with 20 teams. If you own the official NPC content pack, you can also import it locally.
+- **Saves as you play,** with full undo of your last action and replay files for bug reports.
 
-## Quick start (run locally)
+## Play
+
+**Online:** once GitHub Pages is enabled, the game is at <https://zlt298.github.io/Dreams-of-Vermillion-/>. Nothing to install: progress saves in your browser.
+
+**Locally:** you need Node.js 22 and a browser with WebGL.
 
 ```bash
-git clone --recurse-submodules <this repo>      # or: git submodule update --init
-cd game
+git clone --recurse-submodules https://github.com/zlt298/Dreams-of-Vermillion-.git
+cd Dreams-of-Vermillion-/game
 npm install
-npm run dev                                     # open http://localhost:5173
+npm run dev            # then open http://localhost:5173
 ```
 
-The four COMP/CON pregens are pre-loaded, so you can start a run straight away.
+The COMP/CON pregens are pre-loaded, so you can start a run straight away. To bring in your own pilots, build them at [compcon.app](https://compcon.app), choose **Export → Save as file (.json)**, and drop the file on the Hangar.
 
-## Building pilots
+## Documentation
 
-### In the game
+- [Playing](docs/PLAYING.md): building pilots, act levels, pre-built squads, the campaign, battle controls, saving and undo.
+- [Enemies](docs/ENEMIES.md): the original NPC ruleset, the enemy team files, generating teams with Claude, and importing official NPCs.
+- [Engine and development](docs/ENGINE.md): the rules engine, coverage, known deviations, tests, replays, code layout and deployment.
+- [Roadmap](docs/ROADMAP.md), [design notes](docs/DESIGN.md) and the [enemy ruleset](docs/enemy-ruleset.md).
 
-In the **Hangar**, choose **New pilot**, or **Edit** on any pilot card. The builder covers what the rules engine uses:
-- License Level
-- HASE
-- license ranks
-- talents and their ranks
-- core bonuses, including the mount-targeted and extra-mount ones
-- frame, weapons per mount, weapon mods and systems
+## Credits and attribution
 
-Every change is checked live against the LANCER build rules (`game/src/rules/legality.ts`), and a budget bar shows HASE, talents, licenses, core bonuses and SP. The pickers only offer gear that fits the mount and that your license ranks allow. A build with errors can't be saved. Unspent points only trigger a warning.
+*Dreams of Vermillion is not an official Lancer product; it is a third party work, and is not affiliated with Massif Press. Dreams of Vermillion is published via the Lancer Third Party License. Lancer is copyright Massif Press.*
 
-During a run, each pilot on the campaign map has an **Edit build** button. Builds made during a run stay in the run; your roster pilots are not changed. A refit keeps damage, spent Repairs, destroyed gear and used Limited charges.
-
-**Act levels.** Each act is fought at a fixed License Level: act 1 at LL0, act 2 at LL5, act 3 at LL10.
-- **Starting a run.** A chosen pilot at another level gets a run-only copy fitted to LL0. The copy keeps what LL0 allows; gear its licenses no longer cover is removed. The **Squad preparation** screen then asks you to finish each fitted build in the builder. The run starts once every pilot is legal, has all points spent and has at least one weapon.
-- **After each act boss.** The squad moves to the new level, and the level-up screen holds the run until every pilot is ready again. Use **Level up** for each pilot, or re-import a COMP/CON pilot (or a pre-built squad) at the right level; these match by id or callsign.
-
-**Pre-built squads.** The hangar's squad picker adds a ready-made squad to the roster and picks it. There are four themed squads at LL0, LL5 and LL10, each with four legal pilots that have every point spent:
-- **Brawlers:** melee and armour.
-- **Long Guns:** rifles, cannons and missiles.
-- **Ghosts:** tech and stealth.
-- **Drone Wing:** drones and deployables.
-
-The picker also has the COMP/CON pregens and the LL5/LL10 sample squads. The themed squads are generated and checked by `npx tsx scripts/make-squads.ts`.
-
-### In COMP/CON
-
-`vendor/compcon` is COMP/CON v3, a pinned git submodule kept for reference and for local use:
-
-```bash
-cd vendor/compcon && yarn && yarn dev           # or use the hosted COMP/CON web app
-```
-
-To get a pilot into the game:
-
-1. In COMP/CON, create a pilot and mech.
-2. Open the pilot, choose **Export**, then **Save as file (.json)**.
-3. In the game's **Hangar**, drag and drop the file (or use **Import COMP/CON .json**).
-
-The importer accepts:
-- v3 "Save Pilot" exports
-- raw v3 or v2 pilot data
-- COMP/CON's pregen templates
-
-It uses the pilot's favourite mech and its active loadout: frame, weapons, mods, systems, talents and ranks, core bonuses, license ranks, HASE and License Level. Imported pilots can be edited further in the in-game builder. Content that isn't in `lancer-data` (LCP items) is flagged.
-
-## The game
-
-- **Campaign.** Three acts with branching node maps. Node types are ⚔ combat, ☠ elite, ⬢ supply, ⛺ rest and ♛ boss. Act *n* uses tier-*n* enemies. Sitreps include Basic Combat, Control, Holdout, Extraction and Assassination.
-- **Three looks.**
-  - Act 1 is fought outside, where the lance is intercepted.
-  - Act 2 is inside an industrial park: warehouse rows, container stacks, pipe runs, steam vents, scrap and chemical spills, all under sodium light.
-  - Act 3 is a white cleanroom of lab modules and glass partitions, broken open by Martian regolith with dunes, rock outcrops, red dust and breaches.
-  - Quick skirmish picks the look from the enemy tier.
-- **Story.** In-universe Union documents bracket the campaign: a priority transmission at the start, an after-action report after act 1, an intercepted transmission after act 2 and a debrief after the final fight. They type out as a console readout. Hold any key or mouse button to skip; recovered documents can be replayed from **Title → Transmissions**. Every run is framed as one of the casket's **forecast iterations**: the title and campaign map show the iteration number, a lost run plays the casket's failed-iteration log, and the campaign map carries live casket telemetry. The UI palette shifts with each act. See [`docs/DESIGN.md`](docs/DESIGN.md). The final boss is always *The Voice of the Eye*, the Choir of the Second Dawn's prophet in the Cinnabar Annex casket vault. Texts: `game/src/data/story.ts`.
-- **Tag tooltips.** Hover any tag (AP, Reliable 2, Blast 2, Loading, Smart…) on weapon cards, Hangar weapon lines or the battle log to read its rules. System chips and weapon cards show their rules text on hover too.
-- **Graphics.** Each act has its own lighting, backdrop, drifting particles (dust, embers, red regolith) and practical lights. Attacks are animated by weapon type (tracers, arcing missiles, beams, melee slashes); kills explode and leave smouldering wrecks; heat, burning, overshield and Lock On show on the mechs; round banners and an end-of-battle stamp frame the fight. The **◈ high / ◇ low** button in the battle top bar toggles bloom, film grain, particles and extra lights (software GL starts on low). Pilots get rendered mech portraits in the Hangar, on the campaign dossiers and in the unit panel.
-- **Field overlays.** Smoke, terrain zones, drone fields, barriers and auras are tinted on the map by effect, and listed when you hover a tile. Press **V** to toggle.
-- **Between-battle events.** After each won combat:
-  - 25%: nothing happens.
-  - 50%: a minor find (+1, free).
-  - 15%: a gamble (a minor sacrifice for +2).
-  - 10%: a hard choice (a heavy sacrifice such as a Structure or Stress, a destroyed system or a stunned first round, for a big or permanent benefit).
-  - There are six of each kind, in `game/src/run/events.ts`.
-- **Persistent damage.** HP, structure, stress, repairs, destroyed gear, Limited uses and CORE power carry between fights.
-- **Recovery.** Spend Repairs at LANCER costs in field repairs. A rest is a full repair that reprints destroyed mechs.
-- **Progression.** Each act is fought at a fixed License Level: act 1 LL0, act 2 LL5, act 3 LL10, matching the core book NPC tiers. After an act boss the squad goes up to the next level, and the run continues only once every build is legal with all points spent. Spend them with **Level up** on the level-up screen, or re-import updated COMP/CON builds.
-- **Battles:**
-  - Initiative alternates between sides: pick any ready lancer to activate.
-  - Every lancer action is supported. Standard move (it can be split), Boost, Skirmish (plus an aux on the same mount), Barrage, Quick/Full Tech (Invade, Lock On, Bolster, Scan), Overcharge, Stabilize, CORE power, Hide/Search, Ram/Grapple/Improvised, Disengage, Reload, Shut Down/Boot Up, Self-Destruct.
-  - Systems, traits and talents add their own actions.
-  - Hovering a target shows the hit chance, cover, and every accuracy and difficulty source.
-  - **Auto (AI)** lets the tactical AI take a lancer's turn.
-  - Controls: **Q/E** rotate, **WASD** or right-drag pan, wheel zoom, **Enter** end turn (asks if actions are unused), **Esc** cancel, **Tab** cycle lancers, **1–9** skirmish with a weapon (**Shift** to barrage), **B** boost, **O** overcharge, **T** threat overlay, **V** field overlays, hold **Alt** for every unit label, **L**/**R** toggle the log and roster, **?** lists them all. On touch screens: drag to pan, pinch to zoom, tap once to preview and again to confirm.
-  - **Settings** (title screen, or ⚙ in battle): animation speed, graphics quality, motion (reduce turns off shake, pulses and wipes) and a colour-blind palette.
-
-## Rules engine (`game/src/rules`)
-
-It is deterministic (seeded) and has no UI code, so tests and the AI run headless.
-
-| area | what's modelled |
-|---|---|
-| Combat | d20 + grit/tech attack, accuracy/difficulty d6s, crits (2d6 → 4d6 keep 2), cover (soft −1 / hard −2), line of sight on a 3D height map, Engaged, Prone, Lock On, Invisible (50%), Stunned (max 5 evasion) |
-| Damage | Armor (once per attack), Resistance, Exposed (double), Shredded, AP, Irreducible, overshield, Burn (immediate, plus an Engineering check each turn), heat |
-| Structure and stress | the official structure and overheating tables, including multiple-1s results, system trauma, direct hit and meltdown countdowns |
-| Weapon tags | Accurate, Inaccurate, Arcing, Seeking, Smart, Reliable, Knockback, Loading, Overkill, Heat (self), Limited, Burn, Heat (target), Threat, Thrown; Blast, Burst, Line and Cone areas |
-| Statuses | all of them, with LANCER durations ("until the end of the target's next turn" etc.) and immunities |
-| Movement | speed, difficult terrain, climbing costs, falling damage, engagement stops, size 1/2/3 footprints, push and pull, mines, hazards |
-| Reactions | Brace and Overwatch (per-mech auto policies), plus every scripted reaction |
-
-### Rules coverage
-
-`npm run coverage` reports how much of `lancer-data` the engine executes. `npm run coverage -- --list` names every item still resolved manually or approximated.
-
-```
-section            scripted partial   auto  manual   done%
-Frame traits             29       0      0       0    100%
-Core systems             29       0      0       0    100%
-Weapons                  32       0     53       0    100%
-Systems                 120       0      4       0    100%
-Mods                      5       0      3       0    100%
-Talent ranks             81       0      6       0    100%
-Core bonuses             13       0     17       0    100%
-TOTAL 392/392 (100%) fully executed by the engine, 0 partially
-```
-
-- **auto**: fully described by structured data (bonuses, damage, ranges, tags, on-hit statuses).
-- **scripted**: hand-written in `game/src/rules/effects/scripts/`.
-- **partial**: a script that approximates part of the item.
-- **manual**: actions that aren't executed yet. They still appear in the action bar marked `*`, and using one logs its rules text for you to resolve by hand.
-
-To add fidelity, register a script keyed by the item id in `game/src/rules/effects/scripts/`. The hooks are listed in `registry.ts`. `tests/scripts.test.ts` builds every frame, system, talent and core bonus into mechs and auto-battles them to catch runtime errors.
-
-### Known deviations and house rules
-- Square grid with diagonals counting as 1. Range and threat include the vertical gap.
-- Rules follow the core book: hard cover must be adjacent to the target and at least as large as it (distant obstructions give soft cover); Blast cover is measured from the blast centre; armor comes off an attack's total once; one reaction per turn, each type once per round; wreckage is hard cover and difficult terrain. Being 2+ levels above cover negates it.
-- Wreckage can be crossed (as difficult terrain) but you can't end a move on it.
-- Mines follow the core book (planted adjacent, not next to another mine; arm at the end of your turn; set off by entering an adjacent space; Hidden from the other side until found with Search for Mines, then disarmable), with one house rule: **your own side never sets off your mines** (the Smoke Mine, which is meant for allies, excepted).
-- Destructible terrain is a house rule: each level of a terrain block has 10 HP and Evasion 5, and a block with no levels left becomes rubble.
-- Player decisions (reactions, firing modes, effect choices) appear in an in-HUD picker. Per-mech policies (auto / ask / off) cover Brace, Overwatch and other reactions; the AI and Auto turns take the default.
-- Flight altitude is abstract (one level). Flyers land when Immobilized or Stunned, or when they fail an Agility save after Structure or Stress damage.
-- Each weapon can attack once per turn via Skirmish or Barrage. Reactions and free attacks are exempt.
-- You can INVADE a willing ally: it succeeds automatically, deals no heat and isn't an attack (useful with beneficial invade options).
-- Not implemented (out of scope): pilots on foot (Eject, Mount, Jockey), and narrative skill checks and downtime.
-
-### Saving, undo and checks
-- **Battles save as you play.** The battle in progress is saved after every action, so closing the tab or reloading doesn't lose it: **Continue run** goes straight back into the fight, exactly where it was.
-- **Undo** (the ↶ button or Ctrl+Z) takes back your last action, however far it went (moves, attacks, systems, ending your turn and the enemy turns that followed). It isn't available while the enemy is acting or once the battle is over. Dice are seeded, so repeating the same action gives the same roll.
-- **Golden battles:** six pinned AI-vs-AI fights (`tests/golden/`). If a change alters how they play out, the test fails; if that was intended, re-pin with `npm run golden` and commit `tests/golden/battles.json`.
-- **CI** (`.github/workflows/ci.yml`) runs the typecheck, all tests, the build and the end-to-end campaign run on every push and pull request.
-- The battle screen and Three.js load with the first battle, so the title and hangar open faster.
-
-### Battle replays (bug reports)
-Every battle records its seed, starting state and every top-level command: player actions, AI turns, and the decisions taken in the HUD picker. The **⤓** button in the battle header downloads it as `dov-battle-<time>.json` (with an optional note). `cd game && npm run replay -- <file> [--upto N] [--log N]` replays it headlessly, prints the log tail and checks the final state hash against the export. `--upto N` stops just before command N, to inspect the state ahead of a bug. Scripts can call `window.__dov.exportBattle()`, and `src/replay/replay.ts` exports `exportBattle`, `replayBattle` and `stateHash`.
-
-Engine rule for replays: change battle state only through `Battle` methods. UI toggles go through `setProfile`, `setWeaponFlag` and `setPolicy`. Anything mutated directly isn't recorded and breaks the replay.
-
-## Enemies: an original NPC ruleset + Claude skill
-
-Massif's NPC data is a paid content pack, so the bundled enemies use an **original ruleset** modelled on LANCER's NPC structure. Roles: Striker, Artillery, Controller, Defender, Support, Biological. Tiers: 1–3. Templates follow the official rules: Grunt, Veteran (with a Veteran trait), Elite (two turns), Commander, Ultra (two turns, Deadly, Juggernaut, Legendary), Mercenary. Features are written in a small effect DSL, and an encounter budget keeps teams fair.
-
-- Rules: [`docs/enemy-ruleset.md`](docs/enemy-ruleset.md). The code lives in `game/src/enemies/ruleset.ts` and `validate.ts`.
-- Teams: `data/enemies/*.json`. The game loads every valid file automatically. Twenty teams ship, covering all tiers and including three bosses. They're named for the campaign's factions: the Choir of the Second Dawn, the Annex's print anomalies and subverted security, Choir-paid mercenaries, and the Martian incursion.
-- **Generate more with Claude.** The project skill [`.claude/skills/generate-enemies`](.claude/skills/generate-enemies/SKILL.md) designs teams from the ruleset, writes the JSON and validates it. Ask Claude Code something like *"generate two tier-2 enemy teams themed around rogue terraforming drones"* or *"make a tier 3 boss"*.
-- Validate: `cd game && npm run validate-enemies`.
-- Balance check: `npx tsx scripts/simulate.ts 10 [team-id]` runs AI vs AI on 18×36 maps. Tier 1 faces the LL0 pregens, tier 2 the LL5 sample squad and tier 3 the LL10 sample squad (the squad's level in acts 2 and 3).
-
-### Official NPCs from your own content pack
-
-If you own the NPC content pack (for example *Lancer CORE NPCs*, `.lcp`), import it from **Title → Official NPCs**. Both the v1 and v2/v3 pack layouts are read.
-
-- The pack is converted in your browser and stored **only in that browser's local storage**. It is never uploaded, bundled or committed (`*.lcp` is git-ignored).
-- Classes become units with their official tier stats, base features and 0–2 optional features. Weapons (including structured on-hit conditions), stats, tags, flight, resistances and Blast/Burst/Line/Cone save attacks are automated from the data.
-- Base class features have hand-written scripts in `game/src/rules/effects/official.ts`, keyed by feature id. These include reactions like Hunker Down and Barrel Roll, Guardian cover, Siege Armor, Assassin's and Sniper's Marks, Leap, Avalanche Charge and the Witch's hacks. Of the core pack's 116 base features, 81 are fully automated and 16 approximated. Deployable- and mine-based ones (turrets, mines, Javelin Rockets) and the Squad are still text only, as are most optional features.
-- Coverage: `LCP=/path/to/pack.lcp npm run coverage -- --list`.
-- **Use in campaigns:** Off, Mixed (half the fights) or Only. Encounters follow the core book's guidance (grunt packs, one Elite per two players, one Ultra for bosses) within the usual budget. Quick skirmish also lists random official encounters.
-- Balance check: `LCP=/path/to/pack.lcp npx tsx scripts/simulate.ts 10 official` (reads the pack at runtime).
-
-## Roadmap
-
-Planned fixes and improvements are in [`docs/ROADMAP.md`](docs/ROADMAP.md).
-
-## Development
-
-```bash
-cd game
-npm test               # vitest: importer, rules, enemies, AI, full-content stress test
-npm run typecheck
-npm run coverage
-npm run validate-enemies
-npm run build          # static build in game/dist
-```
-
-```
-vendor/compcon/        COMP/CON v3 (submodule, reference)
-game/src/data          lancer-data index + COMP/CON pregens
-game/src/import        COMP/CON pilot importer
-game/src/rules         engine: battle.ts (entry), battle/ (below), grid.ts, stats.ts, effects/ (registry, generic, coverage, scripts)
-game/src/rules/battle  core.ts: the Battle class (state + one-line typed stubs); logic by area:
-                       turns, damage, movement, attacks, actions, terrain (grapples too), tech, fields (mines, areas), decisions
-game/src/enemies       enemy ruleset, validator, builder, catalog
-game/src/ai            utility-based tactical AI
-game/src/run           campaign layer, map generator
-game/src/render        Three.js isometric view
-game/src/ui            screens and battle HUD
-data/enemies           enemy team files
-docs/                  enemy ruleset
-.github/workflows      GitHub Pages deploy
-```
-
-### Deploying to GitHub Pages
-
-`.github/workflows/pages.yml` runs the tests, builds `game/dist` and publishes it on every push to `main` (or by hand from the Actions tab). One-time setup, with the repo public:
-
-1. Settings → Pages → **Source: GitHub Actions**.
-2. Push to `main`, or run **Deploy to GitHub Pages** from the Actions tab.
-
-The build uses relative asset paths (`base: './'` in `vite.config.ts`), so it works under any subpath. To smoke-test a production build: `npm run build && npx vite preview`, or point the e2e test at any URL with `E2E_URL=<url> npm run e2e`.
+- **LANCER** is created by Tom Parkinson-Morgan and Miguel Lopez and published by [Massif Press](https://massifpress.com).
+- **Game data** comes from [`@massif/lancer-data`](https://github.com/massif-press/lancer-data) by Massif Press, used under the GPL-3.0.
+- **COMP/CON** is Massif Press's official LANCER companion app. This project reads its pilot export format and includes its pregens, and pins [COMP/CON](https://github.com/massif-press/compcon) (GPL-3.0) as the `vendor/compcon` submodule.
+- **No paid content is bundled.** The core book and NPC packs aren't included. Official NPCs are only loaded from a pack you own, in your own browser, and are never uploaded.
+- The enemy teams, the enemy ruleset, the story and the game code are original to this project.
 
 ## License
 
-GPL-3.0-or-later; see [`LICENSE`](LICENSE). LANCER and its setting are © Massif Press, and this project is an unofficial fan work. Game data comes from [`@massif/lancer-data`](https://github.com/massif-press/lancer-data) (GPL-3.0) and the pilot format from [COMP/CON](https://github.com/massif-press/compcon) (GPL-3.0). Enemy teams and the enemy ruleset are original.
+GPL-3.0-or-later; see [`LICENSE`](LICENSE).
