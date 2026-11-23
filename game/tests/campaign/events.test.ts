@@ -1,13 +1,9 @@
 // Between-battle events: odds, determinism, eligibility and effects.
 import { describe, expect, it } from 'vitest'
-import { importPilots } from '../src/import/compcon'
-import pregens from '../src/data/pregens/pregens.json'
-import { EVENTS, rollEvent } from '../src/run/events'
-import { newRun, recordBattle, squadUnits, type RunNode } from '../src/run/run'
-import { Battle } from '../src/rules/battle'
-import { flatMap, pregenUnit } from './helpers'
+import { EVENTS, rollEvent } from '../../src/run/events'
+import { newRun, recordBattle, squadUnits, type RunNode } from '../../src/run/run'
+import { battle, pregenPilots as squad, pregenUnit } from '../support'
 
-const squad = () => (pregens as any[]).slice(0, 4).map(p => importPilots(p)[0])
 const ev = (id: string) => EVENTS.find(e => e.id === id)!
 const node = (seed: number): RunNode => ({ id: `n${seed}`, act: 1, layer: 1, kind: 'combat', next: [], seed })
 
@@ -31,6 +27,26 @@ describe('between-battle events', () => {
       const id = run.squad.find(p => !e.eligible || e.eligible(run, p.id) === true)?.id
       expect(typeof e.apply(run, e.needsMech ? id : undefined)).toBe('string')
     }
+  })
+  it('every event applied to every eligible mech keeps the run loadable and battle-ready', () => {
+    const applied = new Set<string>()
+    for (const e of EVENTS) for (let i = 0; i < 4; i++) {
+      const run = newRun(squad(), 5)
+      run.condition[run.squad[0].id].coreAvailable = false
+      const id = run.squad[i].id
+      if (e.needsMech && e.eligible && e.eligible(run, id) !== true) continue
+      e.apply(run, e.needsMech ? id : undefined)
+      applied.add(e.id)
+      for (const c of Object.values(run.condition)) {
+        expect(c.hp).toBeGreaterThanOrEqual(1)
+        expect(c.structure).toBeGreaterThanOrEqual(1)
+        expect(c.stress).toBeGreaterThanOrEqual(1)
+        expect(c.repairs).toBeGreaterThanOrEqual(0)
+      }
+      expect(squadUnits(run).length).toBe(4)
+    }
+    // the eligibility skip must not hide an event: each one was applied to at least one mech
+    expect([...applied].sort()).toEqual(EVENTS.map(e => e.id).sort())
   })
   it('a minor find gives a Repair', () => {
     const run = newRun(squad(), 5)
@@ -63,6 +79,19 @@ describe('between-battle events', () => {
     run.condition[p].destroyedSystems = [...run.squad[0].mech.systems]
     expect(ev('targeting_core').eligible!(run, p)).toMatch(/systems/)
   })
+  // regression: Hot-Loaded Rounds was offered with nothing left to give up
+  it('Hot-Loaded Rounds is not offered when every Limited item is empty and no Repairs are left', () => {
+    const run = newRun(squad(), 3)
+    const e = ev('hot_loaded')
+    const p = run.squad[0]
+    const c = run.condition[p.id]
+    c.repairs = 0
+    const u = squadUnits(run).find(x => x.flags.pilotId === p.id)!
+    const lim = [...u.weapons, ...u.systems].filter(x => x.usesLeft != null && x.dataId)
+    expect(lim.length).toBeGreaterThan(0)
+    for (const x of lim) c.limited[x.dataId!] = 0
+    expect(e.eligible!(run, p.id)).toBe('Nothing to give up') // was: true
+  })
   it('a system lost to an event stays destroyed in the next battle', () => {
     const run = newRun(squad(), 5)
     const p = run.squad.find(x => x.mech.systems.length)!.id
@@ -79,8 +108,7 @@ describe('between-battle events', () => {
     const u = units.find(x => x.flags.pilotId === p)!
     units.forEach((x, i) => (x.pos = { x: 1 + i * 2, y: 1 }))
     const foe = pregenUnit('Assault', 'enemy'); foe.pos = { x: 6, y: 10 }
-    const b = new Battle({ map: flatMap(12, 12), units: [...units, foe], seed: 1 })
-    b.start()
+    const b = battle([...units, foe])
     b.beginTurn(u)
     expect(b.has(u, 'stunned')).toBe(true)
     expect(u.actionsLeft).toBe(0)

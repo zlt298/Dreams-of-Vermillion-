@@ -1,89 +1,18 @@
-// The roguelike campaign layer: map structure, persistent damage, repairs, rewards, level-ups,
-// refits and save/load. These are pure functions over RunState, so they are checked exactly.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { importPilots } from '../src/import/compcon'
-import pregens from '../src/data/pregens/pregens.json'
+// A squad's condition between battles: what recordBattle carries over, repairs, rewards, level-ups, refits and
+// re-imports, the Bondmate and boons. These are pure functions over RunState, so they are checked exactly.
+import { describe, expect, it } from 'vitest'
+import { importPilots } from '../../src/import/compcon'
 import {
   newRun, availableNodes, recordBattle, squadUnits, fullRepair, repairOptions, applyRepair, rollRewards, applyReward,
-  levelUp, refitPilot, chooseTeam, saveRun, loadRun, nodeTier, sitrepFor, freshCondition, ACTS, REWARDS,
-  type RunState, type RunNode,
-} from '../src/run/run'
-import { EVENTS } from '../src/run/events'
-import { buildMechUnit } from '../src/rules/stats'
-import v3 from './fixtures/V3_FIXTURE.json'
-import './helpers'
+  levelUp, refitPilot, replacePilots, freshCondition, minHp, REWARDS, type RunState,
+} from '../../src/run/run'
+import { EVENTS } from '../../src/run/events'
+import { buildMechUnit } from '../../src/rules/stats'
+import v3 from '../fixtures/V3_FIXTURE.json'
+import { pregenPilots as squad } from '../support'
 
-const squad = (n = 4) => (pregens as any[]).slice(0, n).map(p => importPilots(p)[0])
 const bossOf = (run: RunState, act: number) => run.nodes.find(n => n.act === act && n.kind === 'boss')!
 const combatNode = (run: RunState) => availableNodes(run)[0]
-
-describe('campaign map', () => {
-  const seeds = [1, 7, 42, 1234, 99999, 314159]
-
-  it.each(seeds)('seed %s: three acts of six layers, one boss each, first layer all combat', seed => {
-    const run = newRun(squad(), seed)
-    for (let act = 1; act <= ACTS; act++) {
-      const nodes = run.nodes.filter(n => n.act === act)
-      expect(new Set(nodes.map(n => n.layer))).toEqual(new Set([0, 1, 2, 3, 4, 5]))
-      expect(nodes.filter(n => n.kind === 'boss')).toHaveLength(1)
-      expect(nodes.find(n => n.kind === 'boss')!.layer).toBe(5)
-      expect(nodes.filter(n => n.layer === 0).every(n => n.kind === 'combat')).toBe(true)
-      // the layer before the boss always offers a rest
-      expect(nodes.some(n => n.layer === 4 && n.kind === 'rest')).toBe(true)
-    }
-  })
-
-  it.each(seeds)('seed %s: edges only go one layer forward, ids are unique, every node is reachable', seed => {
-    const run = newRun(squad(), seed)
-    const byId = new Map(run.nodes.map(n => [n.id, n]))
-    expect(byId.size).toBe(run.nodes.length)
-    const order = (n: RunNode) => (n.act - 1) * 6 + n.layer
-    for (const n of run.nodes) {
-      expect(new Set(n.next).size).toBe(n.next.length)
-      for (const id of n.next) {
-        const m = byId.get(id)
-        expect(m).toBeDefined()
-        expect(order(m!)).toBe(order(n) + 1)
-      }
-      const isFinal = n.act === ACTS && n.kind === 'boss'
-      expect(n.next.length > 0).toBe(!isFinal)
-    }
-    // BFS from the starting choices reaches every node, so no node is stranded
-    const seen = new Set(availableNodes(run).map(n => n.id))
-    const queue = [...seen]
-    while (queue.length) for (const id of byId.get(queue.shift()!)!.next) if (!seen.has(id)) { seen.add(id); queue.push(id) }
-    expect(seen.size).toBe(run.nodes.length)
-  })
-
-  it('is deterministic per seed', () => {
-    expect(JSON.stringify(newRun(squad(), 77).nodes)).toBe(JSON.stringify(newRun(squad(), 77).nodes))
-    expect(JSON.stringify(newRun(squad(), 77).nodes)).not.toBe(JSON.stringify(newRun(squad(), 78).nodes))
-  })
-
-  it('bosses fight standard combat; tiers follow the act', () => {
-    const run = newRun(squad(), 5)
-    for (let a = 1; a <= 3; a++) {
-      expect(bossOf(run, a).sitrep).toBe('standard')
-      expect(nodeTier(bossOf(run, a))).toBe(a)
-    }
-  })
-
-  it('sitrepFor wires zones and targets through', () => {
-    const map = { zones: [{ name: 'control', tiles: [{ x: 1, y: 1 }] }] }
-    const n = (sitrep: any): RunNode => ({ id: 'x', act: 1, layer: 1, kind: 'combat', next: [], seed: 1, sitrep })
-    expect(sitrepFor(n('control'), map).zone).toEqual([{ x: 1, y: 1 }])
-    expect(sitrepFor(n('assassination'), map, 'boss1').targetId).toBe('boss1')
-    expect(sitrepFor(n(undefined), map).id).toBe('standard')
-  })
-
-  it('availableNodes follows the cleared node', () => {
-    const run = newRun(squad(), 5)
-    expect(availableNodes(run).every(n => n.act === 1 && n.layer === 0)).toBe(true)
-    const first = availableNodes(run)[0]
-    recordBattle(run, first, squadUnits(run), true)
-    expect(availableNodes(run).map(n => n.id)).toEqual(first.next)
-  })
-})
 
 describe('recording a battle', () => {
   it('damage, spent Repairs, destroyed gear and Limited uses carry over to the next battle', () => {
@@ -93,7 +22,8 @@ describe('recording a battle', () => {
     u.hp -= 5; u.structure -= 1; u.stress -= 1; u.repairs -= 2; u.overchargeLevel = 2; u.coreAvailable = false
     u.weapons[0].destroyed = true
     const lim = [...u.weapons, ...u.systems].find(x => x.usesLeft != null)
-    if (lim) lim.usesLeft = 0
+    expect(lim).toBeDefined() // the Vanguard's Hex Charges: the Limited carry-over is actually checked
+    lim!.usesLeft = 0
     u.heat = 5
     recordBattle(run, combatNode(run), units, true)
     const v = squadUnits(run).find(x => x.flags.pilotId === u.flags.pilotId)!
@@ -105,7 +35,7 @@ describe('recording a battle', () => {
     expect(v.coreAvailable).toBe(false)
     expect(v.weapons[0].destroyed).toBe(true)
     expect(v.heat).toBe(0) // heat clears at the end of the scene
-    if (lim) expect([...v.weapons, ...v.systems].find(x => x.dataId === lim.dataId)!.usesLeft).toBe(0)
+    expect([...v.weapons, ...v.systems].find(x => x.dataId === lim!.dataId)!.usesLeft).toBe(0)
     expect(run.battlesWon).toBe(1)
   })
 
@@ -182,6 +112,21 @@ describe('recording a battle', () => {
     const fu = squadUnits(fresh).find(x => x.flags.pilotId === pid)!
     recordBattle(fresh, combatNode(fresh), [fu], true)
     expect(squadUnits(fresh).find(x => x.flags.pilotId === pid)!.hp).toBe(fu.stats.hp)
+  })
+
+  // regression: a "never below 1 HP" event healed a mech whose max HP a boon had raised
+  it('a "never below 1 HP" event does not heal a boosted mech left on 1 HP', () => {
+    const run = newRun(squad(), 3)
+    const pid = run.squad[0].id
+    run.boons.push({ reward: 'perm_hp2', pilotId: pid })
+    const units = squadUnits(run)
+    const u = units.find(x => x.flags.pilotId === pid)!
+    u.hp = 1
+    recordBattle(run, availableNodes(run)[0], units, true)
+    expect(run.condition[pid].hp).toBe(minHp(run, pid))
+    const shortcut = EVENTS.find(e => e.id === 'shortcut')!
+    shortcut.apply(run)
+    expect(squadUnits(run).find(x => x.flags.pilotId === pid)!.hp).toBe(1)
   })
 })
 
@@ -299,7 +244,7 @@ describe('rewards', () => {
   })
 })
 
-describe('level-ups and refits', () => {
+describe('level-ups', () => {
   it('levelUp sets the act level (LL5, then LL10) and fully repairs', () => {
     const run = newRun(squad(), 3)
     run.condition[run.squad[0].id].hp = 1
@@ -314,6 +259,50 @@ describe('level-ups and refits', () => {
     expect(run.squad.every(p => p.level === 10)).toBe(true)
   })
 
+  // app.ts: boss win -> recordBattle (fullRepair) -> debrief() rewardPick -> repairs() -> maybeEvent() -> runMap()
+  // -> levelUpScreen() -> levelUp(), which resets every condition (run.ts levelUp -> resetCondition).
+  // regression: the level-up after an act boss threw away the debrief reward
+  it('a Field Repair Kit taken as the act 1 boss reward survives the level-up', () => {
+    const run = newRun(squad(), 3)
+    const boss = bossOf(run, 1)
+    recordBattle(run, boss, squadUnits(run), true)
+    expect(rollRewards(boss.seed + 1, run).length).toBeGreaterThan(0)
+    const pid = run.squad[0].id
+    applyReward(run, 'repairs', pid) // "+2 Repairs for one mech (can exceed its Repair Cap)"
+    const withKit = run.condition[pid].repairs
+    levelUp(run) // what levelUpScreen does next
+    expect(run.condition[pid].repairs).toBe(withKit) // was: back to the fresh Repair Cap (kit wasted)
+  })
+
+  // regression: the level-up after an act boss undid a pact's cost but kept its boon
+  it("a boss-node pact's cost survives the level-up along with its permanent boon", () => {
+    const run = newRun(squad(), 3)
+    const boss = bossOf(run, 1)
+    recordBattle(run, boss, squadUnits(run), true)
+    const pid = run.squad[1].id // Assault has systems
+    const ev = EVENTS.find(e => e.id === 'targeting_core')!
+    expect(ev.eligible!(run, pid)).toBe(true)
+    ev.apply(run, pid)
+    expect(run.condition[pid].destroyedSystems.length).toBe(1)
+    levelUp(run)
+    expect(run.boons.some(b => b.reward === 'perm_acc' && b.pilotId === pid)).toBe(true)
+    expect(run.condition[pid].destroyedSystems.length).toBe(1) // was: 0, the +1 accuracy was free
+  })
+
+  // regression: the level-up after an act boss refunded Repairs spent after the boss
+  it('Repairs spent after the boss stay spent through the level-up', () => {
+    const run = newRun(squad(), 3)
+    recordBattle(run, bossOf(run, 1), squadUnits(run), true)
+    const pid = run.squad[0].id
+    run.condition[pid].repairs -= 1
+    const left = run.condition[pid].repairs
+    levelUp(run)
+    expect(run.condition[pid].repairs).toBe(left)
+    expect(run.condition[pid].hp).toBe(buildMechUnit(run.squad[0]).stats.hp)
+  })
+})
+
+describe('refits and re-imports keep the condition', () => {
   it('refitPilot keeps damage taken, spent Repairs and CORE use, and refuses strangers', () => {
     const run = newRun(squad(), 3)
     const p = run.squad[0]
@@ -339,6 +328,86 @@ describe('level-ups and refits', () => {
     worse.mechSkills = [0, 0, 0, 0]
     refitPilot(run, worse)
     expect(run.condition[p.id].hp).toBeGreaterThanOrEqual(1)
+  })
+
+  // regression: a no-op refit reset Repairs to the Repair Cap
+  it('Repairs above the Repair Cap (Field Repair Kit / events) survive a no-op refit', () => {
+    const run = newRun(squad(), 3)
+    const pid = run.squad[0].id
+    applyReward(run, 'repairs', pid)
+    const before = run.condition[pid].repairs
+    refitPilot(run, structuredClone(run.squad[0]))
+    expect(run.condition[pid].repairs).toBe(before) // was: before - 2
+  })
+
+  // regression: a refit dropped the locked Prototype Weapon set-up
+  it('a locked Prototype Weapon set-up (kept "until the next Full Repair") survives a refit', () => {
+    const run = newRun(squad(), 3)
+    const pid = run.squad[0].id
+    run.condition[pid].proto = { some_weapon: { type: 'Rifle', damage: 'Energy' } }
+    refitPilot(run, structuredClone(run.squad[0]))
+    expect(run.condition[pid].proto).toEqual({ some_weapon: { type: 'Rifle', damage: 'Energy' } }) // was: undefined
+  })
+
+  // regression: re-importing pilots fully repaired them
+  it('a re-import is not a free full repair (damage and a destroyed mech carry over)', () => {
+    const run = newRun(squad(), 3)
+    const [a, b] = run.squad
+    run.condition[a.id].hp = 3
+    run.condition[b.id].destroyed = true
+    replacePilots(run, [structuredClone(a), structuredClone(b)])
+    expect(run.condition[a.id].hp).toBe(3)
+    expect(run.condition[b.id].destroyed).toBe(true)
+  })
+
+  // regression: a refit dropped destroyed marks for gear that left the build, and kept over-cap Limited uses
+  it('a refit keeps destroyed marks for gear that left the build (no repair offered, no free repair on refitting it) and clamps Limited uses', () => {
+    const run = newRun(squad(), 3)
+    const p = run.squad[0]
+    const c = run.condition[p.id]
+    const u = squadUnits(run).find(x => x.flags.pilotId === p.id)!
+    const lim = [...u.weapons, ...u.systems].find(x => x.usesLeft != null && x.dataId)!
+    c.destroyedWeapons = ['not_in_build']
+    c.destroyedSystems = ['also_not_in_build']
+    c.limited[lim.dataId!] = 99
+    refitPilot(run, structuredClone(p))
+    expect(run.condition[p.id].destroyedWeapons).toEqual(['not_in_build'])
+    expect(run.condition[p.id].destroyedSystems).toEqual(['also_not_in_build'])
+    expect(repairOptions(run.squad[0], run.condition[p.id]).some(o => /not_in_build/.test(o.id))).toBe(false)
+    expect(run.condition[p.id].limited[lim.dataId!]).toBe(lim.usesLeft)
+  })
+
+  // regression: unfitting a destroyed system and fitting it back repaired it
+  it('taking a destroyed system off and fitting it back does not repair it (refit, battle, refit)', () => {
+    const run = newRun(squad(), 3)
+    const p = run.squad.find(x => x.mech.systems.length)!
+    const sys = p.mech.systems[0]
+    run.condition[p.id].destroyedSystems = [sys]
+    const without = structuredClone(p); without.mech.systems = without.mech.systems.slice(1)
+    refitPilot(run, without)
+    recordBattle(run, availableNodes(run)[0], squadUnits(run), true)
+    refitPilot(run, structuredClone(p))
+    expect(squadUnits(run).find(x => x.flags.pilotId === p.id)!.systems.find(s => s.dataId === sys)!.destroyed).toBe(true)
+  })
+
+  it('re-import matches by id first, then by a unique callsign; reports ambiguity and strays', () => {
+    const run = newRun(squad(2), 3)
+    const [a, b] = run.squad
+    const byId = { ...a, level: 3 }
+    const byCallsign = { ...b, id: 'other-id', level: 3 }
+    const stranger = { ...b, id: 'x', callsign: 'Nobody' }
+    const r = replacePilots(run, [byId, byCallsign, stranger])
+    expect(r.replaced).toEqual([a.callsign])
+    expect(r.byCallsign).toEqual([b.callsign])
+    expect(r.unmatched).toEqual(['Nobody'])
+    expect(run.squad.every(p => p.level === 3)).toBe(true)
+    expect(run.squad[1].id).toBe(b.id) // keeps the run's id so condition stays linked
+  })
+  it('re-import refuses to guess when several squad pilots share a callsign', () => {
+    const run = newRun(squad(2), 3)
+    run.squad[1].callsign = run.squad[0].callsign
+    const r = replacePilots(run, [{ ...run.squad[0], id: 'new' }])
+    expect(r.ambiguous.length).toBe(1)
   })
 })
 
@@ -370,80 +439,21 @@ describe('Bonded: the Bondmate stays for the run', () => {
     refitPilot(run, structuredClone(a))
     expect(run.condition[a.id].bondmate).toBe(b.id)
   })
-})
-
-describe('team selection', () => {
-  const teams = ['t1', 't2', 't3'].map(id => ({ id }) as any)
-  it('is deterministic per node and avoids teams already beaten', () => {
-    const run = newRun(squad(), 3)
-    const n = availableNodes(run)[0]
-    expect(chooseTeam(run, n, teams).id).toBe(chooseTeam(run, n, teams).id)
-    run.nodes[0].cleared = true; run.nodes[0].teamId = 't1'
-    run.nodes[1].cleared = true; run.nodes[1].teamId = 't2'
-    for (const node of run.nodes.slice(2, 12)) expect(chooseTeam(run, node, teams).id).toBe('t3')
+  // regression: Emergency Print reset the condition, Bondmate included
+  it('survives Emergency Print', () => {
+    const { run, a, b } = bonded()
+    run.condition[a.id].destroyed = true
+    applyReward(run, 'reprint', a.id)
+    expect(run.condition[a.id].bondmate).toBe(b.id)
   })
-  it('falls back to any team once all have been seen', () => {
-    const run = newRun(squad(), 3)
-    run.nodes.slice(0, 3).forEach((n, i) => { n.cleared = true; n.teamId = teams[i].id })
-    expect(teams.map(t => t.id)).toContain(chooseTeam(run, run.nodes[5], teams).id)
-  })
-})
-
-describe('save and load', () => {
-  let store: Map<string, string>
-  beforeEach(() => {
-    store = new Map()
-    ;(globalThis as any).localStorage = {
-      getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => void store.set(k, v),
-      removeItem: (k: string) => void store.delete(k),
-    }
-  })
-  afterEach(() => { delete (globalThis as any).localStorage })
-
-  it('round-trips a run in progress', () => {
-    const run = newRun(squad(), 3)
-    recordBattle(run, combatNode(run), squadUnits(run), true)
-    run.boons.push({ reward: 'perm_acc', pilotId: run.squad[0].id })
-    saveRun(run)
-    const loaded = loadRun()!
-    expect(loaded).toEqual(JSON.parse(JSON.stringify(run)))
-    expect(availableNodes(loaded).map(n => n.id)).toEqual(availableNodes(run).map(n => n.id))
-  })
-  it('saveRun(null) clears the save', () => {
-    saveRun(newRun(squad(), 3))
-    saveRun(null)
-    expect(loadRun()).toBeNull()
-  })
-  it('discards unreadable saves and reports why', async () => {
-    store.set('dov.run.v1', '{not json')
-    expect(loadRun()).toBeNull()
-    const mod = await import('../src/run/run')
-    expect(mod.lastLoadProblem).toMatch(/could not be read/)
-    expect(store.has('dov.run.v1')).toBe(false)
-  })
-  it('does not throw when storage is unavailable', () => {
-    ;(globalThis as any).localStorage = { getItem() { throw new Error('denied') }, setItem() { throw new Error('denied') }, removeItem() { throw new Error('denied') } }
-    expect(() => saveRun(newRun(squad(), 3))).not.toThrow()
-    expect(loadRun()).toBeNull()
-  })
-})
-
-describe('events never break a run', () => {
-  it('every event applied to every eligible mech keeps the run loadable and battle-ready', () => {
-    for (const e of EVENTS) for (let i = 0; i < 4; i++) {
-      const run = newRun(squad(), 5)
-      run.condition[run.squad[0].id].coreAvailable = false
-      const id = run.squad[i].id
-      if (e.needsMech && e.eligible && e.eligible(run, id) !== true) continue
-      e.apply(run, e.needsMech ? id : undefined)
-      for (const c of Object.values(run.condition)) {
-        expect(c.hp).toBeGreaterThanOrEqual(1)
-        expect(c.structure).toBeGreaterThanOrEqual(1)
-        expect(c.stress).toBeGreaterThanOrEqual(1)
-        expect(c.repairs).toBeGreaterThanOrEqual(0)
-      }
-      expect(squadUnits(run).length).toBe(4)
+  // regression: events that rebuild a condition entry dropped the Bondmate
+  it('survives Ram the Gate and Through the Fire', () => {
+    for (const id of ['ram_gate', 'through_fire']) {
+      const ev = EVENTS.find(e => e.id === id)!
+      const { run, a, b } = bonded()
+      run.condition[a.id].destroyed = id === 'ram_gate'
+      ev.apply(run, id === 'through_fire' ? b.id : a.id)
+      expect(run.condition[a.id].bondmate).toBe(b.id)
     }
   })
 })

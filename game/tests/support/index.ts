@@ -86,6 +86,11 @@ export function pregenUnit(name: string, side: Side = 'player'): Unit {
   return buildMechUnit(p, side)
 }
 
+/** The first `n` COMP/CON pregens as PilotBuilds, in file order (Vanguard, Assault, Sniper, Hacker, ...): a campaign squad. */
+export function pregenPilots(n = 4): PilotBuild[] {
+  return (pregens as any[]).slice(0, n).map(p => importPilots(p)[0])
+}
+
 // ------------------------------------------------------------------------------------------------ battles
 
 /** A started battle with these units (positions already set by the caller). */

@@ -1,17 +1,19 @@
-// Themed pre-built squads and act levels: every preset is legal and fully spent at its level, and pilots
-// can be fitted down (or up) to an act's License Level.
+// Themed pre-built squads, the sample LL5/LL10 squads and act levels: every preset and sample is a legal COMP/CON
+// build, fully spent at its level (the samples drive the balance sim), and pilots can be fitted down (or up) to an
+// act's License Level.
 import { describe, expect, it } from 'vitest'
-import { importPilots } from '../src/import/compcon'
-import pregens from '../src/data/pregens/pregens.json'
-import ll5 from '../src/data/squads/ll5.json'
-import ll10 from '../src/data/squads/ll10.json'
-import themed from '../src/data/squads/themed.json'
-import { fitToLevel, readyProblems } from '../src/ui/builder'
-import { validateBuild } from '../src/rules/legality'
-import { buildMechUnit } from '../src/rules/stats'
-import { newRun, levelUp, actLevel, ACT_LEVEL } from '../src/run/run'
-import type { PilotBuild } from '../src/import/compcon'
-import './helpers'
+import { Lancer } from '../../src/data/lancer'
+import { importPilots } from '../../src/import/compcon'
+import pregens from '../../src/data/pregens/pregens.json'
+import ll5 from '../../src/data/squads/ll5.json'
+import ll10 from '../../src/data/squads/ll10.json'
+import themed from '../../src/data/squads/themed.json'
+import { fitToLevel, readyProblems } from '../../src/ui/builder'
+import { validateBuild } from '../../src/rules/legality'
+import { buildMechUnit } from '../../src/rules/stats'
+import { newRun, levelUp, actLevel, ACT_LEVEL } from '../../src/run/run'
+import type { PilotBuild } from '../../src/import/compcon'
+import '../support'
 
 const load = (x: any[]) => x.map(p => importPilots(p)[0])
 const presets = themed as unknown as { id: string; theme: string; level: number; pilots: PilotBuild[] }[]
@@ -102,5 +104,17 @@ describe('fitToLevel', () => {
     expect(p.mech.systems).toEqual(src.mech.systems)
     expect(validateBuild(p).errors).toEqual([])
     expect(readyProblems(p, 5).length).toBeGreaterThan(0)
+  })
+})
+
+describe.each([['LL5', ll5], ['LL10', ll10]] as const)('%s sample squad', (_n, squad) => {
+  it.each((squad as any[]).map(p => [p.callsign, p]))('%s is a legal build', (_c, raw) => {
+    const [p] = importPilots(raw)
+    expect(p.unknown).toEqual([])
+    const r = validateBuild(p)
+    expect(r.errors).toEqual([])
+    expect(r.warnings).toEqual([]) // every point is spent
+    expect(Lancer.frames.get(p.mech.frameId)!.mounts.length).toBe(p.mech.mounts.length)
+    expect(buildMechUnit(p).weapons.length).toBeGreaterThan(0)
   })
 })
