@@ -91,6 +91,10 @@ function aoeValue(b: Battle, u: Unit, w: Weapon, from: Pos): { value: number; ti
   } finally { u.pos = saved }
 }
 
+function weaponReachOf(b: Battle, u: Unit): number {
+  return Math.max(1, ...u.weapons.filter(w => !w.destroyed && !w.tech).map(w => b.weaponReach(u, w)))
+}
+
 function customValue(b: Battle, u: Unit, a: CustomAction, from: Pos): { value: number; target?: Unit | Pos } | null {
   if (a.usable(b, u) !== true) return null
   const saved = u.pos
@@ -154,6 +158,8 @@ function customValue(b: Battle, u: Unit, a: CustomAction, from: Pos): { value: n
       }
       return best ? { ...best, value: best.value - heatPenalty } : null
     }
+    // untargeted actions (protocols like Active Camouflage, ASURA, Deactivate Fortress) score themselves
+    if (a.target === 'none' && a.aiScore) return { value: a.aiScore(b, u) - heatPenalty }
     return null
   } finally { u.pos = saved }
 }
@@ -302,7 +308,9 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
   if (u.kind === 'mech' && u.coreAvailable && u.frameId) {
     const act = (Lancer.frames.get(u.frameId)?.core_system.activation ?? 'Quick').toLowerCase()
     const near = hostiles.filter(h => (h.kind === 'mech' || h.kind === 'npc') && Math.max(Math.abs(h.pos.x - p.x), Math.abs(h.pos.y - p.y)) <= 10).length
-    if (near && b.round >= 2) opts.push({ kind: 'core', value: 4 + near, cost: act === 'protocol' ? 'protocol' : act === 'full' ? 'full' : act === 'free' ? 'free' : 'quick' })
+    // Drake Fortress Protocol roots the mech: only worth it with a hostile already inside its own reach
+    const rooted = u.frameId === 'mf_drake' && !hostiles.some(h => (h.kind === 'mech' || h.kind === 'npc') && Math.max(Math.abs(h.pos.x - p.x), Math.abs(h.pos.y - p.y)) <= weaponReachOf(b, u))
+    if (near && b.round >= 2 && !rooted) opts.push({ kind: 'core', value: 4 + near, cost: act === 'protocol' ? 'protocol' : act === 'full' ? 'full' : act === 'free' ? 'free' : 'quick' })
   }
   return opts
 }

@@ -140,7 +140,11 @@ registerScripts([
         const i = self.immune.indexOf('prone'); if (i >= 0) self.immune.splice(i, 1)
         bt.say(`${self.name} deactivates Fortress.`)
       },
-      aiScore: () => -1,
+      // AI: fold up when nothing hostile is within reach of any weapon (otherwise it is rooted out of the fight)
+      aiScore: (bt, self) => {
+        const reach = Math.max(1, ...self.weapons.filter(w => !w.destroyed && !w.tech).map(w => bt.weaponReach(self, w)))
+        return bt.alive().some(o => bt.hostile(self, o) && (o.kind === 'mech' || o.kind === 'npc') && bt.distance(self, o) <= reach) ? -1 : 3
+      },
     })] : []),
   },
   // ---------------- IPS-N Lancaster

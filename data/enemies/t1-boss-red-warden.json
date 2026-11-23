@@ -34,13 +34,13 @@
           "damage": [
             {
               "type": "Kinetic",
-              "val": "1d6+2"
+              "val": "1d6+1"
             }
           ],
           "tags": [
             {
               "id": "tg_reliable",
-              "val": 2
+              "val": 1
             }
           ]
         },
