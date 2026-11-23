@@ -62,6 +62,12 @@ export function tagVal(tags: TagData[], id: string): number | undefined {
   return v ?? 1
 }
 export const hasTag = (tags: TagData[], id: string) => tags.some(t => t.id === id)
+const RANGED_TYPES = ['CQB', 'Rifle', 'Cannon', 'Launcher', 'Nexus']
+/** Weapon type check that understands the Mimic Gun (counts as every ranged type). */
+export function isWeaponType(w: { type: string; flags?: Record<string, any> } | undefined | null, type: string): boolean {
+  if (!w) return false
+  return w.type === type || (!!w.flags?.allRangedTypes && RANGED_TYPES.includes(type))
+}
 
 export function weaponFromData(id: string, mountIndex: number, opts: { modId?: string | null; profile?: number; bonuses?: BonusData[]; limitedBonus?: number } = {}): Weapon | null {
   const d = Lancer.weapons.get(id)

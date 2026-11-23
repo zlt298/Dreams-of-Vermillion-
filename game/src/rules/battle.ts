@@ -7,7 +7,7 @@ import {
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from './grid'
 import { parseDice, Rng, rollDice, rollAccuracy, averageDice } from './rng'
-import { hasTag, tagVal, nextUid } from './stats'
+import { hasTag, tagVal, nextUid, isWeaponType } from './stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from './types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from './effects/registry'
 import { genericActionsFor } from './effects/generic'
@@ -120,6 +120,8 @@ export class Battle {
   private txDepth = 0
   /** set while resolving a Blast attack: cover is measured from here */
   private blastCentre: Pos | null = null
+  /** set while an attack is measured from somewhere other than the attacker (Throughbolt) */
+  attackOrigin: Pos | null = null
   /** prevents infinite reaction chains */
   private reactionDepth = 0
 
@@ -760,6 +762,7 @@ export class Battle {
     if (heat > 0) this.addHeat(t, heat, opts.source)
     if (hpDmg > 0) this.loseHp(t, hpDmg, opts.source)
     if (hpDmg > 0 || heat > 0) for (const s of scriptsFor(t)) s.onDamaged?.(this, t, { ...dctx, amount: hpDmg })
+    if (hpDmg > 0 || heat > 0) for (const o of this.alive()) for (const s of scriptsFor(o)) s.onAnyDamaged?.(this, o, t, { ...dctx, amount: hpDmg })
     return hpDmg
   }
 
@@ -1081,7 +1084,7 @@ export class Battle {
     return p.range.some(r => ['Blast', 'Burst', 'Line', 'Cone'].includes(r.type))
   }
   private bonusApplies(b: BonusData, w: Weapon, rangeType?: string, damageType?: string): boolean {
-    if (b.weapon_types && !b.weapon_types.includes(w.type)) return false
+    if (b.weapon_types && !b.weapon_types.some(t => isWeaponType(w, t))) return false
     if (b.weapon_sizes && !b.weapon_sizes.includes(w.size)) return false
     if (rangeType && b.range_types && !b.range_types.includes(rangeType)) return false
     if (b.damage_types && !this.profile(w).damage.some(d => b.damage_types!.includes(d.type))) return false
@@ -1124,6 +1127,7 @@ export class Battle {
     if (u.flags.intangible) return 'Intangible: cannot attack'
     if (u.flags.noAttacks) return 'Cannot attack (retracted profile)'
     if (normalAttack && w.dataId && NO_NORMAL_ATTACK.has(w.dataId)) return 'Cannot make normal attacks'
+    if (w.flags?.locked) return String(w.flags.locked)
     if (!w.loaded) return 'Needs reloading'
     if (w.usesLeft === 0) return 'No uses left'
     if (!w.charged) return 'Recharging'
@@ -1430,7 +1434,7 @@ export class Battle {
     if (this.has(target, 'lockon') && this.hostile(attacker, target)) {
       ctx.accuracy++
       ctx.reasons.push('Lock On +1')
-      if (consume) this.removeStatus(target, 'lockon')
+      if (consume) { this.removeStatus(target, 'lockon'); ctx.lockOnConsumed = true }
     }
     for (const b of [...attacker.bonuses, ...w.bonuses]) {
       if (b.id === 'attack' && typeof b.val === 'number' && !b.accuracy && this.bonusApplies(b, w)) { ctx.attackBonus += b.val; ctx.reasons.push(`+${b.val} attack`) }
@@ -1442,7 +1446,7 @@ export class Battle {
     for (const b of w.bonuses) if (b.id === 'mount_accuracy') { ctx.accuracy += Number(b.val) || 1; ctx.reasons.push('Hardpoints +1') }
     if (!ctx.ignoreCover && !melee) {
       // BLAST attacks calculate cover from the centre of the blast rather than the attacker
-      const c = this.cover(attacker, target, this.blastCentre ?? undefined)
+      const c = this.cover(attacker, target, this.blastCentre ?? this.attackOrigin ?? undefined)
       if (c === 'hard') { ctx.difficulty += 2; ctx.reasons.push('Hard cover -2') }
       else if (c === 'soft') { ctx.difficulty += 1; ctx.reasons.push('Soft cover -1') }
     }
@@ -1453,7 +1457,16 @@ export class Battle {
   }
 
   /** Main entry for weapon attacks (skirmish/barrage call this). Handles AoE, rolls and on-hit effects. */
-  weaponAttack(u: Unit, w: Weapon, aim: AttackAim, mode: AttackCtx['mode'] = 'free', opts: { noBonusDamage?: boolean } = {}): AttackSummary {
+  weaponAttack(u: Unit, w: Weapon, aim: AttackAim, mode: AttackCtx['mode'] = 'free', opts: { noBonusDamage?: boolean; autoHit?: boolean; from?: Pos } = {}): AttackSummary {
+    if (opts.from) {
+      const prev = this.attackOrigin
+      this.attackOrigin = opts.from
+      try { return this.weaponAttack(u, w, aim, mode, { ...opts, from: undefined }) } finally { this.attackOrigin = prev }
+    }
+    if (!this.attackOrigin && aim.targetId) for (const sc of scriptsFor(u)) {
+      const o = sc.attackOrigin?.(this, u, w, aim)
+      if (o) return this.weaponAttack(u, w, aim, mode, { ...opts, from: o })
+    }
     const usable = this.weaponUsable(u, w, mode === 'skirmish' || mode === 'barrage' || mode === 'overwatch')
     if (usable !== true) return { ctxs: [], ok: false, reason: usable }
     const pr = this.profile(w)
@@ -1469,7 +1482,7 @@ export class Battle {
     } else {
       const t = this.unit(aim.targetId)
       if (!t) return { ctxs: [], ok: false, reason: 'No target' }
-      const v = this.validTarget(u, w, t)
+      const v = this.validTarget(u, w, t, this.attackOrigin ?? u.pos)
       if (v !== true) return { ctxs: [], ok: false, reason: v }
       targets = [t]
     }
@@ -1488,6 +1501,7 @@ export class Battle {
       let ctx: AttackCtx
       try { ctx = this.buildWeaponCtx(u, w, t, mode, true, multi) } finally { this.blastCentre = null }
       if (opts.noBonusDamage || w.noBonusDamage) ctx.bonusDamage = []
+      if (opts.autoHit) ctx.autoHit = true
       this.rollToHit(ctx)
       ctxs.push(ctx)
     }
@@ -1578,6 +1592,14 @@ export class Battle {
       ctx.crit = false
       this.say(`  vs ${t.name}: misses (invisible).`)
       this.emit({ type: 'attack', attackerId: ctx.attacker.id, targetId: t.id, hit: false, crit: false, weapon: ctx.weapon?.name ?? 'tech', total: 0 })
+      return
+    }
+    if (ctx.autoHit) {
+      ctx.hit = true
+      ctx.crit = false
+      ctx.total = 0
+      this.say(`  vs ${t.name}: automatic HIT`, 'attack')
+      this.emit({ type: 'attack', attackerId: ctx.attacker.id, targetId: t.id, hit: true, crit: false, weapon: ctx.weapon?.name ?? 'tech', total: 0 })
       return
     }
     let d20 = this.rollD20(ctx.attacker, 'attack', ctx)

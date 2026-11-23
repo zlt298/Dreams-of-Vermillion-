@@ -1,5 +1,6 @@
 // Frame traits (`frame:<id>`) and CORE systems (`core:<id>`) for the 29 core-book frames.
 import { blastTiles, burstTiles, unitsOnTiles } from '../../grid'
+import { isWeaponType } from '../../stats'
 import { rollDice } from '../../rng'
 import type { Pos, Unit } from '../../types'
 import type { Battle } from '../../battle'
@@ -280,7 +281,7 @@ registerScripts([
     id: 'frame:mf_monarch',
     note: 'Avenger Silos, Seeking Payload',
     beforeAttack(b, self, ctx, role) {
-      if (role === 'attacker' && ctx.weapon?.type === 'Launcher' && b.has(ctx.target, 'lockon')) {
+      if (role === 'attacker' && isWeaponType(ctx.weapon, 'Launcher') && b.has(ctx.target, 'lockon')) {
         ctx.ignoreCover = true
         ctx.irreducible = true
         ctx.difficulty = Math.max(0, ctx.difficulty - (ctx.reasons.includes('Hard cover -2') ? 2 : ctx.reasons.includes('Soft cover -1') ? 1 : 0))

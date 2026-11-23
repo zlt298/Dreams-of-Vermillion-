@@ -337,6 +337,7 @@ export class BattleScreen {
           this.render()
         }
         return
+      case 'throughbolt': if (w) { (w.flags ??= {}).throughbolt = !w.flags.throughbolt; this.render() } return
       case 'profile': if (w && arg) { const i = Number(el.dataset.i); this.cmd(() => { w.profileIndex = i }) } return
       case 'reload': if (w) this.cmd(() => this.b.reload(a, w)); return
       case 'boost': this.cmd(() => this.b.boost(a)); return
@@ -602,6 +603,7 @@ export class BattleScreen {
         btns = (w.size !== 'Superheavy' ? this.btn('skirmish', 'Skirmish [Q]', all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable, fired), w.uid) : '') + this.btn('barrage', 'Barrage [F]', all(fu, usable, fired), w.uid)
         if (!w.loaded && !w.destroyed) btns += this.btn('reload', 'Reload [Q]', b.canSpend(u, 'quick', 'reload'), w.uid)
         if (w.profiles.length > 1) btns += w.profiles.map((p, i) => (i === w.profileIndex ? '' : `<button data-act="profile" data-arg="${w.uid}" data-i="${i}" title="Switch profile">${esc(p.name)}</button>`)).join('')
+        if (w.modId === 'wm_throughbolt_rounds') btns += `<button data-act="throughbolt" data-arg="${w.uid}" class="${w.flags?.throughbolt ? 'on' : ''}" title="Throughbolt round: punch a Line 3 path through terrain (2 AP kinetic to everything on it), then attack from its end">Throughbolt: ${w.flags?.throughbolt ? 'ON' : 'off'}</button>`
       }
     }
     const fx = [pr.onHit, pr.onCrit].flat().map(e => (e.do === 'text' ? stripHtml(e.text) : e.do === 'status' ? `${e.status}${e.save ? ` (${e.save} save)` : ''}` : e.do)).join('; ')

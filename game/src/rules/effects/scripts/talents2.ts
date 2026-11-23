@@ -1,5 +1,6 @@
 // Higher talent ranks that were previously resolved by hand.
 import type { Battle } from '../../battle'
+import { isWeaponType } from '../../stats'
 import { chebyshev, footprint, tileAt } from '../../grid'
 import { rollDice } from '../../rng'
 import type { Pos, Unit } from '../../types'
@@ -253,7 +254,7 @@ registerScripts([
   {
     id: 't_siege_specialist:1', note: 'Jackhammer: 10 AP kinetic to an object or terrain section; characters adjacent to the impact are knocked back 2 and take 2 kinetic',
     actions: (b, u) => {
-      const cannon = u.weapons.find(w => w.type === 'Cannon' && !w.destroyed)
+      const cannon = u.weapons.find(w => isWeaponType(w, 'Cannon') && !w.destroyed)
       if (!cannon) return []
       const range = Math.max(...b.profile(cannon).range.filter(r => r.type === 'Range').map(r => Number(r.val)), 5)
       return [action({

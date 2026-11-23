@@ -10,6 +10,10 @@ import type { Pos, Profile, Unit, Weapon } from '../types'
 export interface AttackCtx {
   attacker: Unit
   target: Unit
+  /** hits automatically (no roll, no crit): Autopod and similar */
+  autoHit?: boolean
+  /** the attack consumed the target's Lock On */
+  lockOnConsumed?: boolean
   weapon?: Weapon
   profile?: Profile
   tech: boolean
@@ -98,6 +102,10 @@ export interface ItemScript {
   onRoundStart?(b: Battle, self: Unit): void
   /** after this unit took damage */
   onDamaged?(b: Battle, self: Unit, d: DamageCtx): void
+  /** measure this weapon attack from another point (Throughbolt); may apply its own effects first */
+  attackOrigin?(b: Battle, self: Unit, w: Weapon, aim: { targetId?: string; tile?: Pos }): Pos | null | undefined
+  /** any character took HP damage or heat (after `onDamaged`) */
+  onAnyDamaged?(b: Battle, self: Unit, target: Unit, d: DamageCtx): void
   /** before damage is applied to this unit; may mutate amount */
   modifyIncoming?(b: Battle, self: Unit, d: DamageCtx): void
   onMove?(b: Battle, self: Unit, mover: Unit, path: Pos[]): void

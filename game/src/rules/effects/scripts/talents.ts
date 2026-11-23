@@ -1,6 +1,7 @@
 // Pilot talents (`<talentId>:<rank>`). Reactions that need a player decision are resolved with a
 // sensible automatic policy (documented per script) so the engine stays non-blocking.
 import { burstTiles, unitsOnTiles } from '../../grid'
+import { isWeaponType } from '../../stats'
 import { rollDice } from '../../rng'
 import type { Pos, Unit, Weapon } from '../../types'
 import type { Battle } from '../../battle'
@@ -91,13 +92,13 @@ registerScripts([
       key: 'steady', name: 'Steady Aim', activation: 'protocol', target: 'none', text: 'Immobilized until your next turn; +1 accuracy with Rifles.',
       run: (bt, self) => { self.flags.steady = bt.round; bt.addStatus(self, 'immobilized', 'start_of_next_turn_target', self) },
     })],
-    beforeAttack(b, self, ctx, role) { if (role === 'attacker' && ctx.weapon?.type === 'Rifle' && b.has(self, 'immobilized') && self.flags.steady) acc(ctx, 1, 'Steady') },
+    beforeAttack(b, self, ctx, role) { if (role === 'attacker' && isWeaponType(ctx.weapon, 'Rifle') && b.has(self, 'immobilized') && self.flags.steady) acc(ctx, 1, 'Steady') },
     onTurnStart: (b, u) => { delete u.flags.steady },
   },
   {
     id: 't_crack_shot:2', note: 'Zero In (auto when steady: +1 diff, +1d6 on crit)',
     beforeAttack(b, self, ctx, role) {
-      if (role === 'attacker' && ctx.weapon?.type === 'Rifle' && self.flags.steady && once(self, 'zeroin')) { ctx.difficulty++; self.flags.zeroIn = true }
+      if (role === 'attacker' && isWeaponType(ctx.weapon, 'Rifle') && self.flags.steady && once(self, 'zeroin')) { ctx.difficulty++; self.flags.zeroIn = true }
     },
     afterAttack(b, self, ctx, role) {
       if (role === 'attacker' && self.flags.zeroIn) {
@@ -126,7 +127,7 @@ registerScripts([
     id: 't_centimane:2', note: 'Expose Weakness',
     beforeAttack(b, self, ctx, role) { if (role === 'attacker' && ctx.reasons.includes('Lock On +1')) self.flags.consumedLock = true },
     afterAttack(b, self, ctx, role) {
-      if (role === 'attacker' && self.flags.consumedLock && ctx.crit && ctx.weapon?.type === 'Nexus') b.addStatus(ctx.target, 'shredded', 'start_of_next_turn_target', self)
+      if (role === 'attacker' && self.flags.consumedLock && ctx.crit && isWeaponType(ctx.weapon, 'Nexus')) b.addStatus(ctx.target, 'shredded', 'start_of_next_turn_target', self)
       delete self.flags.consumedLock
     },
   },
@@ -473,7 +474,7 @@ registerScripts([
   // ---------------- Stormbringer
   {
     id: 't_stormbringer:1', note: 'Seismic Deluge',
-    beforeAttack(b, self, ctx, role) { if (role === 'attacker' && ctx.weapon?.type === 'Launcher' && ctx.reasons.includes('Lock On +1')) self.flags.deluge = true },
+    beforeAttack(b, self, ctx, role) { if (role === 'attacker' && isWeaponType(ctx.weapon, 'Launcher') && ctx.reasons.includes('Lock On +1')) self.flags.deluge = true },
     afterAttack(b, self, ctx, role) {
       if (role === 'attacker' && self.flags.deluge) { delete self.flags.deluge; if (ctx.hit && !ctx.target.destroyed && once(self, 'deluge')) b.addStatus(ctx.target, 'prone', 'until_cleared', self) }
     },
@@ -481,7 +482,7 @@ registerScripts([
   {
     id: 't_stormbringer:2', partial: true, note: 'Stormbending (auto: Lightning → push 3 on a failed hull save... simplified to knockback 3)',
     afterAttack(b, self, ctx, role) {
-      if (role === 'attacker' && ctx.hit && ctx.weapon?.type === 'Launcher' && !ctx.target.destroyed && once(self, 'stormbend')) {
+      if (role === 'attacker' && ctx.hit && isWeaponType(ctx.weapon, 'Launcher') && !ctx.target.destroyed && once(self, 'stormbend')) {
         b.forceMove(ctx.target, self, 3, 1)
         self.flags.torrent = Math.max(1, (self.flags.torrent ?? 6) - 1)
       }
@@ -516,7 +517,7 @@ registerScripts([
   // ---------------- Vanguard
   {
     id: 't_vanguard:1', note: 'Handshake Etiquette',
-    beforeAttack(b, self, ctx, role) { if (role === 'attacker' && ctx.weapon?.type === 'CQB' && b.distance(self, ctx.target) <= 3) acc(ctx, 1, 'Handshake Etiquette') },
+    beforeAttack(b, self, ctx, role) { if (role === 'attacker' && isWeaponType(ctx.weapon, 'CQB') && b.distance(self, ctx.target) <= 3) acc(ctx, 1, 'Handshake Etiquette') },
   },
   {
     id: 't_vanguard:2', note: 'See-Through Seeker',
@@ -530,7 +531,7 @@ registerScripts([
     id: 't_vanguard:3', note: 'Semper Vigilo (CQB overwatch when hostiles enter threat)',
     onMove(b, self, mover, path) {
       if (!b.hostile(self, mover) || mover.destroyed || b.canSpend(self, 'reaction') !== true || self.policies.overwatch === 'off') return
-      const w = self.weapons.find(w => w.type === 'CQB' && b.weaponReady(self, w) && b.weaponThreat(self, w) >= b.distance(self, mover) && b.validTarget(self, w, mover) === true)
+      const w = self.weapons.find(w => isWeaponType(w, 'CQB') && b.weaponReady(self, w) && b.weaponThreat(self, w) >= b.distance(self, mover) && b.validTarget(self, w, mover) === true)
       if (!w || path.length < 2) return
       self.reactionsLeft--
       b.say(`${self.name}: Semper Vigilo!`)
