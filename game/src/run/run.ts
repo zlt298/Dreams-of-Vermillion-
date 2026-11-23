@@ -326,8 +326,22 @@ export const actLevel = (act: number) => ACT_LEVEL[act] ?? ACT_LEVEL[ACTS]
  */
 export function levelUp(run: RunState) {
   const level = actLevel(run.act)
-  for (const p of run.squad) if (p.level < level) p.level = level
-  for (const p of run.squad) run.condition[p.id] = resetCondition(run, p)
+  for (const p of run.squad) {
+    // the act boss already fully repaired the squad; what was earned or paid since (a Field Repair Kit
+    // above the Repair Cap, a pact's destroyed system, spent charges...) must survive the level-up
+    const c = run.condition[p.id] ?? freshCondition(p)
+    const was = buildMechUnit(p).stats
+    if (p.level < level) p.level = level
+    const now = buildMechUnit(p).stats
+    run.condition[p.id] = {
+      ...c,
+      // the new License Level's grit comes with full HP
+      hp: c.destroyed ? c.hp : now.hp,
+      structure: Math.min(now.structure, c.structure),
+      stress: Math.min(now.stress, c.stress),
+      repairs: Math.max(0, c.repairs + now.repcap - was.repcap),
+    }
+  }
   run.pendingLevelUp = false
 }
 
@@ -351,15 +365,14 @@ export function replacePilots(run: RunState, builds: PilotBuild[]): ReplaceRepor
       else { report.unmatched.push(b.callsign); continue }
     }
     taken.add(i)
-    const old = run.squad[i]
-    run.squad[i] = { ...b, id: old.id }
-    run.condition[old.id] = resetCondition(run, run.squad[i])
+    // like a refit, a re-import is not a repair: damage, destroyed gear and a destroyed mech carry over
+    refitPilot(run, { ...b, id: run.squad[i].id })
   }
   return report
 }
 
 /**
- * Swap a squad pilot's build for one edited in the in-game builder (same id). Unlike a re-import this is
+ * Swap a squad pilot's build for one edited in the in-game builder or re-imported (same id). This is
  * not a repair: damage taken, spent Repairs, destroyed gear, used Limited charges and CORE use carry over.
  */
 export function refitPilot(run: RunState, build: PilotBuild): boolean {
@@ -371,18 +384,29 @@ export function refitPilot(run: RunState, build: PilotBuild): boolean {
   run.squad[i] = build
   const now = buildMechUnit(build).stats
   const fresh = freshCondition(build)
+  // gear in the new build, and the most uses each Limited item can hold
+  const u = buildMechUnit(build)
+  const weapons = new Set(u.weapons.map(w => w.dataId).filter((x): x is string => !!x))
+  const systems = new Set(u.systems.map(x => x.dataId))
+  const maxUses: Record<string, number> = {}
+  for (const x of [...u.weapons, ...u.systems]) if (x.dataId && x.usesLeft != null) maxUses[x.dataId] = Math.max(maxUses[x.dataId] ?? 0, x.usesLeft)
+  const limited: Record<string, number> = {}
+  for (const [id, n] of Object.entries(c.limited)) limited[id] = maxUses[id] != null ? Math.min(maxUses[id], n) : n
   run.condition[old.id] = {
     ...fresh,
     hp: c.destroyed ? fresh.hp : Math.max(minHp(run, old.id), Math.min(now.hp, now.hp - (was.hp - c.hp))),
     structure: Math.min(now.structure, c.structure),
     stress: Math.min(now.stress, c.stress),
-    repairs: Math.max(0, Math.min(now.repcap, now.repcap - (was.repcap - c.repairs))),
+    // Repairs spent stay spent; Repairs above the cap (Field Repair Kit, events) stay too
+    repairs: Math.max(0, c.repairs + now.repcap - was.repcap),
     overchargeLevel: c.overchargeLevel,
     destroyed: c.destroyed,
     coreAvailable: c.coreAvailable,
-    destroyedWeapons: [...c.destroyedWeapons],
-    destroyedSystems: [...c.destroyedSystems],
-    limited: { ...c.limited },
+    destroyedWeapons: c.destroyedWeapons.filter(id => weapons.has(id)),
+    destroyedSystems: c.destroyedSystems.filter(id => systems.has(id)),
+    limited,
+    // the Prototype Weapon set-up lasts until the next Full Repair (only applied to matching weapons)
+    ...(c.proto ? { proto: structuredClone(c.proto) } : {}),
     ...(c.bondmate ? { bondmate: c.bondmate } : {}),
   }
   return true

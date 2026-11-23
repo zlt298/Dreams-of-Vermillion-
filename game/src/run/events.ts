@@ -126,7 +126,7 @@ export const EVENTS: RunEvent[] = [
     id: 'hot_loaded', tier: 'gamble', title: 'Hot-Loaded Rounds', needsMech: true,
     text: 'The fab bay can overpack ammunition, at the cost of what you already carry.',
     effect: 'One mech loses all charges of one Limited item (or 1 Repair if it has none); its weapons deal +1 damage next battle.',
-    eligible: (run, id) => both(notDestroyed(run, id), limitedItems(run, id).length || cond(run, id).repairs >= 1 ? true : 'Nothing to give up'),
+    eligible: (run, id) => both(notDestroyed(run, id), limitedItems(run, id).some(it => (cond(run, id).limited[it.dataId] ?? it.max) > 0) || cond(run, id).repairs >= 1 ? true : 'Nothing to give up'),
     apply: (run, id) => {
       const c = cond(run, id!)
       const items = limitedItems(run, id!).filter(it => (c.limited[it.dataId] ?? it.max) > 0)
