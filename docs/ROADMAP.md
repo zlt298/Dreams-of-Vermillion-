@@ -287,6 +287,11 @@ Out of the 392 items in lancer-data, 390 (99%) are fully executed and 2 are appr
 
 ---
 
+### Branch integration (all chats now work from `main`)
+- The Tester's rules, script, AI and campaign fixes and new test suites, the Balance Tester's AI fixes and retuned teams, the Design Director's narrative UI, and the Setup chat's GitHub Pages workflow and GPL-3.0 licence are all merged into `main`. The engine work was ported onto the split `rules/battle/` modules.
+- Where the Tester's and Balance Tester's sandbox fixes overlapped, the Tester's `snapshotBattleFields`/`touchTile` version was kept.
+- The merged branches were deleted. Start new work from `main`.
+
 ## Next
 
 **Priorities (set by the owner):**

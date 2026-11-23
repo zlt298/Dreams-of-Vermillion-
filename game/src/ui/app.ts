@@ -77,7 +77,7 @@ export class App {
       </div>
       ${lastLoadProblem ? `<p class="bad small">${esc(lastLoadProblem)}</p>` : ''}
       <p class="muted small">${validTeams().length} enemy teams loaded${bad.length ? ` · <span class="bad">${bad.length} invalid team file(s): ${bad.map(b => esc(b.file)).join(', ')}</span>` : ''} · lancer-data ${esc('4.0.12')}</p>
-      <p class="muted small">Unofficial fan project for personal use. LANCER is © Massif Press; COMP/CON and lancer-data are GPL-3.0.</p>
+      <p class="muted small">Unofficial, non-commercial fan project, not affiliated with Massif Press. LANCER is © Massif Press; COMP/CON and lancer-data are GPL-3.0.</p>
     </div>`
     this.on('[data-go]', el => {
       const g = el.dataset.go
@@ -129,7 +129,7 @@ export class App {
     this.clear()
     this.root.innerHTML = `<div class="screen help"><h2>How to play</h2>
       <ol>
-        <li><b>Build lancers in COMP/CON.</b> Run it from <code>vendor/compcon</code> (<code>yarn && yarn dev</code>) or use the web app: <a href="https://compcon.app" target="_blank" rel="noopener noreferrer">compcon.app ↗</a>. In the pilot roster, open a pilot → <i>Export</i> → <i>Save as file (.json)</i>.</li>
+        <li><b>Build lancers in COMP/CON.</b> Use the <a href="https://compcon.app" target="_blank" rel="noopener noreferrer">COMP/CON web app</a> (or run it locally from <code>vendor/compcon</code>). In the pilot roster, open a pilot → <i>Export</i> → <i>Save as file (.json)</i>.</li>
         <li><b>Import them in the Hangar</b> (drag-and-drop or the file picker). The COMP/CON pregens are available too.</li>
         <li><b>Pick up to ${MAX_SQUAD} pilots</b> and start a run. Each act's boss raises your License Level; re-import updated builds between acts.</li>
       </ol>
