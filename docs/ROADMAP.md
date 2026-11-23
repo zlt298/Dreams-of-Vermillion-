@@ -297,7 +297,7 @@ Driven by `npm run coverage -- --list`.
 2. Sitrep variety (M).
 3. Boss arenas and more set pieces (M); the act themes are done.
 4. Campaign events (M).
-5. Story extras: a failed-run readout, Choir chatter, act-boss flavour (S each).
+5. Story extras: ✅ failed-run readout (draft text); Choir chatter and act-boss flavour (S each). The UI direction is in [`DESIGN.md`](DESIGN.md): Tiers 1–2 are done, Tiers 3–4 are next.
 6. Model polish, effects, terrain, audio (M).
 
 ### 6. Balance (after content)
