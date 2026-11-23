@@ -225,8 +225,9 @@ export function recordBattle(run: RunState, node: RunNode, units: Unit[], won: b
     c.repairs = u.repairs
     c.overchargeLevel = u.overchargeLevel
     c.coreAvailable = u.coreAvailable
-    c.destroyedWeapons = u.weapons.filter(w => w.destroyed && w.dataId).map(w => w.dataId!)
-    c.destroyedSystems = u.systems.filter(s => s.destroyed).map(s => s.dataId)
+    // gear taken off in a refit keeps its destroyed mark (refitting it back is not a free repair)
+    c.destroyedWeapons = [...u.weapons.filter(w => w.destroyed && w.dataId).map(w => w.dataId!), ...c.destroyedWeapons.filter(id => !u.weapons.some(w => w.dataId === id))]
+    c.destroyedSystems = [...u.systems.filter(s => s.destroyed).map(s => s.dataId), ...c.destroyedSystems.filter(id => !u.systems.some(s => s.dataId === id))]
     for (const w of u.weapons) if (w.dataId && w.usesLeft != null) c.limited[w.dataId] = w.usesLeft
     for (const w of u.weapons) if (w.dataId && w.flags?.protoLocked) (c.proto ??= {})[w.dataId] = { type: w.flags.protoType, damage: w.flags.protoDamage }
     if (u.flags.bondmatePilot) c.bondmate = u.flags.bondmatePilot
@@ -270,8 +271,9 @@ export function repairOptions(p: PilotBuild, c: MechCondition): RepairOption[] {
   if (c.hp < u.stats.hp) out.push({ id: 'hp', label: 'Restore all HP', cost: 1 })
   if (c.structure < u.stats.structure) out.push({ id: 'structure', label: 'Repair 1 structure', cost: cheapStruct ? 1 : 2 })
   if (c.stress < u.stats.stress) out.push({ id: 'stress', label: 'Repair 1 reactor stress', cost: 2 })
-  for (const w of c.destroyedWeapons) out.push({ id: `w:${w}`, label: `Repair ${u.weapons.find(x => x.dataId === w)?.name ?? w}`, cost: 1 })
-  for (const s of c.destroyedSystems) out.push({ id: `s:${s}`, label: `Repair ${u.systems.find(x => x.dataId === s)?.name ?? s}`, cost: 1 })
+  // only gear that is fitted can be repaired (entries for gear taken off in a refit wait until it is fitted again)
+  for (const w of new Set(c.destroyedWeapons)) { const x = u.weapons.find(y => y.dataId === w); if (x) out.push({ id: `w:${w}`, label: `Repair ${x.name}`, cost: 1 }) }
+  for (const s of new Set(c.destroyedSystems)) { const x = u.systems.find(y => y.dataId === s); if (x) out.push({ id: `s:${s}`, label: `Repair ${x.name}`, cost: 1 }) }
   return out
 }
 
@@ -386,8 +388,6 @@ export function refitPilot(run: RunState, build: PilotBuild): boolean {
   const fresh = freshCondition(build)
   // gear in the new build, and the most uses each Limited item can hold
   const u = buildMechUnit(build)
-  const weapons = new Set(u.weapons.map(w => w.dataId).filter((x): x is string => !!x))
-  const systems = new Set(u.systems.map(x => x.dataId))
   const maxUses: Record<string, number> = {}
   for (const x of [...u.weapons, ...u.systems]) if (x.dataId && x.usesLeft != null) maxUses[x.dataId] = Math.max(maxUses[x.dataId] ?? 0, x.usesLeft)
   const limited: Record<string, number> = {}
@@ -402,8 +402,9 @@ export function refitPilot(run: RunState, build: PilotBuild): boolean {
     overchargeLevel: c.overchargeLevel,
     destroyed: c.destroyed,
     coreAvailable: c.coreAvailable,
-    destroyedWeapons: c.destroyedWeapons.filter(id => weapons.has(id)),
-    destroyedSystems: c.destroyedSystems.filter(id => systems.has(id)),
+    // kept even for gear no longer fitted: putting it back later must not repair it for free
+    destroyedWeapons: [...c.destroyedWeapons],
+    destroyedSystems: [...c.destroyedSystems],
     limited,
     // the Prototype Weapon set-up lasts until the next Full Repair (only applied to matching weapons)
     ...(c.proto ? { proto: structuredClone(c.proto) } : {}),
@@ -446,6 +447,17 @@ export function validateRun(r: any): string | null {
   return null
 }
 
+/** A saved condition entry with every field present and of the right type; bad or missing fields are taken from `fresh`. */
+function repairCondition(c: any, fresh: MechCondition): MechCondition {
+  if (!c || typeof c !== 'object') return fresh
+  const out: any = { ...fresh, ...c }
+  for (const k of ['hp', 'structure', 'stress', 'repairs', 'overchargeLevel'] as const) if (typeof out[k] !== 'number' || !Number.isFinite(out[k])) out[k] = fresh[k]
+  for (const k of ['destroyed', 'coreAvailable'] as const) if (typeof out[k] !== 'boolean') out[k] = fresh[k]
+  for (const k of ['destroyedWeapons', 'destroyedSystems'] as const) out[k] = Array.isArray(out[k]) ? out[k].filter((x: unknown) => typeof x === 'string') : []
+  if (!out.limited || typeof out.limited !== 'object' || Array.isArray(out.limited)) out.limited = {}
+  return out
+}
+
 export function migrateRun(raw: any): RunState | null {
   let r = raw
   let v = typeof r?.version === 'number' ? r.version : 0
@@ -459,8 +471,8 @@ export function migrateRun(raw: any): RunState | null {
   r.version = SAVE_VERSION
   const bad = validateRun(r)
   if (bad) { lastLoadProblem = `Your saved run was damaged (${bad}) and was discarded.`; return null }
-  // repair: make sure every squad pilot has a condition entry
-  for (const p of r.squad) if (!r.condition[p.id]) r.condition[p.id] = freshCondition(p)
+  // repair: every squad pilot has a complete condition entry (missing or malformed fields come from a fresh one)
+  for (const p of r.squad) r.condition[p.id] = repairCondition(r.condition[p.id], freshCondition(p))
   return r as RunState
 }
 
@@ -477,6 +489,8 @@ export function loadRun(): RunState | null {
   }
   let run: RunState | null = null
   try { run = migrateRun(parsed) } catch (e) { lastLoadProblem = `Your saved run could not be loaded (${(e as Error).message}).` }
-  if (!run) { try { localStorage.removeItem(SAVE_KEY) } catch { /* ignore */ } }
+  // a save from a newer version of the game is kept for that version, not deleted
+  const newer = typeof (parsed as any)?.version === 'number' && (parsed as any).version > SAVE_VERSION
+  if (!run && !newer) { try { localStorage.removeItem(SAVE_KEY) } catch { /* ignore */ } }
   return run
 }

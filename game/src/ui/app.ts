@@ -499,8 +499,13 @@ export class App {
     // a battle already under way at this node (the page was closed or reloaded): resume it
     const saved = loadBattle()
     let b: Battle
+    let resumed: Battle | null = null
     if (saved && saved.runSeed === run.seed && saved.nodeId === n.id) {
-      b = replayBattle(saved.data)
+      // a save that no longer replays (corrupt, or from a build with different rules) starts the fight over
+      try { resumed = replayBattle(saved.data) } catch (e) { console.warn('Could not resume the saved battle; starting it again.', e); clearBattle() }
+    }
+    if (resumed) {
+      b = resumed
     } else {
       b = new Battle({ map, units: [...units, ...enemies], seed: n.seed, sitrep })
       b.start()

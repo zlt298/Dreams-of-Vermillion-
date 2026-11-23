@@ -167,7 +167,10 @@ export function checkpoint(bt: Battle): () => void {
   const fields = (o: any, skip: string[] = []) => { const r: any = {}; for (const k of Object.keys(o)) if (!skip.includes(k)) r[k] = dc(o[k]); return r }
   const units = bt.units.map(u => ({ u, f: fields(u, ['weapons', 'systems']), weapons: u.weapons.slice(), systems: u.systems.slice(), w: u.weapons.map(w => fields(w)), s: u.systems.map(x => fields(x)) }))
   const tiles = bt.map.tiles.map(t => ({ ...t }))
-  const SKIP = new Set(['units', 'map', 'rng', 'log', 'events', 'listeners', 'chooser', 'answers', 'txDepth', 'record', 'mapCache', 'losCache', 'coverCache', 'cacheVersion', 'terrainVersion'])
+  // the command log is restored shallowly below: entries keep their identity, so a refund inside a command keeps
+  // recording answers into the live entry, while a command started after the checkpoint drops out of the log
+  const SKIP = new Set(['units', 'map', 'rng', 'log', 'events', 'listeners', 'chooser', 'answers', 'txDepth', 'record', 'commands', 'currentCommand', 'mapCache', 'losCache', 'coverCache', 'cacheVersion', 'terrainVersion'])
+  const commands = bt.commands.slice(), currentCommand = bt.currentCommand
   const self = bt as any
   const rest: Record<string, any> = {}
   for (const k of Object.keys(self)) if (!SKIP.has(k) && typeof self[k] !== 'function') rest[k] = dc(self[k])
@@ -186,6 +189,8 @@ export function checkpoint(bt: Battle): () => void {
     for (const k of Object.keys(rest)) self[k] = dc(rest[k])
     bt.rng.state = rng
     setUidState(uid)
+    bt.commands = commands.slice()
+    bt.currentCommand = currentCommand
     bt.log.splice(0, bt.log.length, ...log)
     bt.events.splice(0, bt.events.length, ...events)
     bt.invalidateTerrain()

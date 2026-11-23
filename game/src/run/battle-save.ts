@@ -1,6 +1,6 @@
 // The battle in progress is saved after every action (as a replay: seed, starting state, commands),
 // so closing the tab or reloading resumes the fight instead of restarting it.
-import type { BattleExport } from '../replay/replay'
+import { importBattle, type BattleExport } from '../replay/replay'
 
 const KEY = 'dov.battle.v1'
 
@@ -14,7 +14,9 @@ export function loadBattle(): SavedBattle | null {
     const raw = localStorage.getItem(KEY)
     if (!raw) return null
     const s = JSON.parse(raw) as SavedBattle
-    return s?.data?.format === 'dov-battle' ? s : null
+    if (!s || typeof s !== 'object' || typeof s.nodeId !== 'string') return null
+    importBattle(s.data) // throws on a malformed or foreign battle record
+    return s
   } catch { return null }
 }
 export function clearBattle() {

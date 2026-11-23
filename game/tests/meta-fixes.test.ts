@@ -7,7 +7,7 @@ import { readLcp } from '../src/import/lcp'
 import pregens from '../src/data/pregens/pregens.json'
 import themed from '../src/data/squads/themed.json'
 import {
-  newRun, recordBattle, squadUnits, applyReward, refitPilot, replacePilots, levelUp, rollRewards, freshCondition, type RunState,
+  newRun, recordBattle, squadUnits, applyReward, refitPilot, replacePilots, levelUp, rollRewards, freshCondition, repairOptions, availableNodes, type RunState,
 } from '../src/run/run'
 import { EVENTS } from '../src/run/events'
 import { mechSP, buildMechUnit } from '../src/rules/stats'
@@ -81,7 +81,7 @@ describe('campaign: refits and re-imports keep the condition', () => {
     expect(run.condition[a.id].hp).toBe(3)
     expect(run.condition[b.id].destroyed).toBe(true)
   })
-  it('a refit drops destroyed gear that left the build and clamps Limited uses to the new maxima', () => {
+  it('a refit keeps destroyed marks for gear that left the build (no repair offered, no free repair on refitting it) and clamps Limited uses', () => {
     const run = newRun(squad(), 3)
     const p = run.squad[0]
     const c = run.condition[p.id]
@@ -91,9 +91,21 @@ describe('campaign: refits and re-imports keep the condition', () => {
     c.destroyedSystems = ['also_not_in_build']
     c.limited[lim.dataId!] = 99
     refitPilot(run, structuredClone(p))
-    expect(run.condition[p.id].destroyedWeapons).toEqual([])
-    expect(run.condition[p.id].destroyedSystems).toEqual([])
+    expect(run.condition[p.id].destroyedWeapons).toEqual(['not_in_build'])
+    expect(run.condition[p.id].destroyedSystems).toEqual(['also_not_in_build'])
+    expect(repairOptions(run.squad[0], run.condition[p.id]).some(o => /not_in_build/.test(o.id))).toBe(false)
     expect(run.condition[p.id].limited[lim.dataId!]).toBe(lim.usesLeft)
+  })
+  it('taking a destroyed system off and fitting it back does not repair it (refit, battle, refit)', () => {
+    const run = newRun(squad(), 3)
+    const p = run.squad.find(x => x.mech.systems.length)!
+    const sys = p.mech.systems[0]
+    run.condition[p.id].destroyedSystems = [sys]
+    const without = structuredClone(p); without.mech.systems = without.mech.systems.slice(1)
+    refitPilot(run, without)
+    recordBattle(run, availableNodes(run)[0], squadUnits(run), true)
+    refitPilot(run, structuredClone(p))
+    expect(squadUnits(run).find(x => x.flags.pilotId === p.id)!.systems.find(s => s.dataId === sys)!.destroyed).toBe(true)
   })
   it('Repairs spent after the boss stay spent through the level-up', () => {
     const run = newRun(squad(), 3)
