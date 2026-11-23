@@ -33,7 +33,9 @@ export function startRound(bt: Battle) {
     if (u.expiresRound != null && u.expiresRound < bt.round) bt.destroy(u, 'expired')
   }
   for (const u of bt.alive()) for (const s of scriptsFor(u)) s.onRoundStart?.(bt, u)
-  bt.currentSide = bt.combatants('player').length ? 'player' : 'enemy'
+  // players open the battle; after that the turn order keeps alternating across rounds, so the side
+  // that didn't take the last turn of the previous round goes first (core book: Turns and Rounds)
+  bt.currentSide = bt.lastSide ? other(bt.lastSide) : bt.combatants('player').length ? 'player' : 'enemy'
   if (!bt.hasActivations(bt.currentSide)) bt.currentSide = other(bt.currentSide)
   bt.checkVictory()
 }
@@ -143,6 +145,7 @@ export function endTurnInner(bt: Battle, u: Unit) {
   const chain = bt.chainTurn ? bt.unit(bt.chainTurn) : undefined
   if (chain && !chain.destroyed && chain.activationsLeft > 0) { bt.currentSide = chain.side; return }
   bt.chainTurn = null
+  bt.lastSide = u.side
   const opp = other(u.side)
   if (bt.hasActivations(opp)) bt.currentSide = opp
   else if (bt.hasActivations(u.side)) bt.currentSide = u.side

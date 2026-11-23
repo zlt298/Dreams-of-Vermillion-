@@ -467,6 +467,8 @@ export class Battle {
   canActivate(u: Unit): true | string { return turns.canActivate(this, u) }
   /** a unit that takes its turn right after the current one (Goblin INSTINCT Rig on its host's turn) */
   chainTurn: string | null = null
+  /** The side that took the most recent turn: the other side opens the next round (sides keep alternating). */
+  lastSide: Side | null = null
   /** a character acting inside another's turn (Goblin INSTINCT Rig), see interject */
   interjection: { unit: string; host: string } | null = null
   interject(u: Unit, host: Unit) { return this.command('interject', [u, host], () => turns.interject(this, u, host)) }

@@ -292,6 +292,29 @@ Out of the 392 items in lancer-data, all 392 are fully executed. The rest show a
 
 ---
 
+### Rules audit (core book, Mech Combat chapter)
+`game/tests/audit.test.ts` has 69 scenario checks with rigged dice. They cover:
+- turns and actions
+- movement, engagement, falling
+- attacks and cover
+- damage order
+- statuses
+- the action list
+- reactions
+- the structure and overheating tables
+
+Two deviations were found and fixed:
+- **Turn order across rounds.** Every round used to start with the players. Now the players open the battle, and after that the side that didn't take the last turn opens the next round, so enemies can act first.
+- **Overheat carry-over.** One extra heat used to be kept. After stress, heat clears and only the heat beyond what it took to exceed the cap (cap + 1) carries over.
+
+The pinned battles were re-pinned.
+
+Known simplifications, left as they are:
+- Flight has no altitude: there is no 10-space ceiling and no falling from flight (falling off ledges is modelled).
+- Search checks every Hidden hostile in Sensors, not one chosen character.
+- System Trauma picks the mount or system at random instead of letting the player choose.
+- A pending meltdown at 2 Stress can't be retried with a free-action Engineering check.
+
 ### Branch integration (all chats now work from `main`)
 - The Tester's rules, script, AI and campaign fixes and new test suites, the Balance Tester's AI fixes and retuned teams, the Design Director's narrative UI, and the Setup chat's GitHub Pages workflow and GPL-3.0 licence are all merged into `main`. The engine work was ported onto the split `rules/battle/` modules.
 - Where the Tester's and Balance Tester's sandbox fixes overlapped, the Tester's `snapshotBattleFields`/`touchTile` version was kept.

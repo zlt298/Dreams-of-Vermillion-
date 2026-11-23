@@ -82,7 +82,7 @@ describe('fixed: core book rulings the engine used to get wrong', () => {
     expect(a.flying).toBe(false)
   })
 
-  it('when the last unit of a round burns to death, the next round starts with the players', () => {
+  it('when the last unit of a round burns to death, the next round still starts (with the other side: turns keep alternating)', () => {
     const p1 = pregenUnit('Assault'); p1.pos = { x: 1, y: 1 }
     const p2 = pregenUnit('Hacker'); p2.pos = { x: 3, y: 1 }
     const e = pregenUnit('Sniper', 'enemy'); e.pos = { x: 6, y: 10 }
@@ -94,7 +94,7 @@ describe('fixed: core book rulings the engine used to get wrong', () => {
     b.endTurn(p2)
     expect(p2.destroyed).toBe(true)
     expect(b.round).toBe(2)
-    expect(b.currentSide).toBe('player')
+    expect(b.currentSide).toBe('enemy')
   })
 })
 

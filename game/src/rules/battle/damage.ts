@@ -33,7 +33,8 @@ export function addHeat(bt: Battle, u: Unit, amount: number, source?: Unit) {
     }
     if (u.stress <= 0) { u.heat = Math.min(u.heat, u.stats.heatcap); break }
     u.stress--
-    u.heat = excess
+    // heat clears; only the heat beyond what it took to exceed the cap (cap + 1) carries over
+    u.heat = excess - 1
     bt.emit({ type: 'damage', unitId: u.id, amount: 1, kind: 'stress' })
     bt.say(`${u.name} OVERHEATS — takes 1 stress (${u.stress} left).`, 'damage')
     for (const s of scriptsFor(u)) s.onStressDamage?.(bt, u)

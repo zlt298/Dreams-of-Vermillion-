@@ -126,7 +126,7 @@ describe('combat', () => {
     const { e, b } = duel()
     b.addHeat(e, e.stats.heatcap + 2)
     expect(e.stress).toBe(3)
-    expect(e.heat).toBe(2)
+    expect(e.heat).toBe(1) // cap + 1 exceeds the cap; only the 1 beyond that carries over
   })
   it('burn deals damage immediately and is marked', () => {
     const { e, b } = duel()
