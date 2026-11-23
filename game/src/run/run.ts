@@ -56,6 +56,8 @@ export interface RunState {
   pendingLevelUp?: boolean
   /** combat nodes whose between-battle event has been rolled */
   eventsSeen?: string[]
+  /** forecast iteration number of this run (cosmetic framing, ui/forecast.ts) */
+  iteration?: number
   /** story interludes already shown in this run */
   story?: string[]
 }

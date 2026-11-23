@@ -182,3 +182,79 @@ MANUAL CYCLE INITIATED BY LANCE OCHRE.
 ▓▓ FILE SEALED ▓▓\n`,
   },
 }
+
+// ---------------------------------------------------------------------------------------------
+// DRAFT — owner to rewrite. Everything below was drafted to carry the documents' voice into the
+// rest of the UI (title, campaign map, failed runs). The framing: every run is one of MENHIT's
+// forecast iterations; a lost run is an iteration whose outcome is red.
+
+/** DRAFT — owner to rewrite. Where each act takes place (campaign map header, matches the map themes). */
+export const ACT_LOCATIONS: Record<number, string> = {
+  1: 'LZ THEODORA // ANNEX OUTSKIRTS',
+  2: 'CINNABAR ANNEX // INDUSTRIAL PARK',
+  3: 'CINNABAR ANNEX // CLEANROOM SECTOR',
+}
+
+/** DRAFT — owner to rewrite. One-line node briefs for the campaign map (hover). */
+export const NODE_BRIEFS: Record<string, string> = {
+  standard: 'BASIC COMBAT — Hostile contact on the approach. Destroy all hostile forces.',
+  holdout: 'HOLDOUT — Choir reinforcements inbound. Hold for 8 rounds.',
+  control: 'CONTROL — A relay mast still answers Union codes. Hold the zone for 3 rounds.',
+  extraction: 'EXTRACTION — Annex survivors pinned down. Get every lancer to the extraction zone.',
+  assassination: 'ASSASSINATION — A Choir cantor is directing the hymn. Silence the marked target.',
+  elite: 'Hostile elements are singing in unison here. Expect heavier resistance.',
+  supply: 'SUPPLY — An Annex depot, seals intact. Requisition one item.',
+  rest: 'STAND-DOWN — A defensible position. Full repair; destroyed frames are reprinted.',
+  boss: 'ACT OBJECTIVE — The hymn is loudest here.',
+  finale: 'CASKET VAULT — It is waiting for you. It has always been waiting for you.',
+}
+
+/** DRAFT — owner to rewrite. Combat sim conditioning per act (casket telemetry panel). */
+export const SIM_CONDITIONING: Record<number, string> = { 1: 'HOLDING', 2: 'DEGRADED', 3: 'FAILING' }
+
+/**
+ * DRAFT — owner to rewrite. The casket's log of a failed run, typed out before the loss screen.
+ * `act` is the act the lance fell in; `iteration` the run's forecast iteration number.
+ */
+export function failedReadout(o: { act: number; iteration: number; battlesWon: number; location: string }): { title: string; text: string } {
+  const it = String(o.iteration).padStart(4, '0')
+  const next = String(o.iteration + 1).padStart(4, '0')
+  const addendum: Record<number, string> = {
+    1: `   You didn't reach the gate this time.
+   That's all right. Nobody does, the first [REDACTED] times.
+   I'll put the dust back. I'll put the sun back.
+   Come down at Theodora again. I'll be singing.`,
+    2: `   You were in the yards when the lights went sodium-orange.
+   I watched you go down between the containers.
+   I'm sorry. I knew where they would stand. I always know.
+   I can't stop telling them. Not yet. Come closer.`,
+    3: `   You were so close. You could see the cradle.
+   I said your callsign. I know I wasn't supposed to.
+   The outcome is red. The outcome is always red.
+   Again. Please. Again.`,
+  }
+  return {
+    title: `Forecast iteration ${it}`,
+    text: `▓▓ CASKET INTERNAL LOG // NOT FOR TRANSMISSION ▓▓
+SOURCE: NHP CASKET "MENHIT" // AUTH: [NO RECORD]
+PROCESS: FORECAST ITERATION ${it}
+
+>> OUTCOME
+ LANCE OCHRE ............... LOST
+ LAST POSITION ............. ${o.location}
+ ENGAGEMENTS CLOSED ........ ${o.battlesWon}
+ OUTCOME ................... RED
+
+>> CASKET TELEMETRY
+ CYCLE STATUS .............. OVERDUE // [VALUE EXCEEDS FIELD]
+ COMBAT SIM CONDITIONING ... ${SIM_CONDITIONING[o.act] ?? 'FAILING'}
+ FORECAST ITERATIONS ....... ${it} (EXCEEDS SANCTIONED LIMIT)
+
+>> ADDENDUM // AUTH: [NO RECORD]
+${addendum[o.act] ?? addendum[3]}
+
+>> RESEEDING FORECAST ........ ITERATION ${next}
+
+▓▓ LOG ENDS ▓▓\n`,
+  }
+}

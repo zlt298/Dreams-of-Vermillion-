@@ -18,9 +18,10 @@ import type { Weapon } from '../rules/types'
 import { featureAutomated, loadPacks, readLcp, removePack, storePack, officialClasses } from '../import/lcp'
 import { generateOfficialTeam } from '../enemies/official'
 import { Rng } from '../rules/rng'
-import { STORY, STORY_ORDER, type StoryId } from '../data/story'
+import { STORY, STORY_ORDER, type StoryId, ACT_LOCATIONS, NODE_BRIEFS, failedReadout } from '../data/story'
+import { iterationCount, iterLabel, nextIteration, telemetryPanel } from './forecast'
 import { rollEvent, type RunEvent } from '../run/events'
-import { playInterlude } from './interlude'
+import { playInterlude, RA_EYE_SVG } from './interlude'
 import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad } from './roster'
 import { esc } from './dom'
 import { builderScreen } from './builder-screen'
@@ -55,16 +56,24 @@ export class App {
   // ------------------------------------------------------------------ title
   title() {
     this.clear()
+    this.setAct(null)
     const bad = catalog.filter(c => c.errors.length)
+    const iter = iterationCount()
+    const live = this.run && !this.run.over
+    const item = (go: string, label: string, caption: string, cls = '') =>
+      `<button data-go="${go}" class="${cls}"><span class="ml">${label}</span><span class="mc">${caption}</span></button>`
     this.root.innerHTML = `<div class="screen title">
+      <div class="title-eye" aria-hidden="true">${RA_EYE_SVG}</div>
+      <p class="band">UNION TACTICAL BAND // LANCE OCHRE</p>
       <h1>DREAMS OF VERMILLION</h1><p class="sub">a LANCER tactics roguelike</p>
+      ${iter ? `<p class="iter">FORECAST ITERATION ${iterLabel(iter)}${live ? ' // IN PROGRESS' : ''}</p>` : ''}
       <div class="menu">
-        ${this.run && !this.run.over ? `<button data-go="continue" class="primary">Continue run (Act ${this.run.act}, ${this.run.battlesWon} wins)</button>` : ''}
-        <button data-go="hangar" class="${this.run && !this.run.over ? '' : 'primary'}">New run — choose squad</button>
-        <button data-go="skirmish">Quick skirmish</button>
-        <button data-go="official">Official NPCs (import .lcp)</button>
-        ${unlockedStories().length ? '<button data-go="archive">Transmissions</button>' : ''}
-        <button data-go="help">How to play</button>
+        ${live ? item('continue', `Continue run (Act ${this.run!.act}, ${this.run!.battlesWon} wins)`, `resume operation · ${esc(ACT_LOCATIONS[this.run!.act] ?? '')}`, 'primary') : ''}
+        ${item('hangar', 'New run — choose squad', iter ? 'reseed the forecast' : 'answer the priority flash', live ? '' : 'primary')}
+        ${item('skirmish', 'Quick skirmish', 'simulated engagement')}
+        ${item('official', 'Official NPCs (import .lcp)', 'hostile pattern library')}
+        ${unlockedStories().length ? item('archive', 'Transmissions', 'recovered documents') : ''}
+        ${item('help', 'How to play', 'field manual')}
       </div>
       ${lastLoadProblem ? `<p class="bad small">${esc(lastLoadProblem)}</p>` : ''}
       <p class="muted small">${validTeams().length} enemy teams loaded${bad.length ? ` · <span class="bad">${bad.length} invalid team file(s): ${bad.map(b => esc(b.file)).join(', ')}</span>` : ''} · lancer-data ${esc('4.0.12')}</p>
@@ -140,6 +149,7 @@ export class App {
   // ------------------------------------------------------------------ hangar
   hangar(purpose: 'run' | 'skirmish' | 'reimport') {
     this.clear()
+    this.setAct(purpose === 'reimport' ? this.run?.act ?? null : null)
     if (!this.squadPick.size) this.roster.slice(0, MAX_SQUAD).forEach(p => this.squadPick.add(p.id))
     const cards = this.roster.map(p => pilotCard(p, this.squadPick.has(p.id))).join('')
     this.root.innerHTML = `<div class="screen hangar">
@@ -209,7 +219,7 @@ export class App {
       if (g === 'start') {
         const squad = this.roster.filter(p => this.squadPick.has(p.id))
         if (!squad.length) return alert('Pick at least one pilot')
-        if (purpose === 'run') { this.run = newRun(squad.map(p => structuredClone(p))); saveRun(this.run); this.story('opening', () => this.runMap()) }
+        if (purpose === 'run') { this.run = newRun(squad.map(p => structuredClone(p))); this.run.iteration = nextIteration(); saveRun(this.run); this.story('opening', () => this.runMap()) }
         else this.skirmishSetup(squad)
       }
     })
@@ -244,6 +254,7 @@ export class App {
       const b = new Battle({ map, units: [...units, ...enemies], seed, sitrep: { id: team.sitrep === 'control' ? 'control' : 'standard', name: team.sitrep === 'control' ? 'Control' : 'Basic Combat', rounds: 3, zone: map.zones?.find(z => z.name === 'control')?.tiles, description: team.sitrep === 'control' ? 'Hold the zone for 3 rounds or destroy all hostiles.' : 'Destroy all hostile forces.' } })
       b.start()
       this.clear()
+      this.setAct(team.tier)
       this.battle = new BattleScreen(this.root, b, { title: team.name, onEnd: w => this.simpleEnd(w) })
     })
   }
@@ -264,21 +275,33 @@ export class App {
       return STORY[done] ? this.story(done, () => this.levelUpScreen()) : this.levelUpScreen()
     }
     this.clear()
+    this.setAct(run.act)
     const avail = new Set(availableNodes(run).map(n => n.id))
     const icon: Record<string, string> = { combat: '⚔', elite: '☠', rest: '⛺', supply: '⬢', boss: '♛' }
+    const brief = (n: RunNode) => {
+      if (n.kind === 'boss') return n.act === ACTS ? NODE_BRIEFS.finale : NODE_BRIEFS.boss
+      if (n.kind === 'combat' || n.kind === 'elite') return `${NODE_BRIEFS[n.sitrep ?? 'standard'] ?? NODE_BRIEFS.standard}${n.kind === 'elite' ? ' ' + NODE_BRIEFS.elite : ''}`
+      return NODE_BRIEFS[n.kind] ?? n.kind
+    }
     const acts = [1, 2, 3].map(act => {
       const layers = [...new Set(run.nodes.filter(n => n.act === act).map(n => n.layer))]
-      return `<div class="act ${act === run.act ? 'current' : ''}"><h3>Act ${act} · Tier ${act}</h3><div class="layers">${layers.map(l => `<div class="layer">${run.nodes.filter(n => n.act === act && n.layer === l).map(n => `<button class="node ${n.kind} ${n.cleared ? 'cleared' : ''} ${avail.has(n.id) ? 'avail' : ''} ${run.current === n.id ? 'here' : ''}" data-node="${n.id}" ${avail.has(n.id) ? '' : 'disabled'} title="${n.kind}${n.sitrep && (n.kind === 'combat' || n.kind === 'elite') ? ' · ' + n.sitrep : ''}">${icon[n.kind]}</button>`).join('')}</div>`).join('<div class="arrow">›</div>')}</div></div>`
+      const ahead = act > run.act
+      const head = ahead
+        ? `Phase ${act} · <span class="redact" title="Not yet reached">██████ ████</span>`
+        : `Phase ${act} · ${esc(ACT_LOCATIONS[act] ?? '')} <span class="muted small">(Act ${act} · Tier ${act})</span>`
+      return `<div class="act ${act === run.act ? 'current' : ''} ${ahead ? 'ahead' : ''}"><h3>${head}</h3><div class="layers">${layers.map(l => `<div class="layer">${run.nodes.filter(n => n.act === act && n.layer === l).map(n => `<button class="node ${n.kind} ${n.cleared ? 'cleared' : ''} ${avail.has(n.id) ? 'avail' : ''} ${run.current === n.id ? 'here' : ''}" data-node="${n.id}" ${avail.has(n.id) ? '' : 'disabled'} title="${esc(ahead ? `${n.kind} · [REDACTED]` : `${n.kind}${n.sitrep && (n.kind === 'combat' || n.kind === 'elite') ? ' · ' + n.sitrep : ''}\n${brief(n)}`)}">${icon[n.kind]}</button>`).join('')}</div>`).join('<div class="arrow">›</div>')}</div></div>`
     }).join('')
-    const squad = run.squad.map(p => {
+    const squad = run.squad.map((p, i) => {
       const c = run.condition[p.id]
       const u = buildMechUnit(p)
       const unspent = validateBuild(p).warnings.some(w => /unspent|unchosen/.test(w))
-      return `<div class="sq ${c.destroyed ? 'dead' : ''}"><b>${esc(p.callsign)}</b> <span class="muted">LL${p.level} ${esc(Lancer.frames.get(p.mech.frameId)?.name ?? '')}</span> <button class="small ${unspent ? 'primary' : ''}" data-refit="${esc(p.id)}" title="Spend points and change the loadout. Damage and spent Repairs carry over.">${unspent ? 'Level up' : 'Edit build'}</button><br>${c.destroyed ? '<span class="bad">DESTROYED — reprint at a rest</span>' : `HP ${c.hp + permHpBonus(run, p.id)}/${u.stats.hp + permHpBonus(run, p.id)} · S ${c.structure}/${u.stats.structure} · R ${c.stress}/${u.stats.stress} · Repairs ${c.repairs}${c.coreAvailable ? ' · CORE ready' : ''}`}</div>`
+      const damaged = !c.destroyed && (c.hp < u.stats.hp || c.structure < u.stats.structure || c.stress < u.stats.stress)
+      const stamp = c.destroyed ? '<span class="stamp bad">DESTROYED — REPRINT PENDING</span>' : damaged ? '<span class="stamp warnc">DAMAGED</span>' : '<span class="stamp good">OPERATIONAL</span>'
+      return `<div class="sq dossier ${c.destroyed ? 'dead' : ''}"><div class="dh"><span class="desig">OCHRE-${i + 1}</span>${stamp}</div><b>${esc(p.callsign)}</b> <span class="muted">LL${p.level} ${esc(Lancer.frames.get(p.mech.frameId)?.name ?? '')}</span> <button class="small ${unspent ? 'primary' : ''}" data-refit="${esc(p.id)}" title="Spend points and change the loadout. Damage and spent Repairs carry over.">${unspent ? 'Level up' : 'Edit build'}</button><br>${c.destroyed ? '<span class="muted">Reprinted at the next rest.</span>' : `HP ${c.hp + permHpBonus(run, p.id)}/${u.stats.hp + permHpBonus(run, p.id)} · S ${c.structure}/${u.stats.structure} · R ${c.stress}/${u.stats.stress} · Repairs ${c.repairs}${c.coreAvailable ? ' · CORE ready' : ''}`}</div>`
     }).join('')
-    this.root.innerHTML = `<div class="screen runmap"><div class="hhead"><h2>Campaign — Act ${run.act}</h2><div><button data-go="repairs">Field repairs</button><button data-go="reimport">Re-import pilots</button><button data-go="abandon" class="warn">Abandon run</button><button data-go="title">Title</button></div></div>
-      <div class="squad">${squad}</div>${acts}
-      <p class="muted small">⚔ combat · ☠ elite · ⬢ supply · ⛺ rest (full repair) · ♛ act boss</p></div>`
+    this.root.innerHTML = `<div class="screen runmap"><div class="hhead"><div><p class="band">OPERATION <span class="redact">████████</span> // PHASE ${run.act} OF 3${run.iteration ? ` // ITERATION ${iterLabel(run.iteration)}` : ''}</p><h2>Campaign — Act ${run.act} <span class="loc">${esc(ACT_LOCATIONS[run.act] ?? '')}</span></h2></div><div><button data-go="repairs">Field repairs</button><button data-go="reimport">Re-import pilots</button><button data-go="abandon" class="warn">Abandon run</button><button data-go="title">Title</button></div></div>
+      <div class="opsboard"><div class="opsmain"><div class="squad">${squad}</div>${acts}
+      <p class="muted small">⚔ combat · ☠ elite · ⬢ supply · ⛺ rest (full repair) · ♛ act boss · hover a node for its brief</p></div>${telemetryPanel(run)}</div></div>`
     this.on('[data-node]', el => this.enterNode(run.nodes.find(n => n.id === el.dataset.node)!))
     this.on('[data-refit]', el => {
       const p = run.squad.find(x => x.id === el.dataset.refit)
@@ -328,6 +351,7 @@ export class App {
     const b = new Battle({ map, units: [...units, ...enemies], seed: n.seed, sitrep })
     b.start()
     this.clear()
+    this.setAct(n.act)
     this.battle = new BattleScreen(this.root, b, {
       title: finale ? `CINNABAR ANNEX // CASKET VAULT — ${team.name}` : `${team.name} (Act ${n.act} ${n.kind})`,
       onEnd: w => {
@@ -430,11 +454,23 @@ export class App {
   runOver() {
     const run = this.run!
     if (run.over === 'victory' && !run.story?.includes('finale')) return this.story('finale', () => this.runOver())
+    const act = Math.min(ACTS, run.act)
+    if (run.over === 'defeat' && !run.story?.includes('failed')) {
+      run.story = [...(run.story ?? []), 'failed']
+      saveRun(run)
+      const doc = failedReadout({ act, iteration: run.iteration ?? 1, battlesWon: run.battlesWon, location: ACT_LOCATIONS[act] ?? '[REDACTED]' })
+      this.clear()
+      this.disposeInterlude = playInterlude(this.root, doc.title, doc.text, () => { this.disposeInterlude = null; this.runOver() })
+      return
+    }
     this.clear()
     const won = run.over === 'victory'
-    this.root.innerHTML = `<div class="screen center"><h1 class="${won ? 'player' : 'enemy'}">${won ? 'CAMPAIGN COMPLETE' : 'SQUAD LOST'}</h1>
-      <p>${run.battlesWon} battles won across ${Math.min(ACTS, run.act)} act(s).</p><div class="log small">${run.log.map(l => `<div>${esc(l)}</div>`).join('')}</div>
-      <button data-go="t" class="primary">Title</button></div>`
+    const it = run.iteration ? iterLabel(run.iteration) : ''
+    this.root.innerHTML = `<div class="screen center ${won ? '' : 'iteration-failed'}">
+      ${it ? `<p class="band">FORECAST ITERATION ${it} // ${won ? 'FIRST CLEAN RUN ON RECORD' : 'OUTCOME: RED'}</p>` : ''}
+      <h1 class="${won ? 'player' : 'enemy'}">${won ? 'CAMPAIGN COMPLETE' : 'SQUAD LOST'}</h1>
+      <p>${run.battlesWon} battles won across ${act} act(s).</p><h4 class="muted">${won ? 'Operation record' : 'Loss record'}</h4><div class="log small">${run.log.map(l => `<div>${esc(l)}</div>`).join('')}</div>
+      <button data-go="t" class="primary">${won ? 'Title' : 'Title — reseed the forecast'}</button></div>`
     this.on('[data-go]', () => { this.run = null; saveRun(null); this.title() })
   }
 
@@ -465,6 +501,12 @@ export class App {
     this.clear()
     this.root.innerHTML = `<div class="screen center"><h2>${esc(title)}</h2><p>${esc(text)}</p><button class="primary" data-go="ok">Continue</button></div>`
     this.on('[data-go]', then)
+  }
+
+  /** Tint the whole UI for an act (style.css `[data-act]` palettes); null = neutral. */
+  private setAct(act: number | null) {
+    if (act) this.root.dataset.act = String(Math.max(1, Math.min(3, act)))
+    else delete this.root.dataset.act
   }
 
   private on(sel: string, f: (el: HTMLElement) => void) {
