@@ -21,5 +21,9 @@ export function isSoftwareGL(gl: WebGLRenderingContext | WebGL2RenderingContext)
 export function resolveQuality(gl: WebGLRenderingContext | WebGL2RenderingContext): Quality {
   return storedQuality() ?? (isSoftwareGL(gl) ? 'low' : 'high')
 }
-export const reducedMotion = (): boolean =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+/** Reduced motion, from the Motion setting or the system preference (see ui/settings.ts). */
+export const reducedMotion = (): boolean => {
+  const m = typeof document !== 'undefined' ? document.documentElement.dataset.motion : undefined
+  if (m) return m === 'reduce'
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+}

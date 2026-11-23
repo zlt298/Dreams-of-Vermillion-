@@ -453,3 +453,81 @@ code { background: #1d222c; padding: 1px 4px; }
   .screen:not(.interlude)::after { display: none; }
   .runmap .edge.open, .runmap .node.avail { animation: none; }
 }
+
+/* ================================================================ UX pass */
+/* keyboard focus is always visible */
+:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+button:focus:not(:focus-visible) { outline: none; }
+kbd { font: 10px 'IBM Plex Mono', monospace; padding: 0 4px; margin-left: 4px; border: 1px solid #ffffff30; border-bottom-width: 2px; border-radius: 3px; color: var(--muted); background: #0006; }
+button.disabled kbd { opacity: 0.6; }
+
+/* in-game dialogs (ui/modal.ts) and the app toast */
+.picker.modal { position: fixed; z-index: 2000; }
+.picker-box.wide { max-width: min(640px, calc(100vw - 32px)); }
+.picker-box.danger { border-color: var(--bad); }
+.modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.modal-input { width: 100%; font: inherit; color: var(--text); background: #0d0f14; border: 1px solid var(--line); padding: 6px 8px; }
+.app-toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1500; display: flex; align-items: center; gap: 12px;
+  background: #17110ef2; border: 1px solid var(--accent2); padding: 8px 10px 8px 14px; box-shadow: 0 6px 24px #000a;
+}
+.app-toast button { margin: 0; }
+
+/* settings (title screen and the in-battle ⚙ dialog) */
+.settings { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; text-align: left; max-width: 620px; width: 100%; }
+.setting { display: flex; justify-content: space-between; align-items: center; gap: 14px; background: var(--panel); border: 1px solid var(--line); padding: 8px 10px; }
+.seg { display: flex; flex: none; }
+.seg button { margin: 0; border-radius: 0; }
+.seg button + button { border-left: none; }
+.seg button.on { background: #5a1c16; border-color: var(--accent); color: #fff; }
+@media (max-width: 600px) { .setting { flex-direction: column; align-items: flex-start; } }
+
+/* campaign node card */
+.runmap .node[aria-disabled="true"] { opacity: 0.38; cursor: default; }
+.runmap .node.cleared[aria-disabled="true"] { opacity: 0.6; }
+.nodecard {
+  position: fixed; z-index: 60; display: none; width: 260px; pointer-events: none; padding: 8px 10px;
+  background: #0b0d12f2; border: 1px solid var(--accent2); box-shadow: 0 6px 22px #000b; font-size: 12px; line-height: 1.45;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.nodecard .nk { font-family: 'Rajdhani', sans-serif; font-size: 15px; letter-spacing: 0.08em; color: var(--accent2); }
+.nodecard p { margin: 4px 0; }
+.nodecard .st { margin-top: 4px; }
+
+/* battle: tooltip follows the cursor */
+.battle .tooltip { position: fixed; top: 0; left: 0; transform: none; z-index: 30; max-width: 380px; }
+
+/* battle: collapsible roster and log */
+.battle .panel .ptoggle { position: sticky; top: 0; float: right; margin: -2px -2px 0 6px; padding: 0 6px; font-size: 11px; z-index: 2; }
+.battle .tab { position: absolute; top: 44px; margin: 0; padding: 4px 10px; font-size: 11px; letter-spacing: 0.1em; z-index: 8; background: var(--panel); }
+.battle .tab.left { left: 8px; }
+.battle .tab.log { right: 8px; }
+.battle .tab .badge { display: inline-block; min-width: 16px; padding: 0 4px; margin-left: 4px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 10px; text-align: center; }
+@media (max-width: 900px) { .battle .panel.left { display: block; width: 200px; } }
+
+/* battle: compact unit labels (full on hover, selection, the acting unit, or while Alt is held) */
+.unit-label.compact .ln, .unit-label.compact .pips, .unit-label.compact .st { display: none; }
+.unit-label.compact .bar { width: 34px; height: 3px; }
+.unit-label.compact .bar.heat { height: 2px; }
+
+/* battle: misc */
+.battle .stamp-layer.on .stamp button { pointer-events: auto; margin-top: 12px; font-size: 14px; padding: 6px 16px; }
+.battle .topbar button.on { border-color: var(--bad); color: var(--bad); }
+.picker.shortcuts .keys { border-collapse: collapse; font-size: 12px; }
+.picker.shortcuts td { padding: 2px 10px 2px 0; }
+.picker.shortcuts kbd { margin: 0; color: var(--text); }
+
+/* colour-blind palette: health and success read blue, harm reads orange */
+html[data-palette="cb"] { --good: #3fb6ff; --bad: #ff9f1a; }
+html[data-palette="cb"] .unit-label .bar.hp i, html[data-palette="cb"] .battle .card .bar i { background: linear-gradient(90deg, #1f78c8, #5ec8ff); }
+html[data-palette="cb"] .unit-label.enemy .bar.hp i { background: linear-gradient(90deg, #c46200, #ffae3a); }
+html[data-palette="cb"] .enemy, html[data-palette="cb"] .bad { color: #ff9f1a; }
+
+/* motion setting (also follows the system preference): no animations or transitions beyond a fade */
+html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-motion="reduce"] *::after {
+  animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important;
+}
+html[data-motion="reduce"] .battle .float-text { animation: rm-hold 1.3s linear forwards !important; }
+html[data-motion="reduce"] .battle .banner.show { animation: rm-hold 1.7s linear forwards !important; }
+html[data-motion="reduce"] .title-eye { animation: none !important; opacity: 0.05; }
+@keyframes rm-hold { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }

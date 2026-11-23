@@ -91,6 +91,12 @@ export class BattleView {
   onTileClick?: (p: Pos, e: MouseEvent) => void
   onTileHover?: (p: Pos | null) => void
   onUnitClick?: (u: Unit, e: MouseEvent) => void
+  /** touch: when true, the first tap on a tile previews it (hover) and a second tap on it confirms */
+  touchConfirm?: () => boolean
+  /** units whose labels are shown in full (selected, acting, hovered); others show a compact bar */
+  labelFocus = new Set<string>()
+  /** hold Alt: every label in full */
+  showAllLabels = false
   /** animation speed multiplier; 0 = skip animations entirely */
   speed = loadSpeed()
   /** max real time one drain of the queue may take before animations fast-forward */
@@ -591,6 +597,7 @@ export class BattleView {
       const showPips = u.kind === 'mech' || u.stats.structure > 1
       const key = `${u.name}|${u.activeTurn}|${hpPct}|${osPct}|${heatPct}|${u.structure}|${u.stress}|${st.join(',')}`
       const p = this.labelDom(id, label)
+      label.classList.toggle('compact', !this.showAllLabels && !u.activeTurn && !this.labelFocus.has(id))
       if (p.last === key) continue
       p.last = key
       p.nm.textContent = `${u.name}${u.activeTurn ? ' ◆' : ''}`
@@ -715,6 +722,9 @@ export class BattleView {
 
   // --------------------------------------------------------------- input
   private onPointerUp: () => void = () => {}
+  private lastPointerType = 'mouse'
+  private touchMoved = false
+  private lastTap = ''
   private onKey = (e: KeyboardEvent) => {
     if ((e.target as HTMLElement)?.tagName === 'INPUT') return
     const k = e.key.toLowerCase()
@@ -734,10 +744,39 @@ export class BattleView {
     el.addEventListener('wheel', e => { e.preventDefault(); this.setZoom(this.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)) }, { passive: false })
     let drag: { x: number; y: number; moved: boolean } | null = null
     el.addEventListener('contextmenu', e => e.preventDefault())
-    el.addEventListener('pointerdown', e => { if (e.button === 2 || e.button === 1) drag = { x: e.clientX, y: e.clientY, moved: false } })
-    this.onPointerUp = () => (drag = null)
+    // touch: one finger drags to pan (a tap stays a tap), two fingers pinch to zoom
+    el.style.touchAction = 'none'
+    const touches = new Map<number, { x: number; y: number }>()
+    let pinch = 0
+    el.addEventListener('pointerdown', e => {
+      this.lastPointerType = e.pointerType
+      if (e.pointerType === 'touch') {
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY })
+        if (touches.size === 1) { drag = { x: e.clientX, y: e.clientY, moved: false }; this.touchMoved = false }
+        if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); drag = null }
+        return
+      }
+      if (e.button === 2 || e.button === 1) drag = { x: e.clientX, y: e.clientY, moved: false }
+    })
+    this.onPointerUp = () => { drag = null; touches.clear(); pinch = 0 }
     window.addEventListener('pointerup', this.onPointerUp)
+    el.addEventListener('pointercancel', () => { touches.clear(); drag = null; pinch = 0 })
     el.addEventListener('pointermove', e => {
+      if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY })
+        if (touches.size === 2 && pinch) {
+          const [a, b] = [...touches.values()]
+          const d = Math.hypot(a.x - b.x, a.y - b.y)
+          if (Math.abs(d - pinch) > 4) { this.setZoom(this.zoom * (d / pinch)); pinch = d; this.touchMoved = true }
+          return
+        }
+        if (drag && (drag.moved || Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 10)) {
+          const k = (this.camera.right - this.camera.left) / el.clientWidth
+          this.pan(-(e.clientX - drag.x) * k, (e.clientY - drag.y) * k * 1.4)
+          drag.x = e.clientX; drag.y = e.clientY; drag.moved = true; this.touchMoved = true
+        }
+        return
+      }
       if (drag) {
         const k = (this.camera.right - this.camera.left) / el.clientWidth
         this.pan(-(e.clientX - drag.x) * k, (e.clientY - drag.y) * k * 1.4)
@@ -754,6 +793,18 @@ export class BattleView {
     el.addEventListener('click', e => {
       const p = this.pick(e)
       if (!p) return
+      if (this.lastPointerType === 'touch') {
+        if (this.touchMoved) { this.touchMoved = false; return } // that was a pan or pinch
+        // tap once to preview (path, hit chance), tap the same tile again to confirm
+        const k = p.tile ? `${p.tile.x},${p.tile.y}` : ''
+        if (this.touchConfirm?.() && k !== this.lastTap) {
+          this.lastTap = k
+          if (p.tile) { this.hoverMesh.visible = true; this.hoverMesh.position.set(p.tile.x + 0.5, this.topY(p.tile) + 0.04, p.tile.y + 0.5) }
+          this.onTileHover?.(p.tile ?? null)
+          return
+        }
+        this.lastTap = ''
+      }
       if (p.unit && this.onUnitClick) this.onUnitClick(p.unit, e)
       else if (p.tile) this.onTileClick?.(p.tile, e)
     })

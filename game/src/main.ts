@@ -2,7 +2,10 @@ import './ui/style.css'
 import './rules/effects/scripts'
 import { App } from './ui/app'
 import { installTagTips } from './ui/tags'
+import { applyPrefs } from './ui/settings'
 
+applyPrefs()
+try { matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', applyPrefs) } catch { /* old browsers */ }
 installTagTips()
 
 const app = new App(document.getElementById('app')!)

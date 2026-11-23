@@ -10,6 +10,7 @@ import {
 } from './builder'
 import { rangeChip, tagChip } from './tags'
 import { esc } from './dom'
+import { confirmDialog } from './modal'
 
 export interface BuilderOptions {
   build?: PilotBuild
@@ -174,7 +175,10 @@ export function builderScreen(root: HTMLElement, opts: BuilderOptions) {
     if (d.go === 'save') {
       const v = validateBuild(p)
       if (v.errors.length) return
-      if (v.warnings.some(w => /unspent|unchosen/.test(w)) && !confirm(`Some points are unspent:\n\n${v.warnings.join('\n')}\n\nSave anyway?`)) return
+      if (v.warnings.some(w => /unspent|unchosen/.test(w))) {
+        void confirmDialog('Unspent points', `${v.warnings.join('\n')}\n\nSave anyway?`, { ok: 'Save anyway', cancel: 'Keep editing' }).then(ok => { if (ok) opts.onSave(structuredClone(p)) })
+        return
+      }
       return opts.onSave(structuredClone(p))
     }
     if (d.hase) change(() => { const i = +d.hase!; p.mechSkills[i] = Math.max(0, Math.min(MAX_SKILL, p.mechSkills[i] + +d.d!)) })

@@ -27,6 +27,8 @@ import { rollEvent, type RunEvent } from '../run/events'
 import { playInterlude, RA_EYE_SVG } from './interlude'
 import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad, squadPresets } from './roster'
 import { esc } from './dom'
+import { alertDialog, confirmDialog, toast } from './modal'
+import { settingsForm, bindSettings } from './settings'
 import { builderScreen } from './builder-screen'
 import { portraitSlot, fillPortraits } from './portrait-slots'
 import { fitToLevel, readyProblems } from './builder'
@@ -98,6 +100,7 @@ export class App {
         ${item('skirmish', 'Quick skirmish', 'simulated engagement')}
         ${item('official', 'Official NPCs (import .lcp)', 'hostile pattern library')}
         ${unlockedStories().length ? item('archive', 'Transmissions', 'recovered documents') : ''}
+        ${item('settings', 'Settings', 'speed · graphics · motion · colour')}
         ${item('help', 'How to play', 'field manual')}
       </div>
       ${lastLoadProblem ? `<p class="bad small">${esc(lastLoadProblem)}</p>` : ''}
@@ -116,6 +119,7 @@ export class App {
       if (g === 'hangar') this.hangar('run')
       if (g === 'skirmish') this.hangar('skirmish')
       if (g === 'help') this.help()
+      if (g === 'settings') this.settings()
       if (g === 'official') this.officialNpcs()
       if (g === 'archive') this.archive()
     })
@@ -141,7 +145,7 @@ export class App {
       <button data-go="back">Back</button></div>`
     this.on('[data-go]', () => this.title())
     this.on('[data-mode]', el => { setOfficialMode(el.dataset.mode as any); this.officialNpcs() })
-    this.on('[data-rm]', el => { if (confirm(`Remove ${el.dataset.rm}?`)) { removePack(el.dataset.rm!); this.officialNpcs('✓ Removed.') } })
+    this.on('[data-rm]', el => { void confirmDialog(`Remove ${el.dataset.rm}?`, 'Its NPC classes stop appearing in encounters. You can import the pack again later.', { ok: 'Remove', danger: true }).then(ok => { if (ok) { removePack(el.dataset.rm!); this.officialNpcs('✓ Removed.') } }) })
     this.root.querySelector<HTMLInputElement>('input[type=file]')!.addEventListener('change', async e => {
       const files = [...((e.target as HTMLInputElement).files ?? [])]
       const out: string[] = []
@@ -154,6 +158,14 @@ export class App {
       if (out.length && officialMode() === 'off' && loadPacks().length) setOfficialMode('mixed')
       this.officialNpcs(out.join(' '))
     })
+  }
+
+  settings() {
+    this.clear()
+    this.setAct(null)
+    this.root.innerHTML = `<div class="screen center settings-screen"><h2>Settings</h2><p class="muted">Saved in this browser. They also open from the ⚙ button during battle.</p>${settingsForm()}<button data-go="back" class="primary">Back</button></div>`
+    bindSettings(this.root)
+    this.on('[data-go]', () => this.title())
   }
 
   help() {
@@ -244,10 +256,25 @@ export class App {
       this.hangar(purpose)
     })
     this.on('[data-remove]', el => {
-      this.roster = this.roster.filter(p => p.id !== el.dataset.remove)
-      this.squadPick.delete(el.dataset.remove!)
+      // removal is instant, with an Undo toast (no confirmation step)
+      const id = el.dataset.remove!
+      const index = this.roster.findIndex(p => p.id === id)
+      const removed = this.roster[index]
+      const wasPicked = this.squadPick.has(id)
+      this.roster = this.roster.filter(p => p.id !== id)
+      this.squadPick.delete(id)
       saveRoster(this.roster)
       this.hangar(purpose)
+      if (removed) toast(`Removed ${removed.callsign} from the Hangar.`, {
+        label: 'Undo',
+        run: () => {
+          if (this.roster.some(p => p.id === id)) return
+          this.roster = [...this.roster.slice(0, index), removed, ...this.roster.slice(index)]
+          if (wasPicked && this.squadPick.size < MAX_SQUAD) this.squadPick.add(id)
+          saveRoster(this.roster)
+          if (this.root.querySelector('.screen.hangar')) this.hangar(purpose)
+        },
+      })
     })
     this.on('[data-go]', el => {
       const g = el.dataset.go
@@ -256,7 +283,7 @@ export class App {
       if (g === 'new') this.openBuilder(undefined, 'New pilot', () => this.hangar(purpose), p => { if (this.squadPick.size < MAX_SQUAD) this.squadPick.add(p.id) })
       if (g === 'start') {
         const squad = this.roster.filter(p => this.squadPick.has(p.id))
-        if (!squad.length) return alert('Pick at least one pilot')
+        if (!squad.length) return void alertDialog('No pilots in the squad', 'Add at least one pilot to the squad first.')
         if (purpose === 'run') this.prepareRun(squad)
         else this.skirmishSetup(squad)
       }
@@ -328,7 +355,7 @@ export class App {
       const head = ahead
         ? `Phase ${act} · <span class="redact" title="Not yet reached">██████ ████</span>`
         : `Phase ${act} · ${esc(ACT_LOCATIONS[act] ?? '')} <span class="muted small">(Act ${act} · Tier ${act})</span>`
-      return `<div class="act ${act === run.act ? 'current' : ''} ${ahead ? 'ahead' : ''}"><h3>${head}</h3><div class="layers">${layers.map(l => `<div class="layer">${run.nodes.filter(n => n.act === act && n.layer === l).map(n => `<button class="node ${n.kind} ${n.cleared ? 'cleared' : ''} ${avail.has(n.id) ? 'avail' : ''} ${run.current === n.id ? 'here' : ''}" data-node="${n.id}" ${avail.has(n.id) ? '' : 'disabled'} title="${esc(ahead ? `${n.kind} · [REDACTED]` : `${n.kind}${n.sitrep && (n.kind === 'combat' || n.kind === 'elite') ? ' · ' + n.sitrep : ''}\n${brief(n)}`)}">${icon[n.kind]}</button>`).join('')}</div>`).join('<div class="arrow">›</div>')}</div></div>`
+      return `<div class="act ${act === run.act ? 'current' : ''} ${ahead ? 'ahead' : ''}"><h3>${head}</h3><div class="layers">${layers.map(l => `<div class="layer">${run.nodes.filter(n => n.act === act && n.layer === l).map(n => `<button class="node ${n.kind} ${n.cleared ? 'cleared' : ''} ${avail.has(n.id) ? 'avail' : ''} ${run.current === n.id ? 'here' : ''}" data-node="${n.id}" aria-disabled="${!avail.has(n.id)}" aria-label="${esc(ahead ? `${n.kind}, not yet reached` : `${n.kind}: ${brief(n)}`)}">${icon[n.kind]}</button>`).join('')}</div>`).join('<div class="arrow">›</div>')}</div></div>`
     }).join('')
     const squad = run.squad.map((p, i) => {
       const c = run.condition[p.id]
@@ -341,7 +368,8 @@ export class App {
     this.root.innerHTML = `<div class="screen runmap"><div class="hhead"><div><p class="band">OPERATION <span class="redact">████████</span> // PHASE ${run.act} OF 3${run.iteration ? ` // ITERATION ${iterLabel(run.iteration)}` : ''}</p><h2>Campaign — Act ${run.act} <span class="loc">${esc(ACT_LOCATIONS[run.act] ?? '')}</span></h2></div><div><button data-go="repairs">Field repairs</button><button data-go="reimport">Re-import pilots</button><button data-go="abandon" class="warn">Abandon run</button><button data-go="title">Title</button></div></div>
       <div class="opsboard"><div class="opsmain"><div class="squad">${squad}</div>${acts}
       <p class="muted small">⚔ combat · ☠ elite · ⬢ supply · ⛺ rest (full repair) · ♛ act boss · hover a node for its brief</p></div>${telemetryPanel(run)}</div></div>`
-    this.on('[data-node]', el => this.enterNode(run.nodes.find(n => n.id === el.dataset.node)!))
+    this.on('[data-node]', el => { if (avail.has(el.dataset.node!)) this.enterNode(run.nodes.find(n => n.id === el.dataset.node)!) })
+    this.nodeCards(run, avail, brief)
     this.drawEdges(run, avail)
     void fillPortraits(this.root)
     this.on('[data-refit]', el => {
@@ -353,7 +381,43 @@ export class App {
       if (g === 'title') this.title()
       if (g === 'repairs') this.repairs()
       if (g === 'reimport') this.hangar('reimport')
-      if (g === 'abandon' && confirm('Abandon this run?')) { this.run = null; saveRun(null); clearBattle(); this.title() }
+      if (g === 'abandon') void confirmDialog('Abandon this run?', 'The run and its progress are deleted. This cannot be undone.', { ok: 'Abandon run', danger: true }).then(ok => { if (ok) { this.run = null; saveRun(null); clearBattle(); this.title() } })
+    })
+  }
+
+  /** Styled hover/focus card for campaign nodes: what it is, the brief, the stakes, and whether it can be entered. */
+  private nodeCards(run: RunState, avail: Set<string>, brief: (n: RunNode) => string) {
+    const card = document.createElement('div')
+    card.className = 'nodecard'
+    card.setAttribute('role', 'tooltip')
+    this.root.querySelector('.runmap')?.appendChild(card)
+    const KIND: Record<string, string> = { combat: 'Engagement', elite: 'Elite engagement', supply: 'Supply depot', rest: 'Stand-down', boss: 'Act objective' }
+    const SITREP: Record<string, string> = { standard: 'Basic Combat', holdout: 'Holdout', control: 'Control', extraction: 'Extraction', assassination: 'Assassination' }
+    const show = (el: HTMLElement) => {
+      const n = run.nodes.find(x => x.id === el.dataset.node)
+      if (!n) return
+      const ahead = n.act > run.act
+      const fight = n.kind === 'combat' || n.kind === 'elite' || n.kind === 'boss'
+      const stakes = n.kind === 'elite' ? 'Tougher hostiles. Win to choose a supply reward.' : n.kind === 'boss' ? `Ends Act ${n.act}. Win for a supply reward${n.act < ACTS ? ' and +5 License Levels' : ''}.` : n.kind === 'combat' ? 'After the fight: field repairs, and sometimes an event.' : n.kind === 'supply' ? 'No fight. Choose one item.' : 'No fight. Full repair; destroyed mechs are reprinted.'
+      const state = n.cleared ? '<span class="good">✓ Cleared</span>' : avail.has(n.id) ? '<span class="warnc">▶ Available: click to enter</span>' : run.current === n.id ? 'You are here' : '<span class="muted">Locked: reach it through a connected node</span>'
+      card.innerHTML = ahead
+        ? `<div class="nk">${esc(KIND[n.kind] ?? n.kind)}</div><p><span class="redact">████ ███ ██████</span></p><div class="muted small">Not yet reached.</div>`
+        : `<div class="nk">${esc(KIND[n.kind] ?? n.kind)}${fight && n.kind !== 'boss' ? ` · ${esc(SITREP[n.sitrep ?? 'standard'] ?? '')}` : ''}${fight ? ` <span class="muted">Tier ${n.act}</span>` : ''}</div><p>${esc(brief(n))}</p><div class="small">${esc(stakes)}</div><div class="small st">${state}</div>`
+      const r = el.getBoundingClientRect()
+      card.style.display = 'block'
+      const w = card.offsetWidth, h = card.offsetHeight
+      let x = r.right + 10, y = r.top + r.height / 2 - h / 2
+      if (x + w > window.innerWidth - 8) x = r.left - w - 10
+      y = Math.max(8, Math.min(window.innerHeight - h - 8, y))
+      card.style.left = `${x}px`
+      card.style.top = `${y}px`
+    }
+    const hide = () => { card.style.display = 'none' }
+    this.root.querySelectorAll<HTMLElement>('[data-node]').forEach(el => {
+      el.addEventListener('mouseenter', () => show(el))
+      el.addEventListener('focus', () => show(el))
+      el.addEventListener('mouseleave', hide)
+      el.addEventListener('blur', hide)
     })
   }
 
@@ -514,7 +578,7 @@ export class App {
       return `<div class="sq ${c.destroyed ? 'dead' : ''}"><b>${esc(p.callsign)}</b> — Repairs left: <b>${c.repairs}</b><br>${c.destroyed ? '<span class="bad">Destroyed: reprinted at the next rest.</span>' : opts.length ? opts.map(o => `<button data-p="${p.id}" data-o="${esc(o.id)}" ${c.repairs < o.cost ? 'disabled' : ''}>${esc(o.label)} (${o.cost})</button>`).join('') : '<span class="muted">Fully operational.</span>'}</div>`
     }).join('')
     this.root.innerHTML = `<div class="screen"><h2>Field repairs</h2><p class="muted">Spend Repairs between engagements (LANCER costs: 1 for full HP, 2 per structure or stress, 1 per destroyed weapon/system). Heat and statuses have cleared.</p>${rows}<button data-go="map" class="primary">Continue</button></div>`
-    this.on('[data-o]', el => { try { applyRepair(run, el.dataset.p!, el.dataset.o!); saveRun(run) } catch (e) { alert((e as Error).message) } this.repairs() })
+    this.on('[data-o]', el => { try { applyRepair(run, el.dataset.p!, el.dataset.o!); saveRun(run) } catch (e) { void alertDialog('Repair not possible', (e as Error).message) } this.repairs() })
     this.on('[data-go]', () => this.maybeEvent(() => this.runMap()))
   }
 

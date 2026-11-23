@@ -95,7 +95,8 @@ It uses the pilot's favourite mech and its active loadout: frame, weapons, mods,
   - Systems, traits and talents add their own actions.
   - Hovering a target shows the hit chance, cover, and every accuracy and difficulty source.
   - **Auto (AI)** lets the tactical AI take a lancer's turn.
-  - Controls: **Q/E** rotate, **WASD** or right-drag pan, wheel zoom, **Enter** end turn, **Esc** cancel, **Tab** cycle lancers.
+  - Controls: **Q/E** rotate, **WASD** or right-drag pan, wheel zoom, **Enter** end turn (asks if actions are unused), **Esc** cancel, **Tab** cycle lancers, **1–9** skirmish with a weapon (**Shift** to barrage), **B** boost, **O** overcharge, **T** threat overlay, **V** field overlays, hold **Alt** for every unit label, **L**/**R** toggle the log and roster, **?** lists them all. On touch screens: drag to pan, pinch to zoom, tap once to preview and again to confirm.
+  - **Settings** (title screen, or ⚙ in battle): animation speed, graphics quality, motion (reduce turns off shake, pulses and wipes) and a colour-blind palette.
 
 ## Rules engine (`game/src/rules`)
 

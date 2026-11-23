@@ -338,14 +338,15 @@ Driven by `npm run coverage -- --list`.
 ✅ Done: all 392 items are fully executed (the Goblin's INSTINCT Rig now acts inside its host's turn; Guide the Flock moves each drone to its own space).
 
 ### 3. UX
-1. Minimap or overview toggle (S).
-2. ✅ In-HUD reaction prompts instead of `confirm()` (done: the decision picker).
-3. Threat overlay (M).
-4. ✅ Campaign map edges and hover previews (route lines and node briefs).
-5. Overcharge clarity (S).
-6. Settings screen (S).
-7. Hangar quality of life (S).
-8. Touch support (M).
+✅ All done (the minimap was dropped):
+1. ✅ In-HUD reaction prompts, and in-game dialogs instead of every browser `confirm()`/`alert()`/`prompt()` (`ui/modal.ts`).
+2. ✅ Threat overlay: **T** tints every tile a hostile can move to and attack next turn (speed plus longest weapon reach; ignores line of sight).
+3. ✅ Campaign map route lines and styled node cards (brief, stakes, availability).
+4. ✅ Overcharge shows its next heat cost on the button.
+5. ✅ Settings screen (title and ⚙ in battle): animation speed, graphics quality, motion, colour-blind palette.
+6. ✅ Hangar: removing a pilot offers Undo.
+7. ✅ Touch: one-finger pan, pinch zoom, tap to preview and tap again to confirm; the roster starts collapsed on narrow screens.
+8. ✅ Battle flow: ending a turn with unused actions asks first; the hover tooltip follows the cursor; full unit labels only for hovered, selected and acting units (hold **Alt** for all); short initiative names for numbered squads; collapsible roster and log (with an unread badge); keyboard shortcuts on buttons and a **?** list; Continue on the end-of-battle stamp; visible keyboard focus.
 
 ### 4. AI
 1. Focus fire (M).

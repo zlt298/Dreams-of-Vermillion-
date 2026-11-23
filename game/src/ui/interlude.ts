@@ -2,6 +2,7 @@
 // - Holding any key or mouse button fast-forwards the typing; holding for HOLD_TO_SKIP ms skips it.
 // - Once the readout is complete, a fresh press continues.
 // - Now and then, for two frames, the burning solar eye flashes behind the text (very faint).
+import { motionReduced } from './settings'
 const HOLD_TO_SKIP = 1200
 const CHAR_MS = 10
 const FAST_CHARS_PER_FRAME = 40
@@ -79,7 +80,7 @@ export function playInterlude(root: HTMLElement, title: string, text: string, on
     for (const m of text.matchAll(OMENS)) ends.push(m.index! + m[0].length)
     tokens.forEach((t, i) => { pos += t.text.length; if (ends.some(e => e > pos - t.text.length && e <= pos)) omenAt.add(i) })
   }
-  const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+  const reduceMotion = motionReduced()
 
   let i = 0
   let budget = 0

@@ -13,6 +13,9 @@ import { hasTag, tagVal } from '../rules/stats'
 import type { Pos, Unit, Weapon } from '../rules/types'
 import { BattleView, type Highlight } from '../render/scene'
 import { esc } from './dom'
+import { confirmDialog, promptDialog } from './modal'
+import { settingsForm, bindSettings, colourBlind, prefs } from './settings'
+import { resolveQuality } from '../render/quality'
 
 type Mode =
   | { k: 'idle' }
@@ -84,6 +87,11 @@ export class BattleScreen {
     // player decisions: defer, so the command is rolled back, the HUD asks, and it is replayed
     b.chooser = () => undefined
     this.hud.addEventListener('click', e => this.onHudClick(e))
+    root.querySelector('.battle')!.addEventListener('pointermove', e => { const p = e as PointerEvent; this.pointer = { x: p.clientX, y: p.clientY }; this.placeTooltip() })
+    root.querySelector('.stamp-layer')!.addEventListener('click', e => { if ((e.target as HTMLElement).closest('[data-act="finish"]')) this.finish() })
+    window.addEventListener('keyup', this.onKeyUp)
+    this.view.touchConfirm = () => this.b.active?.side === 'player' && this.mode.k !== 'idle'
+    if (window.innerWidth < 900) this.rosterOpen = false
     this.hud.addEventListener('mouseover', e => this.onHudHover(e))
     window.addEventListener('keydown', this.onKey)
     const first = b.combatants('player')[0]
@@ -94,12 +102,22 @@ export class BattleScreen {
 
   dispose() {
     window.removeEventListener('keydown', this.onKey)
+    window.removeEventListener('keyup', this.onKeyUp)
+    this.shortcutsEl?.remove()
     this.b.chooser = undefined
     this.picker?.remove()
     this.previewCache.clear()
     this.view.dispose()
   }
   private hoverKey = ''
+  private hoveredUnit: string | null = null
+  private syncLabelFocus() {
+    const f = this.view.labelFocus
+    f.clear()
+    if (this.selected) f.add(this.selected.id)
+    if (this.hoveredUnit) f.add(this.hoveredUnit)
+    if (this.b.active) f.add(this.b.active.id)
+  }
   showFields = true
   private highlightKey = ''
   private previewCache = new Map<string, ReturnType<Battle['previewDetail']>>()
@@ -115,15 +133,150 @@ export class BattleScreen {
   }
 
   private onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') { this.mode = this.b.active?.side === 'player' ? { k: 'move' } : { k: 'idle' }; this.render() }
-    if (e.key === 'Tab') {
+    if ((e.target as HTMLElement)?.tagName === 'INPUT' || this.picker) return
+    const a = this.b.active
+    const mine = a?.side === 'player' && !this.busy
+    const k = e.key
+    if (k === 'Escape') { if (this.shortcutsEl) { this.toggleShortcuts(); return } this.mode = mine ? { k: 'move' } : { k: 'idle' }; this.render() }
+    if (k === 'Tab') {
       e.preventDefault()
       const ready = this.b.combatants('player').filter(u => u.activationsLeft > 0 || u.activeTurn)
       if (ready.length) { const i = ready.indexOf(this.selected!); this.select(ready[(i + 1) % ready.length]) }
     }
-    if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey) { this.showFields = !this.showFields; this.toast(this.showFields ? 'Field overlays on [V]' : 'Field overlays off [V]'); this.updateHighlights() }
-    if (e.key === 'Enter' && this.b.active?.side === 'player') this.cmd(() => this.b.endTurn(this.b.active!), true)
-    if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && this.canUndo()) { e.preventDefault(); this.undo() }
+    if (e.ctrlKey || e.metaKey) {
+      if ((k === 'z' || k === 'Z') && this.canUndo()) { e.preventDefault(); this.undo() }
+      return
+    }
+    if (k === 'Alt') { e.preventDefault(); this.view.showAllLabels = true }
+    if (k === 'v' || k === 'V') { this.showFields = !this.showFields; this.toast(this.showFields ? 'Field overlays on [V]' : 'Field overlays off [V]'); this.updateHighlights() }
+    if (k === 't' || k === 'T') this.toggleThreat()
+    if (k === 'l' || k === 'L') { this.logOpen = !this.logOpen; this.render() }
+    if (k === 'r' || k === 'R') { this.rosterOpen = !this.rosterOpen; this.render() }
+    if (k === '?' || k === '/') this.toggleShortcuts()
+    if (k === 'Enter' && mine) { e.preventDefault(); void this.requestEndTurn() }
+    if (!mine || !a) return
+    if (k === 'b' || k === 'B') this.onAction('boost')
+    if (k === 'o' || k === 'O') this.onAction('overcharge')
+    // 1-9: skirmish with that weapon; Shift+1-9: barrage
+    const digit = /^Digit([1-9])$/.exec(e.code)
+    if (digit) {
+      const w = a.weapons[+digit[1] - 1]
+      if (w) this.onAction(this.mode.k === 'barrage-pick' ? 'barrage' : e.shiftKey ? 'barrage' : 'skirmish', w.uid)
+    }
+  }
+  private onKeyUp = (e: KeyboardEvent) => { if (e.key === 'Alt') this.view.showAllLabels = false }
+
+  /** End the active turn; asks first if actions or movement are left unused. */
+  async requestEndTurn() {
+    const a = this.b.active
+    if (!a || a.side !== 'player' || this.busy) return
+    const left: string[] = []
+    if (a.actionsLeft > 0) left.push(`${a.actionsLeft === 1 ? 'a quick action' : `${a.actionsLeft} quick actions (a full action)`}`)
+    if (a.moveLeft > 0 && this.b.canMove(a, 'standard') === true && a.moveLeft >= a.stats.speed) left.push(`${a.moveLeft} spaces of movement`)
+    if (left.length && !(await confirmDialog(`End ${a.name}'s turn?`, `${a.name} still has ${left.join(' and ')}.`, { ok: 'End turn', cancel: 'Keep acting' }))) return
+    if (this.b.active !== a) return
+    this.cmd(() => { this.b.endTurn(a); this.mode = { k: 'idle' } }, true)
+  }
+
+  /** Continue past the end-of-battle stamp. */
+  private finish() {
+    if (this.b.winner && !this.ended) { this.ended = true; this.onEnd(this.b.winner as 'player' | 'enemy') }
+  }
+
+  /** Run a HUD action as if its button was clicked (keyboard shortcuts). */
+  private onAction(act: string, arg = '') {
+    const btn = this.hud.querySelector<HTMLElement>(`[data-act="${act}"]${arg ? `[data-arg="${CSS.escape(arg)}"]` : ''}`)
+    if (!btn || btn.classList.contains('disabled')) { if (btn?.title) this.toast(btn.title); return }
+    btn.click()
+  }
+
+  // ------------------------------------------------------------------ panels, shortcuts, settings, threat
+  rosterOpen = true
+  logOpen = false
+  private logSeen = 0
+  private threatOn = false
+  private threatCache: { key: string; tiles: Pos[] } | null = null
+  private pointer = { x: 0, y: 0 }
+  private shortcutsEl: HTMLDivElement | null = null
+
+  private toggleShortcuts() {
+    if (this.shortcutsEl) { this.shortcutsEl.remove(); this.shortcutsEl = null; return }
+    const el = document.createElement('div')
+    el.className = 'picker shortcuts'
+    const rows: [string, string][] = [
+      ['Tab', 'Next ready lancer'], ['Enter', 'End turn'], ['Esc', 'Cancel / back to moving'], ['Ctrl+Z', 'Undo last action'],
+      ['1–9', 'Skirmish with weapon 1–9'], ['Shift+1–9', 'Barrage with weapon 1–9'], ['B', 'Boost'], ['O', 'Overcharge'],
+      ['T', 'Enemy threat overlay'], ['V', 'Field overlays'], ['Alt (hold)', 'Show every unit label'], ['L', 'Show / hide the log'], ['R', 'Show / hide the roster'],
+      ['Q / E', 'Rotate camera'], ['WASD, right-drag', 'Pan'], ['Wheel, + / −', 'Zoom'], ['?', 'This list'],
+    ]
+    el.innerHTML = `<div class="picker-box"><h3>Keyboard shortcuts</h3><table class="keys">${rows.map(([k, d]) => `<tr><td><kbd>${esc(k)}</kbd></td><td>${esc(d)}</td></tr>`).join('')}</table><div class="picker-foot">Esc or ? to close</div></div>`
+    el.addEventListener('click', () => this.toggleShortcuts())
+    this.root.querySelector('.battle')!.appendChild(el)
+    this.shortcutsEl = el
+  }
+
+  private openSettings() {
+    const el = document.createElement('div')
+    el.className = 'picker'
+    el.innerHTML = `<div class="picker-box wide"><h3>Settings</h3>${settingsForm()}<div class="modal-btns"><button class="primary" data-close>Done <kbd>Esc</kbd></button></div></div>`
+    const close = () => { window.removeEventListener('keydown', key, true); el.remove() }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); close() } else e.stopPropagation() }
+    el.addEventListener('click', e => { if (e.target === el || (e.target as HTMLElement).closest('[data-close]')) close() })
+    bindSettings(el, (name, v) => {
+      if (name === 'speed') this.view.setSpeed(Number(v))
+      if (name === 'gfx') this.view.setQuality(v === 'auto' ? resolveQuality(this.view.renderer.getContext()) : v as 'high' | 'low', false)
+      if (name === 'motion') this.view.slowMotion = document.documentElement.dataset.motion === 'reduce'
+      if (name === 'palette') this.highlightKey = ''
+      this.render()
+    })
+    window.addEventListener('keydown', key, true)
+    this.root.querySelector('.battle')!.appendChild(el)
+  }
+
+  private toggleThreat() {
+    this.threatOn = !this.threatOn
+    this.toast(this.threatOn ? 'Threat overlay on [T]: where hostiles can move and attack next turn' : 'Threat overlay off [T]')
+    this.highlightKey = ''
+    this.render()
+  }
+  /**
+   * Tiles any living hostile could attack on its next activation: everywhere it can reach with its
+   * full speed (a Boost is not counted), dilated by its longest weapon reach (Chebyshev distance, as on
+   * the grid). Line of sight and cover are ignored, so this is an upper bound.
+   */
+  private threatTiles(): Pos[] {
+    const b = this.b, map = b.map
+    const k = `${b.eventCount}`
+    if (this.threatCache?.key === k) return this.threatCache.tiles
+    const W = map.w, H = map.h
+    const out = new Uint8Array(W * H)
+    for (const e of b.alive()) {
+      if (e.side !== 'enemy' || (e.kind !== 'mech' && e.kind !== 'npc')) continue
+      const reach = Math.max(1, ...e.weapons.filter(w => !w.destroyed).map(w => b.weaponReach(e, w)))
+      const from = new Uint8Array(W * H)
+      const r = b.reachable(e, Math.max(0, e.stats.speed), { ignoreEngagement: true })
+      for (const v of r.values()) for (const q of footprint({ ...e, pos: v.pos })) if (q.x >= 0 && q.y >= 0 && q.x < W && q.y < H) from[q.y * W + q.x] = 1
+      // box dilation by `reach` (separable: rows, then columns)
+      const row = new Uint8Array(W * H)
+      for (let y = 0; y < H; y++) { let last = -1e9; for (let x = 0; x < W; x++) { if (from[y * W + x]) last = x; if (x - last <= reach) row[y * W + x] = 1 } last = 1e9; for (let x = W - 1; x >= 0; x--) { if (from[y * W + x]) last = x; if (last - x <= reach) row[y * W + x] = 1 } }
+      for (let x = 0; x < W; x++) { let last = -1e9; for (let y = 0; y < H; y++) { if (row[y * W + x]) last = y; if (y - last <= reach) out[y * W + x] = 1 } last = 1e9; for (let y = H - 1; y >= 0; y--) { if (row[y * W + x]) last = y; if (last - y <= reach) out[y * W + x] = 1 } }
+    }
+    const tiles: Pos[] = []
+    for (let i = 0; i < out.length; i++) if (out[i]) tiles.push({ x: i % W, y: Math.floor(i / W) })
+    this.threatCache = { key: k, tiles }
+    return tiles
+  }
+
+  /** Keep the hover tooltip next to the cursor, inside the window. */
+  private placeTooltip() {
+    const t = this.tooltip
+    if (t.style.display !== 'block') return
+    const w = t.offsetWidth, h = t.offsetHeight
+    let x = this.pointer.x + 18, y = this.pointer.y + 18
+    if (x + w > window.innerWidth - 8) x = this.pointer.x - w - 14
+    if (y + h > window.innerHeight - 8) y = this.pointer.y - h - 14
+    t.style.left = `${Math.max(8, x)}px`
+    t.style.top = `${Math.max(8, y)}px`
   }
 
   // ------------------------------------------------------------------ flow
@@ -223,8 +376,9 @@ export class BattleScreen {
   }
   /** The battle so far as a replay file (seed, starting state, commands). */
   exportBattle(note?: string): BattleExport { return exportBattle(this.b, note) }
-  private downloadBattle() {
-    const note = window.prompt('Optional: what went wrong? (saved in the file)') ?? undefined
+  private async downloadBattle() {
+    const note = await promptDialog('Export battle replay', 'Optional: what went wrong? The note is saved in the file.', 'e.g. the Drake ignored cover')
+    if (note === null) return
     const data = JSON.stringify(this.exportBattle(note || undefined))
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }))
@@ -370,19 +524,24 @@ export class BattleScreen {
         if (sel?.flags.sekhmet) { this.cmd(() => { runAiTurn(this.b, sel); this.mode = { k: 'idle' } }, true); this.toast('SEKHMET has control.'); return }
         if (sel) this.cmd(() => { this.b.beginTurn(sel); this.mode = { k: 'move' } })
         return
-      case 'end': if (a) this.cmd(() => { this.b.endTurn(a); this.mode = { k: 'idle' } }, true); return
+      case 'end': void this.requestEndTurn(); return
       case 'undo': this.undo(); return
       case 'auto':
         if (a && a.side === 'player') this.cmd(() => { runAiTurn(this.b, a); this.mode = { k: 'idle' } }, true)
         else if (sel && sel.side === 'player' && !this.b.activeId && sel.activationsLeft > 0 && this.b.currentSide === 'player') this.cmd(() => { runAiTurn(this.b, sel); this.mode = { k: 'idle' } }, true)
         return
       case 'cancel': this.mode = a ? { k: 'move' } : { k: 'idle' }; this.render(); return
-      case 'export': this.downloadBattle(); return
+      case 'export': void this.downloadBattle(); return
       case 'rotl': this.view.rotate(-1); return
       case 'rotr': this.view.rotate(1); return
       case 'gfx': this.view.setQuality(this.view.quality === 'high' ? 'low' : 'high'); this.toast(`Graphics: ${this.view.quality} quality`); this.render(); return
       case 'speed': { const order = [1, 2, 4, 0]; this.view.setSpeed(order[(order.indexOf(this.view.speed) + 1) % order.length]); this.render(); return }
-      case 'finish': if (this.b.winner && !this.ended) { this.ended = true; this.onEnd(this.b.winner as 'player' | 'enemy') } return
+      case 'finish': this.finish(); return
+      case 'settings': this.openSettings(); return
+      case 'shortcuts': this.toggleShortcuts(); return
+      case 'threat': this.toggleThreat(); return
+      case 'toggle-roster': this.rosterOpen = !this.rosterOpen; this.render(); return
+      case 'toggle-log': this.logOpen = !this.logOpen; this.render(); return
       case 'policy':
         if (sel && (arg === 'brace' || arg === 'overwatch' || arg === 'reactions')) {
           const order = ['auto', 'ask', 'off'] as const
@@ -419,7 +578,7 @@ export class BattleScreen {
       case 'standup': this.cmd(() => this.b.standUp(a)); return
       case 'breakgrapple': this.cmd(() => this.b.breakGrapple(a)); return
       case 'releasegrapple': this.cmd(() => this.b.releaseGrapple(a)); return
-      case 'selfdestruct': if (confirm('Initiate self-destruct? The mech explodes at the end of its next turn.')) this.cmd(() => this.b.selfDestruct(a)); return
+      case 'selfdestruct': void confirmDialog('Initiate self-destruct?', `${a.name} explodes at the end of its next turn. This destroys the mech.`, { ok: 'Self-destruct', danger: true }).then(ok => { if (ok && this.b.active === a) this.cmd(() => this.b.selfDestruct(a)) }); return
       case 'fulltech': this.cmd(() => this.b.fullTech(a)); return
       case 'tech': this.mode = { k: 'tech', tech: arg as any }; this.render(); return
       case 'melee': this.mode = { k: 'melee', what: arg as any }; this.render(); return
@@ -445,12 +604,14 @@ export class BattleScreen {
     // highlights only depend on the mode, the acting unit, the hovered tile and battle state
     const m = this.mode
     const modeKey = m.k + ('weapon' in m ? m.weapon.uid : '') + ('tech' in m ? m.tech : '') + ('action' in m && typeof m.action === 'object' ? m.action.key : '') + ('what' in m ? m.what : '')
-    const key = `${modeKey}|${a?.id}|${a?.pos.x},${a?.pos.y}|${a?.moveLeft}|${this.hoverKey}|${this.b.eventCount}|${this.showFields}`
+    const key = `${modeKey}|${a?.id}|${a?.pos.x},${a?.pos.y}|${a?.moveLeft}|${this.hoverKey}|${this.b.eventCount}|${this.showFields}|${this.threatOn}`
     if (key === this.highlightKey) return
     this.highlightKey = key
     const hs: Highlight[] = []
     // persistent fields first, so action highlights draw on top
-    if (this.showFields) for (const f of this.b.fieldOverlays()) hs.push({ tiles: f.tiles, color: FIELD_COLORS[f.effect], opacity: f.effect === 'barrier' ? 0.4 : 0.22 })
+    const fc = fieldColors()
+    if (this.showFields) for (const f of this.b.fieldOverlays()) hs.push({ tiles: f.tiles, color: fc[f.effect], opacity: f.effect === 'barrier' ? 0.4 : 0.22 })
+    if (this.threatOn) hs.push({ tiles: this.threatTiles(), color: colourBlind() ? 0xff9f1a : 0xff3b3b, opacity: 0.28 })
     this.view.setPath(null)
     if (a && a.side === 'player') {
       const m = this.mode
@@ -548,10 +709,13 @@ export class BattleScreen {
     if (this.hoverTile && this.showFields) {
       const h = this.hoverTile
       const fs = this.b.fieldOverlays().filter(f => f.tiles.some(q => q.x === h.x && q.y === h.y))
-      if (fs.length) html += `${html ? '<hr>' : ''}${[...new Set(fs.map(f => f.label))].map(l => `<div class="small"><span style="color:#${FIELD_COLORS[fs.find(f => f.label === l)!.effect].toString(16).padStart(6, '0')}">■</span> ${esc(l)}</div>`).join('')}`
+      if (fs.length) html += `${html ? '<hr>' : ''}${[...new Set(fs.map(f => f.label))].map(l => `<div class="small"><span style="color:#${fieldColors()[fs.find(f => f.label === l)!.effect].toString(16).padStart(6, '0')}">■</span> ${esc(l)}</div>`).join('')}`
     }
     this.tooltip.innerHTML = html
     this.tooltip.style.display = html ? 'block' : 'none'
+    this.placeTooltip()
+    this.hoveredUnit = t?.id ?? null
+    this.syncLabelFocus()
   }
 
   // ------------------------------------------------------------------ HUD
@@ -565,7 +729,7 @@ export class BattleScreen {
       this.stamped = true
       const won = b.winner === 'player'
       const layer = this.root.querySelector('.stamp-layer') as HTMLElement
-      layer.innerHTML = `<div class="stamp ${won ? 'won' : 'lost'}"><div class="big">${won ? 'ENGAGEMENT CLOSED' : 'SIGNAL LOST'}</div><div class="small">${won ? 'VICTORY // HOSTILES NEUTRALIZED' : 'DEFEAT // LANCE OCHRE DOWN'}</div></div>`
+      layer.innerHTML = `<div class="stamp ${won ? 'won' : 'lost'}"><div class="big">${won ? 'ENGAGEMENT CLOSED' : 'SIGNAL LOST'}</div><div class="small">${won ? 'VICTORY // HOSTILES NEUTRALIZED' : 'DEFEAT // LANCE OCHRE DOWN'}</div><button class="primary" data-act="finish">Continue ▶</button></div>`
       layer.classList.add('on')
       void this.view.cinematic()
       return
@@ -584,6 +748,7 @@ export class BattleScreen {
   render() {
     this.updateHighlights()
     this.ceremony()
+    this.syncLabelFocus()
     const b = this.b
     const a = b.active
     const sel = this.selected && !this.selected.destroyed ? this.selected : a ?? null
@@ -591,7 +756,7 @@ export class BattleScreen {
     const top = `<div class="topbar">
       <div><b>${esc(this.title)}</b> · ${esc(s.name)}${s.rounds && s.id === 'holdout' ? ` (${b.round}/${s.rounds})` : ''}${s.id === 'control' ? ` (held ${b.sitrepScore ?? 0}/${s.rounds})` : ''} — <span class="muted">${esc(s.description)}</span></div>
       <div>Round ${b.round} · <span class="${b.currentSide}">${b.winner ? (b.winner === 'player' ? 'VICTORY' : 'DEFEAT') : b.currentSide === 'player' ? 'Your move' : 'Enemy activity'}</span>
-      <button data-act="rotl" title="Rotate (Q)">⟲</button><button data-act="rotr" title="Rotate (E)">⟳</button><button data-act="speed" title="Animation speed (click to cycle; ⏭ skips animations)">${this.view.speed === 0 ? '⏭ skip' : '×' + this.view.speed}</button><button data-act="gfx" title="Graphics quality: high adds bloom, film grain, ambient particles and practical lights">${this.view.quality === 'high' ? '◈ high' : '◇ low'}</button><button data-act="export" title="Download this battle as a replay file (for bug reports: replay it with npm run replay)">⤓</button>${b.winner && !this.ended ? '<button data-act="finish" class="primary">Continue ▶</button>' : ''}</div></div>`
+      <button data-act="rotl" title="Rotate (Q)">⟲</button><button data-act="rotr" title="Rotate (E)">⟳</button><button data-act="speed" title="Animation speed (click to cycle; ⏭ skips animations)">${this.view.speed === 0 ? '⏭ skip' : '×' + this.view.speed}</button><button data-act="gfx" title="Graphics quality: high adds bloom, film grain, ambient particles and practical lights">${this.view.quality === 'high' ? '◈ high' : '◇ low'}</button><button data-act="threat" class="${this.threatOn ? 'on' : ''}" title="Enemy threat: tiles hostiles can move to and attack next turn [T]">◬ threat</button><button data-act="export" title="Download this battle as a replay file (for bug reports: replay it with npm run replay)">⤓</button><button data-act="shortcuts" title="Keyboard shortcuts [?]">?</button><button data-act="settings" title="Settings: speed, graphics, motion, colour">⚙</button>${b.winner && !this.ended ? '<button data-act="finish" class="primary">Continue ▶</button>' : ''}</div></div>`
     const roster = (side: 'player' | 'enemy') => b.units.filter(u => u.side === side && (u.kind === 'mech' || u.kind === 'npc')).map(u => {
       const hp = Math.max(0, u.hp)
       return `<div class="card ${u === sel ? 'sel' : ''} ${u.destroyed ? 'dead' : ''} ${u.activeTurn ? 'active' : ''}" data-act="select" data-arg="${u.id}">
@@ -599,8 +764,14 @@ export class BattleScreen {
         <div class="bar hp"><i style="width:${(hp / u.stats.hp) * 100}%"></i></div><div class="row muted">HP ${hp}/${u.stats.hp}${u.overshield ? ` +${u.overshield}OS` : ''}${u.stats.heatcap ? ` · H ${u.heat}/${u.stats.heatcap}` : ''}${u.kind === 'mech' || u.stats.structure > 1 ? ` · S ${u.structure} · R ${u.stress}` : ''}${u.burn ? ` · 🔥${u.burn}` : ''}</div>
       </div>`
     }).join('')
-    const left = `<div class="panel left"><h4>Lancers</h4>${roster('player')}<h4>Hostiles</h4>${roster('enemy')}</div>`
-    const log = `<div class="panel log">${b.log.slice(-60).map(l => `<div class="l ${l.kind ?? ''}">${annotateTags(esc(l.text))}</div>`).join('')}</div>`
+    const left = this.rosterOpen
+      ? `<div class="panel left"><button class="ptoggle" data-act="toggle-roster" title="Hide the roster [R]">◂</button><h4>Lancers</h4>${roster('player')}<h4>Hostiles</h4>${roster('enemy')}</div>`
+      : `<button class="tab left" data-act="toggle-roster" title="Show the roster [R]">Roster ▸</button>`
+    if (this.logOpen) this.logSeen = b.log.length
+    const unread = Math.min(99, b.log.length - this.logSeen)
+    const log = this.logOpen
+      ? `<div class="panel log"><button class="ptoggle" data-act="toggle-log" title="Hide the log [L]">▸</button>${b.log.slice(-60).map(l => `<div class="l ${l.kind ?? ''}">${annotateTags(esc(l.text))}</div>`).join('')}</div>`
+      : `<button class="tab log" data-act="toggle-log" title="Show the battle log [L]">◂ Log${unread > 0 ? ` <span class="badge">${unread}</span>` : ''}</button>`
     const bottom = `<div class="panel bottom">${sel ? this.unitPanel(sel) : '<span class="muted">Select a unit.</span>'}</div>`
     this.hud.innerHTML = top + this.initiativeBar() + left + log + bottom
     const lg = this.hud.querySelector('.log')
@@ -612,7 +783,7 @@ export class BattleScreen {
     const b = this.b
     const chip = (u: Unit) => {
       const state = u.destroyed ? 'dead' : u.activeTurn ? 'acting' : u.activationsLeft > 0 ? 'ready' : 'done'
-      const short = u.name.length > 14 ? u.name.slice(0, 13) + '…' : u.name
+      const short = chipName(b, u)
       const pips = u.stats.activations > 1 && !u.destroyed ? `<span class="pips">${'●'.repeat(u.activationsLeft)}${'○'.repeat(Math.max(0, u.stats.activations - u.activationsLeft - (u.activeTurn ? 1 : 0)))}</span>` : ''
       const tip = `${u.name}: ${state === 'ready' ? 'ready to activate' : state === 'acting' ? 'acting now' : state === 'done' ? 'already activated this round' : 'destroyed'}`
       return `<span class="chip ${u.side} ${state} ${u === this.selected ? 'sel' : ''}" data-act="select" data-arg="${u.id}" title="${esc(tip)}">${esc(short)}${pips}</span>`
@@ -622,9 +793,10 @@ export class BattleScreen {
     return `<div class="initiative"><div class="side player">${side('player')}</div><div class="turnmark ${b.currentSide}">R${b.round}<br>${turn}</div><div class="side enemy">${side('enemy')}</div></div>`
   }
 
-  private btn(act: string, label: string, ok: true | string, arg = '', extra = '') {
+  private btn(act: string, label: string, ok: true | string, arg = '', extra = '', tip = '') {
     const dis = ok !== true
-    return `<button class="${dis ? 'disabled' : ''} ${extra}" data-act="${act}" data-arg="${esc(arg)}" ${dis ? `title="${esc(ok as string)}"` : ''}>${label}</button>`
+    const title = dis ? ok as string : tip
+    return `<button class="${dis ? 'disabled' : ''} ${extra}" data-act="${act}" data-arg="${esc(arg)}" ${title ? `title="${esc(title)}"` : ''}>${label}</button>`
   }
 
   private unitPanel(u: Unit): string {
@@ -652,12 +824,12 @@ export class BattleScreen {
       const custom = b.customActions(u)
       const fr = u.frameId ? Lancer.frames.get(u.frameId) : undefined
       const actLabel = (x: string) => ({ quick: 'Q', full: 'F', protocol: 'P', free: 'free', reaction: 'R', quick_tech: 'QT', full_tech: 'FT' } as Record<string, string>)[x] ?? x
-      const ecoTxt = `<span class="eco">Move ${u.moveLeft} · Actions ${u.actionsLeft}${u.flags.bonusQuick ? `+${u.flags.bonusQuick}` : ''}${u.flags.fullTechLeft ? ` · tech ${u.flags.fullTechLeft}` : ''} · Reactions ${u.reactionsLeft} · OC ${['1', '1d3', '1d6', '1d6+4'][u.overchargeLevel]}</span>`
+      const ecoTxt = `<span class="eco">Move ${u.moveLeft} · Actions ${u.actionsLeft}${u.flags.bonusQuick ? `+${u.flags.bonusQuick}` : ''}${u.flags.fullTechLeft ? ` · tech ${u.flags.fullTechLeft}` : ''} · Reactions ${u.reactionsLeft}</span>`
       actions = `<div class="actions">${ecoTxt}
         ${this.mode.k !== 'move' && this.mode.k !== 'idle' ? this.btn('cancel', '✕ Cancel (Esc)', true, '', 'warn') : ''}
         ${b.has(u, 'prone') ? this.btn('standup', 'Stand Up', b.canStandUp(u)) : ''}
-        ${this.btn('boost', 'Boost [Q]', and(qa('boost'), b.has(u, 'slowed') || b.has(u, 'immobilized') ? 'Slowed/immobilized' : b.has(u, 'prone') ? 'Prone: stand up first' : true))}
-        ${this.btn('overcharge', 'Overcharge', u.overchargedThisTurn ? 'Once per turn' : u.kind === 'mech' ? true : 'Mechs only')}
+        ${this.btn('boost', 'Boost [Q] <kbd>B</kbd>', and(qa('boost'), b.has(u, 'slowed') || b.has(u, 'immobilized') ? 'Slowed/immobilized' : b.has(u, 'prone') ? 'Prone: stand up first' : true))}
+        ${this.btn('overcharge', `Overcharge: +${['1', '1d3', '1d6', '1d6+4'][u.overchargeLevel]} heat <kbd>O</kbd>`, u.overchargedThisTurn ? 'Once per turn' : u.kind === 'mech' ? true : 'Mechs only', '', '', `Extra quick action for +${['1', '1d3', '1d6', '1d6+4'][u.overchargeLevel]} heat (now ${u.heat}/${u.stats.heatcap}). The cost rises each use until a Full Repair.`)}
         ${this.btn('tech', 'Invade [QT]', and(b.canQuickTech(u, 'invade'), jam), 'invade')}${this.btn('tech', 'Lock On [QT]', and(b.canQuickTech(u, 'lock_on'), jam), 'lockon')}${this.btn('tech', 'Bolster [QT]', and(b.canQuickTech(u, 'bolster'), jam), 'bolster')}${this.btn('tech', 'Scan [QT]', and(b.canQuickTech(u, 'scan'), jam), 'scan')}${this.btn('fulltech', 'Full Tech [F]', and(fu, jam))}
         ${this.btn('stab-cool', 'Stabilize: Cool [F]', fu)}${this.btn('stab-repair', 'Stabilize: Repair [F]', and(fu, u.repairs > 0 ? true : 'No repairs'))}
         ${this.btn('disengage', 'Disengage [F]', fu)}${this.btn('hide', 'Hide [Q]', and(qa('hide'), b.canHide(u) ? true : 'Need cover / out of sight'))}${this.btn('search', 'Search [Q]', qa('search'))}
@@ -666,7 +838,7 @@ export class BattleScreen {
         ${b.has(u, 'shutdown') ? this.btn('bootup', 'Boot Up [F]', u.actionsLeft >= 2 ? true : 'Needs full action') : this.btn('shutdown', 'Shut Down [Q]', qa('shut_down'))}
         ${fr ? this.btn('core', `CORE: ${esc(fr.core_system.active_name ?? fr.core_system.name)} [${actLabel((fr.core_system.activation ?? 'quick').toLowerCase())}]`, u.coreAvailable ? (fr.core_system.activation === 'Protocol' ? pr : fr.core_system.activation === 'Full' ? fu : q) : 'Core power spent', '', 'core') : ''}
         ${this.btn('selfdestruct', 'Self-Destruct', qa('self_destruct'), '', 'warn')}
-        ${this.canUndo() ? this.btn('undo', '↶ Undo (Ctrl+Z)', true) : ''}${this.btn('auto', 'Auto (AI)', true)}${this.btn('end', 'End Turn ⏎', true, '', 'primary')}
+        ${this.canUndo() ? this.btn('undo', '↶ Undo <kbd>Ctrl+Z</kbd>', true) : ''}${this.btn('auto', 'Auto (AI)', true)}${this.btn('end', 'End Turn <kbd>Enter</kbd>', true, '', 'primary')}
       </div>
       ${custom.length ? `<div class="actions systems"><span class="eco">Systems & traits</span>${custom.map(c => `<button class="${c.usable(b, u) === true ? '' : 'disabled'}" data-act="custom" data-arg="${esc(c.key)}" title="${esc(c.text)}${c.usable(b, u) !== true ? ' — ' + esc(c.usable(b, u) as string) : ''}">${esc(c.name)} [${actLabel(c.activation)}]${c.text.startsWith('[manual]') ? '*' : ''}</button>`).join('')}</div>` : ''}`
       if (this.mode.k === 'barrage-pick') actions = `<div class="hint">Barrage: choose the second weapon below.</div>` + actions
@@ -681,6 +853,8 @@ export class BattleScreen {
 
   private weaponCard(u: Unit, w: Weapon, active: boolean): string {
     const b = this.b
+    const n = u.weapons.indexOf(w) + 1
+    const kb = (mod: string) => (n >= 1 && n <= 9 ? ` <kbd>${mod}${n}</kbd>` : '')
     const pr = b.profile(w)
     const ranges = b.ranges(u, w).map(r => rangeChip(r.type, r.val)).join(', ')
     const dmg = pr.damage.map(d => `${d.val} ${d.type}`).join(' + ')
@@ -691,9 +865,9 @@ export class BattleScreen {
     const all = (...xs: (true | string)[]) => xs.find(x => x !== true) ?? true
     let btns = ''
     if (active && u.side === 'player') {
-      if (this.mode.k === 'barrage-pick') btns = this.btn('barrage', 'Barrage #2', all(usable, fired), w.uid, 'primary')
+      if (this.mode.k === 'barrage-pick') btns = this.btn('barrage', `Barrage #2${kb('')}`, all(usable, fired), w.uid, 'primary')
       else {
-        btns = (w.size !== 'Superheavy' ? this.btn('skirmish', 'Skirmish [Q]', all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable, fired), w.uid) : '') + this.btn('barrage', 'Barrage [F]', all(fu, usable, fired), w.uid)
+        btns = (w.size !== 'Superheavy' ? this.btn('skirmish', `Skirmish [Q]${kb('')}`, all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable, fired), w.uid) : '') + this.btn('barrage', `Barrage [F]${kb('⇧')}`, all(fu, usable, fired), w.uid)
         if (!w.loaded && !w.destroyed) btns += this.btn('reload', 'Reload [Q]', b.canSpend(u, 'quick', 'reload'), w.uid)
         if (w.profiles.length > 1) btns += w.profiles.map((p, i) => (i === w.profileIndex ? '' : `<button data-act="profile" data-arg="${w.uid}" data-i="${i}" title="Switch profile">${esc(p.name)}</button>`)).join('')
         if (pr.range.some(r => r.type === 'Line') && pr.range.some(r => r.type === 'Cone')) btns += `<button data-act="shape" data-arg="${w.uid}" title="Fire as a Cone or a Line">${w.flags?.shape === 'line' ? 'Line' : 'Cone'} (switch)</button>`
@@ -707,6 +881,16 @@ export class BattleScreen {
       <div class="row">${ranges} · <b>${esc(dmg || '—')}</b>${tags ? ` · <span class="muted">${tags}</span>` : ''}</div>
       ${btns ? `<div class="wbtns">${btns}</div>` : ''}</div>`
   }
+}
+
+/** Initiative chip label: squads of same-named units ("Misprint Ripper A…E") read as "MR·A". */
+function chipName(b: Battle, u: Unit): string {
+  const m = /^(.*\S)\s+([A-Z0-9])$/.exec(u.name)
+  if (m && b.units.some(o => o !== u && o.side === u.side && o.name.startsWith(m[1] + ' '))) {
+    const initials = m[1].split(/\s+/).map(w => w[0]?.toUpperCase() ?? '').join('').slice(0, 3)
+    return `${initials}·${m[2]}`
+  }
+  return u.name.length > 14 ? u.name.slice(0, 13) + '…' : u.name
 }
 
 function sysText(s: { dataId: string; feature?: any; name: string }): string {
@@ -727,3 +911,6 @@ export { hasTag, tagVal, key }
 const FIELD_COLORS: Record<string, number> = {
   protect: 0x45d483, harm: 0xff5a5a, control: 0xc77dff, reveal: 0xffd166, barrier: 0x7ff3ff, terrain: 0x9c6b3c,
 }
+/** Colour-blind variant: protect/harm become blue/orange instead of green/red. */
+const FIELD_COLORS_CB: Record<string, number> = { ...FIELD_COLORS, protect: 0x3f8fff, harm: 0xff9f1a }
+const fieldColors = () => (colourBlind() ? FIELD_COLORS_CB : FIELD_COLORS)
