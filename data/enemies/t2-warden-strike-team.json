@@ -138,9 +138,6 @@
     {
       "name": "Detachment Hexer",
       "role": "Controller",
-      "templates": [
-        "Veteran"
-      ],
       "color": "#8e44ad",
       "features": [
         {
@@ -208,8 +205,7 @@
             }
           ]
         }
-      ],
-      "veteranTraits": ["deadly", "hacker"]
+      ]
     },
     {
       "name": "Detachment Bastion",

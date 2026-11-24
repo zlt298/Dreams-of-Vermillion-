@@ -22,10 +22,10 @@
   },
   {
     "id": "t2-boss",
-    "round": 7,
-    "winner": null,
-    "commands": 52,
-    "hash": "8c31376f"
+    "round": 5,
+    "winner": "player",
+    "commands": 40,
+    "hash": "94ee95dc"
   },
   {
     "id": "t3-standard",
