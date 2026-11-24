@@ -7,6 +7,7 @@ import { PendingChoice, type Battle } from '../../battle'
 import { deployableUnit } from '../generic'
 import { Lancer } from '../../../data/lancer'
 import { registerScripts, type CustomAction, type ItemScript } from '../registry'
+import { takeReload } from './weapons'
 
 const once = (u: Unit, key: string, scope: 'round' | 'turn' | 'scene' = 'round'): boolean => {
   const k = `${scope}:${key}`
@@ -334,15 +335,21 @@ registerScripts([
   {
     id: 'ms_roland_chamber', note: 'After reloading: next Loading weapon hit +1d6 explosive and Hull save vs Prone',
     beforeAttack(b, self, ctx, role) {
-      if (role === 'attacker' && self.flags.reloaded && ctx.profile?.tags.some(t => t.id === 'tg_loading')) { ctx.bonusDamage.push({ type: 'Explosive', val: '1d6' }); self.flags.roland = true; delete self.flags.reloaded }
+      if (role !== 'attacker' || !ctx.profile?.tags.some(t => t.id === 'tg_loading')) return
+      takeReload(self) // its own window, separate from the Mjolnir's free shot
+      if (self.flags.rolandReady) { ctx.bonusDamage.push({ type: 'Explosive', val: '1d6' }); self.flags.roland = true; delete self.flags.rolandReady }
     },
     afterAttack(b, self, ctx, role) {
       if (role === 'attacker' && self.flags.roland) { delete self.flags.roland; if (ctx.hit && !ctx.target.destroyed && !b.save(ctx.target, 'hull', self.stats.save, 0, self)) b.addStatus(ctx.target, 'prone', 'until_cleared', self) }
     },
   },
   {
-    id: 'ms_siege_ram', note: 'Ram deals 2 kinetic',
-    afterAttack(b, self, ctx, role) { if (role === 'attacker' && ctx.mode === 'ram' && ctx.hit) b.applyDamage(ctx.target, [{ type: 'Kinetic', amount: 2 }], { source: self }) },
+    id: 'ms_siege_ram', note: 'Ram deals 2 kinetic (10 AP kinetic to objects)',
+    afterAttack(b, self, ctx, role) {
+      if (role !== 'attacker' || ctx.mode !== 'ram' || !ctx.hit) return
+      const object = ctx.target.kind === 'deployable'
+      b.applyDamage(ctx.target, [{ type: 'Kinetic', amount: object ? 10 : 2 }], { source: self, ap: object })
+    },
   },
   {
     id: 'ms_hyperdense_armor', note: 'Resistance to attacks from beyond range 3 while active',
@@ -950,7 +957,11 @@ registerScripts([
       key: 'stabilizers', name: u.flags.stabilizers ? 'Retract Stabilizers' : 'Extend Stabilizers', activation: 'quick', target: 'none', text: 'Ranged attacks +5 range; you are Immobilized and cannot attack within range 5 or in melee.',
       run: (bt, self) => {
         self.flags.stabilizers = !self.flags.stabilizers
-        if (self.flags.stabilizers) { bt.addStatus(self, 'immobilized', 'until_cleared', self, { stab: true }); self.bonuses.push({ id: 'range', val: 5, range_types: ['Range'], condition: '{stabilizers}' }) }
+        if (self.flags.stabilizers) {
+          bt.addStatus(self, 'immobilized', 'until_cleared', self, { stab: true })
+          // the +5 range is conditional on {stabilizers}: add it once, not again on every extension
+          if (!self.bonuses.some(x => x.id === 'range' && x.condition === '{stabilizers}')) self.bonuses.push({ id: 'range', val: 5, range_types: ['Range'], condition: '{stabilizers}' })
+        }
         else self.statuses = self.statuses.filter(s => !s.data?.stab)
       },
     })],

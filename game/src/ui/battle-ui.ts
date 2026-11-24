@@ -13,6 +13,7 @@ import { hasTag, tagVal } from '../rules/stats'
 import type { Pos, Unit, Weapon } from '../rules/types'
 import { BattleView, type Highlight } from '../render/scene'
 import { esc } from './dom'
+import { needsBarrage } from '../rules/battle/actions'
 import { confirmDialog, promptDialog } from './modal'
 import { settingsForm, bindSettings, colourBlind, prefs } from './settings'
 import { resolveQuality } from '../render/quality'
@@ -579,7 +580,14 @@ export class BattleScreen {
         return
       case 'shape': if (w && a) { this.b.setWeaponFlag(a, w, 'shape', w.flags?.shape === 'line' ? 'cone' : 'line'); this.opts.onSaved?.(this.b); this.previewCache.clear(); this.render() } return
       case 'throughbolt': if (w && a) { this.b.setWeaponFlag(a, w, 'throughbolt', !w.flags?.throughbolt); this.opts.onSaved?.(this.b); this.render() } return
-      case 'profile': if (w && arg && a) { const i = Number(el.dataset.i); this.cmd(() => { this.b.setProfile(a, w, i) }) } return
+      case 'profile':
+        if (w && arg && a) {
+          const i = Number(el.dataset.i)
+          // a profile switch the weapon's data makes an action (spin up: quick action and Slowed) goes through that action
+          const sw = this.b.customActions(a).find(x => x.key === `${w.uid}:p${i}` && x.activation !== 'free')
+          this.cmd(() => { if (sw) this.b.useCustom(a, sw, a); else this.b.setProfile(a, w, i) })
+        }
+        return
       case 'boost': this.cmd(() => this.b.boost(a)); return
       case 'overcharge': this.cmd(() => this.b.overcharge(a)); return
       case 'stab-cool': this.cmd(() => this.b.stabilize(a, 'cool')); return
@@ -883,7 +891,7 @@ export class BattleScreen {
     if (active && u.side === 'player') {
       if (this.mode.k === 'barrage-pick') btns = this.btn('barrage', `Barrage #2${kb('')}`, usable, w.uid, 'primary')
       else {
-        btns = (w.size !== 'Superheavy' ? this.btn('skirmish', `Skirmish [Q]${kb('')}`, all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable), w.uid) : '') + this.btn('barrage', `Barrage [F]${kb('⇧')}`, all(fu, usable), w.uid)
+        btns = (!needsBarrage(w) ? this.btn('skirmish', `Skirmish [Q]${kb('')}`, all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable), w.uid) : '') + this.btn('barrage', `Barrage [F]${kb('⇧')}`, all(fu, usable), w.uid)
         if (!w.loaded && !w.destroyed) btns += '<span class="muted small" title="Stabilize (full action) reloads all Loading weapons">Unloaded — Stabilize to reload</span>'
         if (w.profiles.length > 1) btns += w.profiles.map((p, i) => (i === w.profileIndex ? '' : `<button data-act="profile" data-arg="${w.uid}" data-i="${i}" title="Switch profile">${esc(p.name)}</button>`)).join('')
         if (pr.range.some(r => r.type === 'Line') && pr.range.some(r => r.type === 'Cone')) btns += `<button data-act="shape" data-arg="${w.uid}" title="Fire as a Cone or a Line">${w.flags?.shape === 'line' ? 'Line' : 'Cone'} (switch)</button>`
