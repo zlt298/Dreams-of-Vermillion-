@@ -1,5 +1,5 @@
 # Checks every push and pull request: typecheck, unit tests (including the pinned golden battles),
-# production build and the end-to-end campaign run in headless Chromium.
+# production build, and the end-to-end campaign runs (desktop and emulated phone) in headless Chromium.
 name: CI
 
 on:
@@ -36,3 +36,4 @@ jobs:
           npm install --no-save playwright@1.48.2
           npx playwright install --with-deps chromium
       - run: npm run e2e
+      - run: npm run e2e:mobile

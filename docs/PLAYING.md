@@ -82,7 +82,13 @@ It uses the pilot's favourite mech and its active loadout: frame, weapons, mods,
   - Systems, traits and talents add their own actions.
   - Hovering a target shows the hit chance, cover, and every accuracy and difficulty source.
   - **Auto (AI)** lets the tactical AI take a lancer's turn.
-  - Controls: **Q/E** rotate, **WASD** or right-drag pan, wheel zoom, **Enter** end turn (asks if actions are unused), **Esc** cancel, **Tab** cycle lancers, **1–9** skirmish with a weapon (**Shift** to barrage), **B** boost, **O** overcharge, **T** threat overlay, **V** field overlays, hold **Alt** for every unit label, **L**/**R** toggle the log and roster, **?** lists them all. On touch screens: drag to pan, pinch to zoom, tap once to preview and again to confirm.
+  - Controls: **Q/E** rotate, **WASD** or right-drag pan, wheel zoom, **Enter** end turn (asks if actions are unused), **Esc** cancel, **Tab** cycle lancers, **1–9** skirmish with a weapon (**Shift** to barrage), **B** boost, **O** overcharge, **T** threat overlay, **V** field overlays, hold **Alt** for every unit label, **L**/**R** toggle the log and roster, **?** lists them all. On touch screens: drag to pan, pinch to zoom, tap once to preview and again to confirm, and press and hold a unit to inspect it.
+  - **Phones** get their own layout (best in landscape):
+    - A bottom sheet shows the selected unit, with **Move / Attack / Tech / More** tabs and **End Turn**. Tap the unit's header to expand the sheet.
+    - The ☰ menu holds the roster, battle log, threat and field overlays, speed, graphics, settings and replay export.
+    - Campaign nodes open a card with **Enter**.
+    - Tapping a tag shows its rules, and tapping a disabled action explains why it's disabled.
+    - Graphics start on low on phones and tablets.
   - **Settings** (title screen, or ⚙ in battle): animation speed, graphics quality, motion (reduce turns off shake, pulses and wipes) and a colour-blind palette.
 
 ## Saving and undo
