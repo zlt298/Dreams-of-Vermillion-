@@ -106,6 +106,10 @@ export function installTagTips(doc: Document = document) {
     if (!current.isConnected) return hide() // the HUD re-rendered under the cursor
     place(e.clientX, e.clientY)
   })
-  doc.addEventListener('mousedown', hide)
+  // touch: a tap fires mouseover (which shows the tip at the tap) then mousedown; keep it open, and a tap
+  // anywhere else (another mouseover) moves or closes it
+  let touch = false
+  doc.addEventListener('pointerdown', e => { touch = e.pointerType === 'touch' }, true)
+  doc.addEventListener('mousedown', () => { if (!touch) hide() })
   doc.addEventListener('scroll', hide, true)
 }

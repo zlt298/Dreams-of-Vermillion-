@@ -529,7 +529,9 @@ export class BattleScreen {
 
   private onHudClick(e: MouseEvent) {
     const el = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null
-    if (!el || el.classList.contains('disabled')) return
+    if (!el) return
+    // a disabled action says why (touch has no hover tooltip to show it)
+    if (el.classList.contains('disabled')) { if (el.title) this.toast(el.title); return }
     const act = el.dataset.act!
     const arg = el.dataset.arg
     const a = this.b.active
