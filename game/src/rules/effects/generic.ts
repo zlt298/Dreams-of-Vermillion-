@@ -54,6 +54,7 @@ function rangeVal(a: { range?: { type: string; val: any }[] }, type: string): nu
 function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: SystemInst): CustomAction {
   const blast = rangeVal(a, 'Blast'), burst = rangeVal(a, 'Burst'), line = rangeVal(a, 'Line'), cone = rangeVal(a, 'Cone')
   let range = rangeVal(a, 'Range') ?? rangeVal(a, 'Threat') ?? (a.activation === 'Invade' ? u.stats.sensors : 1)
+  const baseRange = range
   if (u.flags.assaultLauncher && sys && Lancer.systems.get(sys.dataId)?.tags?.some(t => t.id === 'tg_grenade')) range = Math.max(range, 15)
   const area = burst ? { shape: 'burst' as const, size: burst } : blast ? { shape: 'blast' as const, size: blast } : line ? { shape: 'line' as const, size: line } : cone ? { shape: 'cone' as const, size: cone } : undefined
   const isTech = a.activation === 'Invade' || a.activation === 'Quick Tech' || a.activation === 'Full Tech'
@@ -78,6 +79,8 @@ function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: 
         else if (blast) {
           if (distanceToTile(bt.map, self, aim) > range) throw new Error('Out of range')
           if (!hasLineOfSightToTile(bt.effectiveMap(), self, aim)) throw new Error('No line of sight')
+          // Iskander Assault Launcher: a throw beyond the grenade's own range uses it up for the round
+          if (distanceToTile(bt.map, self, aim) > baseRange) self.flags.assaultLauncher = false
           tiles = blastTiles(bt.map, aim, blast)
         } else if (line) tiles = lineTiles(bt.map, self, aim, line)
         else if (cone) tiles = coneTiles(bt.map, self, aim, cone)
@@ -141,7 +144,7 @@ export function deployableUnit(owner: Unit, d: DeployableData, pos: Pos): Unit {
   const isDrone = d.type === 'Drone'
   const size = d.size ?? (isDrone ? 0.5 : 1)
   const hpBonus = owner.bonuses.filter(b => b.id === (isDrone ? 'drone_hp' : 'deployable_hp')).reduce((a, b) => a + Number(b.val), 0)
-  const resistAll = owner.bonuses.some(b => b.id === (isDrone ? 'drone_resist' : 'deployable_resist'))
+  // (drone_resist / deployable_resist: Hydra Shepherd Field, granted only while adjacent to the Hydra by its frame script)
   const hp = (d.hp ?? 5) + hpBonus
   const u: Unit = {
     id: nextUid('dep'),
@@ -156,7 +159,7 @@ export function deployableUnit(owner: Unit, d: DeployableData, pos: Pos): Unit {
       limitedBonus: 0, attackBonus: owner.stats.attackBonus, activations: 0,
     },
     hp, heat: 0, structure: 1, stress: 1, overshield: 0, burn: 0, repairs: 0, coreAvailable: false, coreActive: false, overchargeLevel: 0,
-    statuses: [], resist: resistAll ? ['all'] : [], immune: [], weapons: [], systems: [], talents: [], coreBonuses: [],
+    statuses: [], resist: [], immune: [], weapons: [], systems: [], talents: [], coreBonuses: [],
     canCrit: false, ...blankTurnState(), activationsLeft: 0, bonuses: [], flags: { isCover: d.type === 'Deployable' && size >= 1 && !d.damage, dataName: d.name },
     destroyed: false, ownerId: owner.id, policies: defaultPolicies(),
   }

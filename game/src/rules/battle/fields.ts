@@ -122,6 +122,7 @@ export function placeMine(bt: Battle, owner: Unit, pos: Pos, m: Omit<Mine, 'id' 
   bt.mines.push(mine)
   bt.say(`${owner.name} plants ${m.name}${mine.armed ? '' : ' (it arms at the end of the turn)'}.`)
   bt.emit({ type: 'mine', mineId: mine.id, pos: mine.pos, added: true })
+  for (const sc of scriptsFor(owner)) sc.onMinePlaced?.(bt, owner, mine)
   return mine
 }
 
@@ -205,7 +206,27 @@ export function customActions(bt: Battle, u: Unit): CustomAction[] {
   // actions other units' systems make available to this one (e.g. activating an ally's restock drone)
   if (u.kind === 'mech' || u.kind === 'npc') for (const o of bt.alive()) if (o !== u) for (const s of scriptsFor(o)) if (s.grantActions) out.push(...s.grantActions(bt, o, u))
   out.push(...genericActionsFor(bt, u))
+  // Iskander Assault Launcher (1/round): any Grenade can be thrown at range 15
+  if (u.flags.assaultLauncher) for (let i = 0; i < out.length; i++) out[i] = assaultLaunched(bt, u, out[i])
   return out
+}
+
+/** A grenade action with range 15 that uses up the Assault Launcher when it is thrown beyond its own range. */
+function assaultLaunched(bt: Battle, u: Unit, a: CustomAction): CustomAction {
+  if (a.range == null || a.range >= 15 || a.target === 'none' || a.target === 'self' || /mine/i.test(a.name)) return a
+  const sys = u.systems.find(s => s.uid === a.sourceUid) ?? (a.scriptId ? u.systems.find(s => s.dataId === a.scriptId) : undefined)
+  if (!sys || !Lancer.systems.get(sys.dataId)?.tags?.some(t => t.id === 'tg_grenade')) return a
+  const own = a.range
+  return {
+    ...a,
+    range: 15,
+    run: (b, self, t) => {
+      const p = t && 'x' in t ? t : (t as Unit | undefined)?.pos
+      const far = !!p && distanceToTile(b.map, self, p) > own
+      a.run(b, self, t)
+      if (far) self.flags.assaultLauncher = false
+    },
+  }
 }
 
 /**

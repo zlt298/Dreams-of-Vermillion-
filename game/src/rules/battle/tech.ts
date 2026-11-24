@@ -24,6 +24,7 @@ export function techTargetValid(bt: Battle, u: Unit, t: Unit, option?: string): 
   if (t.role === 'Biological' && option !== 'scan' && option !== 'lock_on') return 'Biological characters are immune to tech actions (except Scan and Lock On)'
   if (t.destroyed) return 'Destroyed'
   if (bt.has(t, 'shutdown')) return 'Target is shut down (immune to tech)'
+  if (t.flags.techImmune && t !== u) return 'Immune to tech actions'
   if (bt.hostile(u, t) && bt.has(t, 'hidden')) return 'Hidden'
   if (bt.distance(u, t) > u.stats.sensors && !bt.viaMetahook(u, t)) return 'Out of sensor range'
   if (!bt.los(u, t)) return 'No line of sight'

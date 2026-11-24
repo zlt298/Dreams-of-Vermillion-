@@ -211,11 +211,16 @@ export function quickUsed(bt: Battle, u: Unit, action: string): boolean {
 
 export function canSpend(bt: Battle, u: Unit, cost: 'quick' | 'full' | 'protocol' | 'free' | 'reaction' | 'move', action?: string): true | string {
   if (u.destroyed) return 'Destroyed'
+  for (const sc of scriptsFor(u)) { const no = sc.forbidsAction?.(bt, u, cost, action); if (no) return no }
   if (cost === 'reaction') {
+    // an extra Overwatch only (Tortuga Hyper-Reflex Mode): usable past the per-turn and per-round limits
+    const bonusOw = action === 'overwatch' && (u.flags.extraOverwatch ?? 0) > 0
     // one reaction per turn (any character's turn); each reaction type 1/round, refreshing at your own turn start
-    if (u.reactionsLeft <= 0) return 'Already reacted this turn'
-    if (action && u.flags[`react:${action}`] && !(action === 'overwatch' && u.traits?.includes('reflex'))) return `${actionLabel(action)} already used this round`
-    if (bt.has(u, 'grappled') && !(action === 'brace' && u.flags.braceWhileGrappled)) return 'Grappled'
+    if (u.reactionsLeft <= 0 && !bonusOw) return 'Already reacted this turn'
+    if (action && u.flags[`react:${action}`] && !bonusOw && !(action === 'overwatch' && u.traits?.includes('reflex'))) return `${actionLabel(action)} already used this round`
+    // Blackbeard Lock/Kill Subsystem: a grappler (not one being held) can still react
+    const lockKill = u.flags.lockKill && bt.grapples.some(g => g.a === u.id) && !bt.grapples.some(g => g.d === u.id)
+    if (bt.has(u, 'grappled') && !lockKill && !(action === 'brace' && u.flags.braceWhileGrappled)) return 'Grappled'
     if (bt.has(u, 'stunned')) return 'Stunned'
     if (bt.has(u, 'jammed')) return 'Jammed'
     if (bt.has(u, 'bracing_recovery')) return 'Recovering from brace'
@@ -245,7 +250,9 @@ export function spend(bt: Battle, u: Unit, cost: 'quick' | 'full' | 'protocol' |
   if (ok !== true) throw new Error(ok)
   if (cost === 'reaction') {
     for (const o of bt.alive()) for (const sc of scriptsFor(o)) sc.onAnyAction?.(bt, o, u, 'reaction')
-    u.reactionsLeft--
+    // the extra Overwatch (Hyper-Reflex) is spent only when the normal reaction can't pay for it
+    if (action === 'overwatch' && (u.flags.extraOverwatch ?? 0) > 0 && (u.reactionsLeft <= 0 || u.flags['react:overwatch'])) u.flags.extraOverwatch--
+    else u.reactionsLeft--
     if (u.flags.ghostweave && bt.has(u, 'invisible')) bt.removeStatus(u, 'invisible')
     if (action) u.flags[`react:${action}`] = true
     if (bt.has(u, 'hidden')) bt.removeStatus(u, 'hidden') // taking reactions reveals you

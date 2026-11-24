@@ -436,6 +436,8 @@ export class Battle {
     const d = this.rollD20(u, 'save'), a = rollAccuracy(this.rng, acc)
     const total = d + u.stats[stat] + a.bonus
     const ok = total >= target
+    // a save forced during the source's own turn (Raleigh Full Metal Jacket)
+    if (source && source !== u && source.activeTurn) source.flags['turn:forcedSave'] = true
     this.say(`${u.name} ${stat.toUpperCase()} save vs ${target}: ${total} — ${ok ? 'success' : 'failure'}.`)
     if (!ok && source && source !== u && !source.destroyed) for (const sc of scriptsFor(source)) sc.onSaveFailed?.(this, source, u, stat)
     return ok

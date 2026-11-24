@@ -154,7 +154,8 @@ export function validTarget(bt: Battle, u: Unit, w: Weapon, t: Unit, from: Pos =
   const minR = u.bonuses.find(b => b.id === 'min_range')
   void minR
   const magRound = u.flags.ammo === 'mag' && w.size === 'Main' && !bt.isMelee(w) && !u.flags['turn:ammoUsed']
-  if (!hasTag(tags, 'tg_seeking') && !hasTag(tags, 'tg_arcing') && !magRound && !bt.los(u, t, from)) return 'No line of sight'
+  const seeks = hasTag(tags, 'tg_seeking') || scriptsFor(u).some(s => s.seeksTarget?.(bt, u, w, t))
+  if (!seeks && !hasTag(tags, 'tg_arcing') && !magRound && !bt.los(u, t, from)) return 'No line of sight'
   return true
 }
 
@@ -175,7 +176,9 @@ export function aoeTiles(bt: Battle, u: Unit, w: Weapon, aim: Pos): Pos[] | stri
     const range = rs.find(r => r.type === 'Range')
     const reach = range ? Number(range.val) : 1
     if (distanceToTile(bt.map, u, aim) > reach) return 'Out of range'
-    if (!hasTag(bt.profile(w).tags, 'tg_arcing') && !hasTag(bt.profile(w).tags, 'tg_seeking') && !hasLineOfSightToTile(bt.effectiveMap(), u, aim)) return 'No line of sight to blast centre'
+    const aimed = bt.alive().find(o => footprint(o).some(p => p.x === aim.x && p.y === aim.y))
+    const seeks = hasTag(bt.profile(w).tags, 'tg_seeking') || (!!aimed && scriptsFor(u).some(s => s.seeksTarget?.(bt, u, w, aimed)))
+    if (!hasTag(bt.profile(w).tags, 'tg_arcing') && !seeks && !hasLineOfSightToTile(bt.effectiveMap(), u, aim)) return 'No line of sight to blast centre'
     return blastTiles(bt.map, aim, Number(blast.val))
   }
   return 'Not an area weapon'

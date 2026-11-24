@@ -15,6 +15,41 @@ const onTile = (u: Unit, tiles: Pos[]) => footprint(u).some(p => tiles.some(t =>
 const free = (b: Battle, p: Pos, except?: Unit) => !!tileAt(b.map, p) && !b.alive().some(o => o !== except && !o.flags.flat && footprint(o).some(q => q.x === p.x && q.y === p.y))
 const oncePerRound = (u: Unit, key: string) => { const k = `round:${key}`; if (u.flags[k]) return false; u.flags[k] = true; return true }
 
+// ------------------------------------------------------------------ burning zones (Apocalypse Rail, Genghis cloud)
+/**
+ * A zone that burns characters that start their turn in it or enter it for the first time in a round. Kept on its
+ * owner (`owner.flags.burnZones`) and run from the owner's hooks; `ends` counts the owner's turn starts or ends left.
+ */
+export interface BurnZone { id: string; tiles: Pos[]; burn: number; heat?: number; spareOwner?: boolean; ends?: { at: 'start' | 'end'; n: number } }
+const zonesOf = (u: Unit): BurnZone[] => u.flags.burnZones ?? []
+function burnZoneHit(b: Battle, owner: Unit, z: BurnZone, u: Unit, entering: boolean) {
+  if ((u.kind !== 'mech' && u.kind !== 'npc') || u.destroyed || (z.spareOwner && u === owner)) return
+  const k = `round:zone:${z.id}`
+  if (entering && u.flags[k]) return
+  u.flags[k] = true
+  b.say(`${u.name} is caught in the burning zone.`)
+  b.applyDamage(u, [{ type: 'Burn', amount: z.burn }, ...(z.heat ? [{ type: 'Heat', amount: z.heat }] : [])], { source: owner })
+}
+/** `u` starts its turn: zones it stands in burn it */
+export function burnZoneStart(b: Battle, owner: Unit, u: Unit) {
+  for (const z of [...zonesOf(owner)]) if (onTile(u, z.tiles)) burnZoneHit(b, owner, z, u, false)
+}
+/** `mover` moved along `path`: zones it entered burn it (once per round) */
+export function burnZoneEnter(b: Battle, owner: Unit, mover: Unit, path: Pos[]) {
+  if (path.length < 2) return
+  for (const z of [...zonesOf(owner)]) {
+    const inside = (p: Pos) => footprint(mover, p).some(q => z.tiles.some(t => t.x === q.x && t.y === q.y))
+    if (!inside(path[0]) && path.slice(1).some(inside)) burnZoneHit(b, owner, z, mover, true)
+  }
+}
+/** the owner's turn starts or ends: zones timed to it count down */
+export function burnZoneTurn(b: Battle, owner: Unit, at: 'start' | 'end') {
+  const zs = zonesOf(owner)
+  if (!zs.length) return
+  for (const z of zs) if (z.ends?.at === at) z.ends.n--
+  owner.flags.burnZones = zs.filter(z => !z.ends || z.ends.n > 0)
+}
+
 /** Agility save or 1d6 energy (half on a success). */
 function hologramBlast(b: Battle, src: Unit, t: Unit) {
   const dmg = rollDice(b.rng, '1d6').total
@@ -104,6 +139,8 @@ const scripts: ItemScript[] = [
       if (role !== 'attacker' || !self.flags.thunderGod || ctx.weapon?.dataId !== 'mw_raleigh_integrated') return
       const n = self.flags.chambers ?? 0
       self.flags['turn:firedM35'] = true
+      // "4 kinetic damage per loaded round": nothing chambered, no damage
+      if (!n) { ctx.cancelDamage = true; ctx.reasons.push('Thunder God: no rounds chambered') }
       if (n > 1) ctx.bonusDamage.push({ type: 'Kinetic', val: 4 * (n - 1) } as any)
       if (n >= 4 && ctx.profile && !ctx.profile.tags.some(t => t.id === 'tg_ap')) { ctx.profile.tags.push({ id: 'tg_ap', thunder: true } as any); ctx.reasons.push(`Thunder God ×${n} (AP)`) }
       else if (n) ctx.reasons.push(`Thunder God ×${n}`)
@@ -317,14 +354,25 @@ const scripts: ItemScript[] = [
   // ---------------------------------------------------------------- Barbarossa
   {
     id: 'core:mf_barbarossa',
-    note: 'Charge Rail: Apocalypse Die counts down from 4 (resets on moving, Stunned or Jammed); fire the Apocalypse Rail at 1–3 as a full action',
-    onCoreActivate(b, u) { u.flags.apocDie = 4; b.say(`${u.name} begins charging the Apocalypse Rail (die 4).`) },
+    note: 'Charge Rail: Apocalypse Die counts down from 4 (resets to 4 on moving or on becoming Stunned or Jammed, then counts down as usual); fire the Apocalypse Rail at 1–3 as a full action (3: soft-cover cloud; 2: burning storm, 4 burn on starting a turn in it or first entering it in a round, until the end of your next turn; 1: a crater for the scene: difficult terrain, soft cover and the same burn); never fired this scene: the CP comes back',
+    onCoreActivate(b, u) { u.flags.apocDie = 4; u.flags.refundCore = true; b.say(`${u.name} begins charging the Apocalypse Rail (die 4).`) },
     onTurnStart(b, u) {
+      burnZoneTurn(b, u, 'start')
+      burnZoneStart(b, u, u)
       if (u.flags.apocDie == null) return
-      u.flags.apocDie = b.has(u, 'stunned') || b.has(u, 'jammed') ? 4 : Math.max(1, u.flags.apocDie - 1)
+      u.flags.apocDie = Math.max(1, u.flags.apocDie - 1)
       b.say(`${u.name}'s Apocalypse Die: ${u.flags.apocDie}.`)
     },
-    onMove(_b, self, mover) { if (mover === self && self.flags.apocDie != null) self.flags.apocDie = 4 },
+    onTurnEnd: (b, u) => burnZoneTurn(b, u, 'end'),
+    onAnyTurnStart: (b, self, u) => burnZoneStart(b, self, u),
+    onStatusAdded(b, self, st) {
+      if ((st === 'stunned' || st === 'jammed') && self.flags.apocDie != null && self.flags.apocDie !== 4) { self.flags.apocDie = 4; b.say(`${self.name}'s Apocalypse Die resets to 4.`) }
+    },
+    onMove(b, self, mover, path) {
+      if (mover === self && self.flags.apocDie != null) self.flags.apocDie = 4
+      burnZoneEnter(b, self, mover, path)
+    },
+    fields: (_b, u) => zonesOf(u).map(z => ({ tiles: z.tiles, effect: 'harm' as const, label: `${u.name}'s burning zone: ${z.burn} burn on starting a turn in it or entering it` })),
     actions: (_b, u) => {
       const die = u.flags.apocDie
       if (die == null) return []
@@ -348,11 +396,14 @@ const scripts: ItemScript[] = [
             if (die === 1) bt.addStatus(ctx.target, 'stunned', 'next_turn_end_target', self)
           }
           bt.damageObjectsIn(tiles, die === 3 ? 20 : die === 2 ? 40 : 100, { source: self, ap: true })
-          bt.areas.push({ id: `apoc-${bt.round}-${self.id}`, kind: 'soft_cover', tiles, ownerId: self.id, ...(die === 1 ? {} : { expiresRound: bt.round + 1 }) })
-          if (die === 2) bt.areas.push({ id: `apoc-fire-${bt.round}-${self.id}`, kind: 'damage', tiles, damage: '4', ownerId: self.id, expiresRound: bt.round + 1 })
+          // dice 3 and 2: until the end of your next turn (this turn's end and the next); die 1: the rest of the scene
+          const timed = die === 1 ? {} : { expiresAfterTurnOf: self.id, turnsLeft: self.activeTurn ? 2 : 1 }
+          bt.areas.push({ id: `apoc-${bt.round}-${self.id}`, kind: 'soft_cover', tiles, ownerId: self.id, ...timed })
+          if (die <= 2) self.flags.burnZones = [...zonesOf(self), { id: `apoc-${bt.round}-${die}-${self.id}`, tiles, burn: 4, ...(die === 1 ? {} : { ends: { at: 'end' as const, n: self.activeTurn ? 2 : 1 } }) }]
           if (die === 1) bt.areas.push({ id: `apoc-crater-${bt.round}-${self.id}`, kind: 'difficult', tiles, ownerId: self.id })
           bt.invalidateTerrain()
           self.flags.apocDie = 4
+          delete self.flags.refundCore
           self.moveLeft = 0
           self.actionsLeft = 0
         },
@@ -372,8 +423,11 @@ const scripts: ItemScript[] = [
   // ---------------------------------------------------------------- Sherman
   {
     id: 'core:mf_sherman',
-    note: 'ZF4 SOLIDCORE charges (Stabilize +1, max 4; the profile follows charges, reset after firing); COREBURN: +3 charges, Stabilize +2, 10 AP energy per charge to deployables hit',
-    init(u) { u.flags.zfCharges = 1; syncZf(u) },
+    note: 'ZF4 SOLIDCORE charges (Stabilize +1, max 4; the profile follows charges, reset after firing; kept between scenes, lost on a Full Repair); COREBURN: +3 charges, Stabilize +2, 10 AP energy per charge to deployables hit',
+    // the run keeps 'keep:' flags between battles (until a Full Repair)
+    init(u) { u.flags.zfCharges = u.flags['keep:zfCharges'] ?? 1; syncZf(u) },
+    // the run restores the kept charges after the unit is built: pick them up once the battle starts
+    onRoundStart(_b, u) { if (!u.flags.zfSynced) { u.flags.zfCharges = u.flags['keep:zfCharges'] ?? u.flags.zfCharges; u.flags.zfSynced = true } syncZf(u) },
     onStabilize(b, u) {
       u.flags.zfCharges = Math.min(4, (u.flags.zfCharges ?? 1) + (u.flags.coreburn ? 2 : 1))
       syncZf(u)
@@ -396,6 +450,7 @@ const scripts: ItemScript[] = [
 ]
 
 function syncZf(u: Unit) {
+  u.flags['keep:zfCharges'] = u.flags.zfCharges ?? 1
   const w = weaponOf(u, 'mw_sherman_integrated')
   if (w) w.profileIndex = Math.max(0, Math.min(w.profiles.length - 1, (u.flags.zfCharges ?? 1) - 1))
 }

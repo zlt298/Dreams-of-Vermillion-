@@ -245,7 +245,7 @@ export function applyDamage(bt: Battle, t: Unit, parts: { type: string; amount: 
     if (p.type === 'Burn') burn += resists('Burn') ? Math.ceil(p.amount / 2) : p.amount
     if (p.type === 'Burn-tick') hpDmg += p.amount
   }
-  const dctx: DamageCtx = { source: opts.source, attack: opts.attack, amount: hpDmg, kind: 'hp', types: parts.filter(p => p.amount > 0).map(p => p.type) }
+  const dctx: DamageCtx = { source: opts.source, attack: opts.attack, amount: hpDmg, kind: 'hp', types: parts.filter(p => p.amount > 0).map(p => p.type), irreducible: opts.irreducible }
   for (const s of scriptsFor(t)) s.modifyIncoming?.(bt, t, dctx)
   for (const o of bt.alive()) if (o !== t) for (const s of scriptsFor(o)) s.modifyAnyIncoming?.(bt, o, t, dctx)
   hpDmg = Math.max(0, dctx.amount)
@@ -290,6 +290,8 @@ export function loseHp(bt: Battle, t: Unit, amount: number, _source?: Unit) {
       bt.say(`${t.name} is reduced to 0 Structure but the Briareos frame holds together!`, 'warn')
       return
     }
+    // Balor Hive Frenzy: the structure damage may not happen at all
+    if (scriptsFor(t).some(s => s.beforeStructureDamage?.(bt, t))) return
     const excess = -t.hp
     t.structure--
     bt.emit({ type: 'damage', unitId: t.id, amount: 1, kind: 'structure' })

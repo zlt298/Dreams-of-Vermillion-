@@ -101,6 +101,8 @@ export interface DamageCtx {
   kind: 'hp' | 'heat' | 'burn'
   /** damage types of the parts dealt (applyDamage), e.g. ['Energy', 'Heat'] */
   types?: string[]
+  /** the damage can't be reduced (Irreducible, Seeking Payload…) */
+  irreducible?: boolean
 }
 
 export interface ItemScript {
@@ -202,6 +204,14 @@ export interface ItemScript {
   onStatusRemoved?(b: Battle, self: Unit, status: string): void
   /** this unit took the Stabilize action */
   onStabilize?(b: Battle, self: Unit): void
+  /** refuse an action or reaction this unit would spend (canSpend): return a reason (Napoleon Activate Aegis) */
+  forbidsAction?(b: Battle, self: Unit, cost: string, action?: string): string | undefined
+  /** this unit is about to take structure damage: return true to take none (Balor Hive Frenzy) */
+  beforeStructureDamage?(b: Battle, self: Unit): boolean
+  /** this unit planted a mine */
+  onMinePlaced?(b: Battle, self: Unit, mine: Mine): void
+  /** this unit's attack with `w` against `target` counts as Seeking (no line of sight needed: Monarch Seeking Payload) */
+  seeksTarget?(b: Battle, self: Unit, w: Weapon, target: Unit): boolean
 }
 
 const registry = new Map<string, ItemScript>()
