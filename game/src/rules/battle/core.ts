@@ -572,6 +572,14 @@ export class Battle {
   validTarget(u: Unit, w: Weapon, t: Unit, from: Pos = u.pos): true | string { return attacks.validTarget(this, u, w, t, from) }
 
   aoeTiles(u: Unit, w: Weapon, aim: Pos): Pos[] | string { return attacks.aoeTiles(this, u, w, aim) }
+  /** The units a weapon's area attack aimed at `aim` would affect (line of sight, height, own Blast, deployables). */
+  aoeTargets(u: Unit, w: Weapon, aim: Pos): Unit[] | string { return attacks.aoeTargets(this, u, w, aim) }
+  /** Who an area pattern on `tiles` affects (for scripted and system areas): see attacks.areaVictims. */
+  areaVictims(u: Unit, tiles: Pos[], shape: attacks.AreaShape, size: number, opts: { centre?: Pos; origin?: Unit; ignoreLos?: boolean } = {}): Unit[] { return attacks.areaVictims(this, u, tiles, shape, size, opts) }
+  /** Add bonus damage to an attack's own damage packet (Armor once, rolled once, halved vs multiple targets): see attacks.addBonusDamage. */
+  addBonusDamage(ctx: AttackCtx, val: string | number, type?: string, opts: attacks.BonusDamageOpts = {}) { return attacks.addBonusDamage(this, ctx, val, type, opts) }
+  /** A knockback's length after bonuses (Titanomachy Mesh); 0 stays 0. Without a weapon it counts as a melee attack. */
+  knockbackDistance(u: Unit, base: number, w?: Weapon): number { return attacks.knockbackDistance(this, u, base, w) }
 
   /** Damage bonus (flat) from bonuses, per damage type */
   flatDamageBonus(u: Unit, w: Weapon, type: string): number { return attacks.flatDamageBonus(this, u, w, type) }

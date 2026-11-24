@@ -93,11 +93,11 @@ function aoeValue(b: Battle, u: Unit, w: Weapon, from: Pos): { value: number; ti
     let best: { value: number; tile: Pos } | null = null
     const aims = b.alive().filter(t => b.hostile(u, t)).map(t => t.pos)
     for (const aim of aims) {
-      const tiles = b.aoeTiles(u, w, aim)
-      if (typeof tiles === 'string') continue
+      // who the attack actually affects: line of sight and height from the pattern, own Blast and deployables
+      const hit = b.aoeTargets(u, w, aim)
+      if (typeof hit === 'string') continue
       let v = 0
-      for (const t of unitsOnTiles(b.alive(), tiles)) {
-        if (t === u) continue
+      for (const t of hit) {
         const dmg = b.profile(w).damage.reduce((a, d) => a + averageDice(d.val), 0)
         const val = (dmg * 0.6 + effectValue(b, u, t, b.profile(w).onHit) * 0.6) * (t.isGrunt ? 0.6 : 1)
         v += b.hostile(u, t) ? val : -val * 1.5

@@ -329,7 +329,7 @@ registerScripts([
       if (n < full && !blocked) return `Ramjet: move your full Speed (${full}) unless something blocks you`
       return true
     },
-    afterAttack(b, self, ctx, role) { if (role === 'attacker' && self.flags.ramjet && ctx.melee && ctx.hit && !ctx.target.destroyed) b.forceMove(ctx.target, self, 2, 1) },
+    afterAttack(b, self, ctx, role) { if (role === 'attacker' && self.flags.ramjet && ctx.melee && ctx.hit && !ctx.target.destroyed) b.forceMove(ctx.target, self, b.knockbackDistance(self, 2, ctx.weapon), 1) },
   },
   {
     id: 'ms_roland_chamber', note: 'After reloading: next Loading weapon hit +1d6 explosive and Hull save vs Prone',
