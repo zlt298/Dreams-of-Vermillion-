@@ -5,11 +5,11 @@ import { importPilots } from '../../src/import/compcon'
 import { buildMechUnit } from '../../src/rules/stats'
 import { buildTeam } from '../../src/enemies/build'
 import { planFor } from '../../src/ai/ai'
-import ll10 from '../../src/data/squads/ll10.json'
+import ll8 from '../../src/data/squads/ll8.json'
 import { battle, flatMap, mech, pregenUnit, teamFile } from '../support'
 
 const drake = () => {
-  const u = buildMechUnit(importPilots((ll10 as any[]).find(p => p.mechs?.some((m: any) => /drake/i.test(m.frame))) ?? (ll10 as any[])[0])[0])
+  const u = buildMechUnit(importPilots((ll8 as any[]).find(p => p.mechs?.some((m: any) => /drake/i.test(m.frame))) ?? (ll8 as any[])[0])[0])
   expect(u.frameId).toBe('mf_drake')
   return u
 }

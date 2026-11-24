@@ -34,7 +34,7 @@ describe('Line weapons reach their stated range off the grid axes', () => {
 describe('Ordnance', () => {
   // regression: nothing checked tg_ordnance (only coverage.ts listed it as supported), so the shot went off
   it('a lancer cannot fire an Ordnance weapon (Howitzer) after moving this turn', () => {
-    const thresh = buildMechUnit(structuredClone((themed as any[]).find(s => s.id === 'longguns-ll0').pilots.find((p: any) => p.callsign === 'Thresh')))
+    const thresh = buildMechUnit(structuredClone((themed as any[]).find(s => s.id === 'longguns-ll2').pilots.find((p: any) => p.callsign === 'Thresh')))
     const e = pregenUnit('Sniper', 'enemy')
     thresh.pos = { x: 6, y: 18 }; e.pos = { x: 6, y: 4 }
     const b = battle([thresh, e], flatMap(14, 22))

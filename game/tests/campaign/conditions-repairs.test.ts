@@ -259,7 +259,7 @@ describe('rewards', () => {
 })
 
 describe('level-ups', () => {
-  it('levelUp sets the act level (LL5, then LL10) and fully repairs', () => {
+  it('levelUp sets the act level (LL5, then LL8) and fully repairs', () => {
     const run = newRun(squad(), 3)
     run.condition[run.squad[0].id].hp = 1
     run.pendingLevelUp = true
@@ -270,7 +270,7 @@ describe('level-ups', () => {
     expect(run.condition[run.squad[0].id].hp).toBe(buildMechUnit(run.squad[0]).stats.hp)
     run.act = 3
     levelUp(run); levelUp(run)
-    expect(run.squad.every(p => p.level === 10)).toBe(true)
+    expect(run.squad.every(p => p.level === 8)).toBe(true)
   })
 
   // app.ts: boss win -> recordBattle (fullRepair) -> debrief() rewardPick -> repairs() -> maybeEvent() -> runMap()

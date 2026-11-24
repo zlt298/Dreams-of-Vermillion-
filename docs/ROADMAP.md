@@ -97,7 +97,7 @@ Useful commands, all run from `game/`:
   - Ultra: +3/+3, +5 HP, two turns (three vs 5+), Deadly, Juggernaut, Legendary and Reflex
   - Mercenary: Opportunist
   - Only Veterans and Ultras crit.
-- **Progression:** a fixed License Level per act (LL0 / LL5 / LL10), matching the core book's NPC tiers. Per-player budgets rose to T2 1.5 and T3 2.0.
+- **Progression:** a fixed License Level per act (LL0 / LL5 / LL10 at the time, now LL2 / LL5 / LL8: see Act levels 2/5/8), matching the core book's NPC tiers. Per-player budgets rose to T2 1.5 and T3 2.0.
 - **LCP importer:** official NPC classes from a pack you own. These are stored in the browser only and join campaign and skirmish encounters.
 - **Official base features scripted:** 67 scripts keyed by feature id, plus structured on-hit conditions and Line/Cone save attacks. Core pack base features: 81 of 116 fully automated, 16 approximated. A smoke battle runs for every script, and official encounter budgets were re-tuned afterwards.
 
@@ -162,6 +162,12 @@ Playtesting found act 1 punishing even with the Easy squad. The sim agreed once 
 - **Smaller rosters:** every team trimmed by tier and kind. Group sizes shrink first, keeping one of each unit type; then templates downgrade, except the team's best Elite (every elite fight keeps one); then a non-Grunt unit goes. Boss Ultras are untouched; the Red Warden is set by hand to the Psalmist and four Pickets. Budget rules follow: per-PC rate T1 0.8 / T2 1.2 / T3 1.0, boss multiplier 1.75; the validator requires an Elite in elite teams.
 - **Results**, mechs lost per fight (reference + Long Guns): act 1 standard 0.09, elite 0.10–0.40, boss 0.40; act 2 0.07, 0.30–0.65, 1.05; act 3 0.29, 0.60–1.10, 1.20.
 - **Per-act squad labels**, mechs lost per fight across that act's teams: act 1 Long Guns 0.10 (Easy), Brawlers 0.25, Drone Wing 0.57; act 2 Drone Wing 0.19 (Easy), Brawlers 0.29, Long Guns 0.47; act 3 Brawlers 0.06 (Easy), Drone Wing 0.84, Long Guns 0.94.
+
+### Act levels 2/5/8
+- Acts are now fought at LL2, LL5 and LL8 (were LL0, LL5 and LL10); enemies stay at tiers 1, 2 and 3. LL2 gives two license ranks, so pilots field a licensed frame from the first fight instead of a GMS Everest, and +3 per act (instead of +5) keeps a pilot recognizable after a level-up.
+- The themed squads are regenerated at LL2/LL5/LL8 by carrying each pilot's build forward (`scripts/make-squads.ts`): same frame from act 1 on, weapons, systems and talents kept, and only the new points spent, with at most one weapon and one system swapped for newly licensed gear per level-up.
+- The sample squad (Drake, Monarch, Saladin, Blackbeard) is generated at LL2/LL5/LL8 by `scripts/make-samples.ts`; LL5 is unchanged, LL2 is cut back from it and LL8 built on it. The balance sim and golden battles use it for all three tiers (tier 1 used the LL0 pregens). A new roster starts with the LL2 sample squad; the LL0 pregens are fitted up to LL2 when a run starts.
+- Not yet done: enemy rebalancing for the new levels, and re-simulating the per-act squad difficulty labels (the old act 1 and act 3 labels are kept as provisional).
 
 ### Presentation and map
 - Procedural low-poly unit models, shaped by manufacturer or role, carrying their actual weapons, with marks for templates; creatures for biological enemies.
@@ -389,7 +395,7 @@ Driven by `npm run coverage -- --list`.
 ### 6. Balance (after content)
 Three passes are done (see Done → Balance pass 1–3). Remaining:
 - Act 3 bosses with Drone Wing (2.9 mechs lost vs the Voice of the Eye) and Long Guns (1.7) are well above the 1-mech target; Brawlers lose 0.1.
-- Stand-ins don't help much from act 2 on (an LL0 Everest among LL5/LL10 mechs); a stand-in at the act's level is an option.
+- Stand-ins don't help much from act 2 on (an LL0 Everest among LL5/LL8 mechs); a stand-in at the act's level is an option.
 - Official NPC encounters scale with the new budget rates but haven't been re-checked (needs an LCP).
 - Tier-3 fight length: Burning Eye Cantors (22 rounds), Voice of the Eye (19) and Cleanroom Wardens (18, 3/30 at the round cap) are still long; target 8–14. Ablation finds no single cause in Cleanroom Wardens (giving Sterile Field a recharge changed nothing), so this looks like T3 durability vs LL10 damage on the long map.
 - The Lance (LL5/LL10) is lost far more often than its squadmates (17–29 of 30 fights against bosses); check whether the AI over-commits it.

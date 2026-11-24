@@ -7,7 +7,7 @@ A personal, non-commercial **LANCER** tactics roguelike that runs in the browser
 ## Features
 
 - **A campaign in three acts**, each with a branching map of combat, elite, supply, rest and boss nodes, plus between-battle events. Damage, Repairs and spent gear carry over between fights.
-- **Fixed act levels.** Act 1 is fought at License Level 0, act 2 at LL5 and act 3 at LL10, and the squad must be levelled up properly between acts.
+- **Fixed act levels.** Act 1 is fought at License Level 2, act 2 at LL5 and act 3 at LL8, and the squad must be levelled up properly between acts.
 - **Pilots your way.** Use the in-game builder (checked live against the build rules), import COMP/CON exports, or pick one of the pre-built squads.
 - **Full mech combat.** Every LANCER player frame, CORE, weapon, system, mod, talent rank and core bonus is run by the engine, with cover, line of sight on a height map, reactions, statuses, structure and overheating.
 - **Original enemies.** The enemies are built from an original NPC ruleset with 20 teams. If you own the official NPC content pack, you can also import it locally.
@@ -26,7 +26,7 @@ npm install
 npm run dev            # then open http://localhost:5173
 ```
 
-The COMP/CON pregens are pre-loaded, so you can start a run straight away. To bring in your own pilots, build them at [compcon.app](https://compcon.app), choose **Export → Save as file (.json)**, and drop the file on the Hangar.
+A ready-made LL2 squad is pre-loaded, so you can start a run straight away; the COMP/CON pregens and more pre-built squads are in the Hangar's squad picker. To bring in your own pilots, build them at [compcon.app](https://compcon.app), choose **Export → Save as file (.json)**, and drop the file on the Hangar.
 
 ## Documentation
 

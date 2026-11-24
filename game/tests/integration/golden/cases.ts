@@ -9,9 +9,9 @@ import { importPilots } from '../../../src/import/compcon'
 import { buildMechUnit, setUidState } from '../../../src/rules/stats'
 import { generateMap } from '../../../src/run/mapgen'
 import { stateHash } from '../../../src/replay/replay'
-import pregens from '../../../src/data/pregens/pregens.json'
+import ll2 from '../../../src/data/squads/ll2.json'
 import ll5 from '../../../src/data/squads/ll5.json'
-import ll10 from '../../../src/data/squads/ll10.json'
+import ll8 from '../../../src/data/squads/ll8.json'
 import '../../../src/rules/effects/scripts'
 
 export const CASES = [
@@ -25,9 +25,9 @@ export const CASES = [
 const ROUNDS = 6
 
 const squads: Record<number, any[]> = {
-  1: ['Vanguard', 'Assault', 'Sniper', 'Fire Support'].map(n => (pregens as any[]).find(p => p.name === n)),
+  1: ll2 as any[],
   2: ll5 as any[],
-  3: ll10 as any[],
+  3: ll8 as any[],
 }
 
 export interface GoldenResult { id: string; round: number; winner: string | null; commands: number; hash: string }

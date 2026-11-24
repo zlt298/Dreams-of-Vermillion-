@@ -1,15 +1,15 @@
 [
  {
   "itemType": "pilot",
-  "id": "ll10-bastion",
+  "id": "ll8-bastion",
   "callsign": "Bastion",
   "name": "Oyelaran Vance",
-  "level": 10,
+  "level": 8,
   "mechSkills": [
-   6,
+   5,
    0,
    1,
-   5
+   4
   ],
   "talents": [
    {
@@ -26,11 +26,7 @@
    },
    {
     "id": "t_bonded",
-    "rank": 3
-   },
-   {
-    "id": "t_juggernaut",
-    "rank": 1
+    "rank": 2
    }
   ],
   "core_bonuses": [
@@ -39,9 +35,6 @@
    },
    {
     "id": "cb_sloped_plating"
-   },
-   {
-    "id": "cb_mount_retrofitting"
    }
   ],
   "licenses": [
@@ -55,16 +48,12 @@
    },
    {
     "id": "mf_blackbeard",
-    "rank": 3
-   },
-   {
-    "id": "mf_lancaster",
-    "rank": 1
+    "rank": 2
    }
   ],
   "mechs": [
    {
-    "id": "ll10-bastion-mech",
+    "id": "ll8-bastion-mech",
     "name": "Bastion's Drake",
     "frame": "mf_drake",
     "loadouts": [
@@ -82,6 +71,9 @@
        },
        {
         "id": "ms_personalizations"
+       },
+       {
+        "id": "ms_portable_bunker"
        }
       ],
       "mounts": [
@@ -136,15 +128,15 @@
  },
  {
   "itemType": "pilot",
-  "id": "ll10-kestrel",
+  "id": "ll8-kestrel",
   "callsign": "Kestrel",
   "name": "Ilse Marrow",
-  "level": 10,
+  "level": 8,
   "mechSkills": [
    1,
-   3,
    2,
-   6
+   4,
+   3
   ],
   "talents": [
    {
@@ -161,11 +153,7 @@
    },
    {
     "id": "t_gunslinger",
-    "rank": 3
-   },
-   {
-    "id": "t_hunter",
-    "rank": 1
+    "rank": 2
    }
   ],
   "core_bonuses": [
@@ -174,9 +162,6 @@
    },
    {
     "id": "cb_full_subjectivity_sync"
-   },
-   {
-    "id": "cb_integrated_ammo_feeds"
    }
   ],
   "licenses": [
@@ -190,16 +175,12 @@
    },
    {
     "id": "mf_barbarossa",
-    "rank": 3
-   },
-   {
-    "id": "mf_black_witch",
-    "rank": 1
+    "rank": 2
    }
   ],
   "mechs": [
    {
-    "id": "ll10-kestrel-mech",
+    "id": "ll8-kestrel-mech",
     "name": "Kestrel's Monarch",
     "frame": "mf_monarch",
     "loadouts": [
@@ -217,6 +198,9 @@
        },
        {
         "id": "ms_pattern_b_hex_charges"
+       },
+       {
+        "id": "ms_autoloader_drone"
        }
       ],
       "mounts": [
@@ -271,14 +255,14 @@
  },
  {
   "itemType": "pilot",
-  "id": "ll10-warden",
+  "id": "ll8-warden",
   "callsign": "Halo",
   "name": "Tomas Achebe",
-  "level": 10,
+  "level": 8,
   "mechSkills": [
-   4,
+   3,
    0,
-   6,
+   5,
    2
   ],
   "talents": [
@@ -296,22 +280,15 @@
    },
    {
     "id": "t_technophile",
-    "rank": 3
-   },
-   {
-    "id": "t_engineer",
-    "rank": 1
+    "rank": 2
    }
   ],
   "core_bonuses": [
    {
-    "id": "cb_superior_by_design"
-   },
-   {
-    "id": "cb_adaptive_reactor"
-   },
-   {
     "id": "cb_universal_compatibility"
+   },
+   {
+    "id": "cb_superior_by_design"
    }
   ],
   "licenses": [
@@ -325,16 +302,12 @@
    },
    {
     "id": "mf_barbarossa",
-    "rank": 3
-   },
-   {
-    "id": "mf_blackbeard",
-    "rank": 1
+    "rank": 2
    }
   ],
   "mechs": [
    {
-    "id": "ll10-warden-mech",
+    "id": "ll8-warden-mech",
     "name": "Halo's Saladin",
     "frame": "mf_saladin",
     "loadouts": [
@@ -355,6 +328,9 @@
        },
        {
         "id": "ms_pattern_a_smoke_charges"
+       },
+       {
+        "id": "ms_hardlight_defense_system"
        }
       ],
       "mounts": [
@@ -381,13 +357,13 @@
  },
  {
   "itemType": "pilot",
-  "id": "ll10-lance",
+  "id": "ll8-lance",
   "callsign": "Lance",
   "name": "Juno Okafor",
-  "level": 10,
+  "level": 8,
   "mechSkills": [
+   4,
    5,
-   6,
    0,
    1
   ],
@@ -406,11 +382,7 @@
    },
    {
     "id": "t_skirmisher",
-    "rank": 3
-   },
-   {
-    "id": "t_infiltrator",
-    "rank": 1
+    "rank": 2
    }
   ],
   "core_bonuses": [
@@ -419,9 +391,6 @@
    },
    {
     "id": "cb_titanomachy_mesh"
-   },
-   {
-    "id": "cb_mount_retrofitting"
    }
   ],
   "licenses": [
@@ -435,16 +404,12 @@
    },
    {
     "id": "mf_drake",
-    "rank": 3
-   },
-   {
-    "id": "mf_lancaster",
-    "rank": 1
+    "rank": 2
    }
   ],
   "mechs": [
    {
-    "id": "ll10-lance-mech",
+    "id": "ll8-lance-mech",
     "name": "Lance's Blackbeard",
     "frame": "mf_blackbeard",
     "loadouts": [
@@ -458,10 +423,13 @@
         "id": "ms_reinforced_cabling"
        },
        {
-        "id": "ms_ramjet"
+        "id": "ms_personalizations"
        },
        {
         "id": "ms_bulwark_mods"
+       },
+       {
+        "id": "ms_ramjet"
        }
       ],
       "mounts": [

@@ -7,7 +7,8 @@ import type { OfficialClass } from '../import/lcp'
 import { BUDGET_PER_PC, KIND_MULT, VETERAN_TRAITS, type EnemyTeam, type EnemyUnitDef, type Template, type Tier, unitBudget } from './ruleset'
 
 /** Official classes are stronger per budget point at tier 3 and weaker at tiers 1–2 than the hand-made teams
- *  (tuned with the balance sim against the LL0/LL5/LL10 sample squads). */
+ *  (tuned with the balance sim against the squads of the old LL0/LL5/LL10 act levels; acts are now LL2/LL5/LL8,
+ *  so re-check with the sim). */
 const OFFICIAL_SCALE: Record<Tier, Record<'standard' | 'elite' | 'boss', number>> = {
   1: { standard: 1.4, elite: 1, boss: 1.2 },
   2: { standard: 1.4, elite: 1.0, boss: 0.8 },

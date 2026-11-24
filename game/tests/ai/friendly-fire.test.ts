@@ -26,7 +26,7 @@ function watchFriendlyFire(b: Battle) {
 describe('AI friendly fire: Jackhammer Round', () => {
   // regression: aiTarget counted only hostiles around the impact, so it picked the tile next to an ally
   it('the AI does not aim Jackhammer Round next to its own ally (2 kinetic + knockback 2 to every adjacent character)', () => {
-    const pilots = (themed as any[]).find(s => s.id === 'longguns-ll0').pilots
+    const pilots = (themed as any[]).find(s => s.id === 'longguns-ll2').pilots
     const thresh = buildMechUnit(structuredClone(pilots.find((p: any) => p.callsign === 'Thresh')))
     const ally = pregenUnit('Assault')
     const e1 = pregenUnit('Sniper', 'enemy'), e2 = pregenUnit('Hacker', 'enemy')

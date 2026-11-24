@@ -25,27 +25,35 @@ import { STORY, STORY_ORDER, type StoryId, ACT_LOCATIONS, NODE_BRIEFS, failedRea
 import { iterationCount, iterLabel, nextIteration, telemetryPanel } from './forecast'
 import { rollEvent, type RunEvent } from '../run/events'
 import { playInterlude, RA_EYE_SVG } from './interlude'
-import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad, squadPresets } from './roster'
+import { loadRoster, addToRoster, saveRoster, pregenBuilds, readFiles, sampleSquad, squadPresets, SAMPLE_LEVELS, type SampleLevel } from './roster'
 import { esc } from './dom'
 import { alertDialog, confirmDialog, toast } from './modal'
 import { settingsForm, bindSettings } from './settings'
 import { builderScreen } from './builder-screen'
 import { portraitSlot, fillPortraits } from './portrait-slots'
-import { fitToLevel, readyProblems } from './builder'
+import { fitToLevel, newDraft, readyProblems } from './builder'
 import { validateBuild } from '../rules/legality'
 import { classify } from '../rules/effects/coverage'
 
 const MAX_SQUAD = 4
 
-/** The hangar's squad picker: themed squads per act level, plus the COMP/CON pregens and the sample squads. */
+/** The hangar's squad picker: per act level, the themed squads and the sample squad; act 1 also offers the
+ *  COMP/CON pregens (LL0 Everests, fitted up to the act 1 level when a run starts). */
 function squadOptions(): string {
   const presets = squadPresets()
-  const group = (level: number, act: number, extra: string) => `<optgroup label="LL${level} — act ${act}">${presets.filter(s => s.level === level).map(s => `<option value="${esc(s.id)}" title="${esc(s.blurb)}">${esc(s.name)} [${esc(s.difficulty)}] (LL${level}) — ${esc(s.pilots.map(p => p.callsign).join(', '))}</option>`).join('')}${extra}</optgroup>`
-  return `<option value="">Add a pre-built squad…</option>${group(0, 1, '<option value="pregens">COMP/CON pregens (LL0)</option>')}${group(5, 2, '<option value="ll5">Sample squad (LL5) — Drake, Monarch, Saladin, Blackbeard</option>')}${group(10, 3, '<option value="ll10">Sample squad (LL10) — Drake, Monarch, Saladin, Blackbeard</option>')}`
+  const group = (act: number) => {
+    const level = actLevel(act)
+    const themedOpts = presets.filter(s => s.level === level).map(s => `<option value="${esc(s.id)}" title="${esc(s.blurb)}">${esc(s.name)} [${esc(s.difficulty)}] (LL${level}) — ${esc(s.pilots.map(p => p.callsign).join(', '))}</option>`).join('')
+    const sample = (SAMPLE_LEVELS as readonly number[]).includes(level) ? `<option value="ll${level}">Sample squad (LL${level}) — Drake, Monarch, Saladin, Blackbeard</option>` : ''
+    const pregens = act === 1 ? `<option value="pregens" title="Fitted up to LL${level} when the run starts: spend the new points on the Squad preparation screen.">COMP/CON pregens (LL0 Everests)</option>` : ''
+    return `<optgroup label="LL${level} — act ${act}">${themedOpts}${sample}${pregens}</optgroup>`
+  }
+  return `<option value="">Add a pre-built squad…</option>${Array.from({ length: ACTS }, (_, i) => group(i + 1)).join('')}`
 }
 function squadPilots(id: string): PilotBuild[] {
   if (id === 'pregens') return pregenBuilds()
-  if (id === 'll5' || id === 'll10') return sampleSquad(id === 'll5' ? 5 : 10)
+  const sample = /^ll(\d+)$/.exec(id)
+  if (sample && (SAMPLE_LEVELS as readonly number[]).includes(Number(sample[1]))) return sampleSquad(Number(sample[1]) as SampleLevel)
   return squadPresets().find(s => s.id === id)?.pilots ?? []
 }
 
@@ -62,7 +70,9 @@ export class App {
 
   constructor(root: HTMLElement) {
     this.root = root
-    if (!this.roster.length) this.roster = addToRoster([], pregenBuilds().slice(0, 4))
+    // a first visit starts with the act 1 sample squad, so a run can begin straight away (the LL0 COMP/CON
+    // pregens are in the squad picker, but would have to be levelled to LL2 first)
+    if (!this.roster.length) this.roster = addToRoster([], sampleSquad(actLevel(1) as SampleLevel))
     this.title()
   }
 
@@ -294,7 +304,8 @@ export class App {
   openBuilder(build: PilotBuild | undefined, title: string, back: () => void, after?: (p: PilotBuild) => void, lockLevel = false) {
     this.clear()
     builderScreen(this.root, {
-      build, title, lockLevel, onCancel: back,
+      // a new pilot starts at the act 1 level, ready for a run once its points are spent
+      build: build ?? newDraft(actLevel(1)), title, lockLevel, onCancel: back,
       onSave: p => { this.roster = addToRoster(this.roster, [p]); after?.(p); back() },
     })
   }
@@ -398,7 +409,7 @@ export class App {
       if (!n) return
       const ahead = n.act > run.act
       const fight = n.kind === 'combat' || n.kind === 'elite' || n.kind === 'boss'
-      const stakes = n.kind === 'elite' ? 'Tougher hostiles. Win to choose a supply reward.' : n.kind === 'boss' ? `Ends Act ${n.act}. Win for a supply reward${n.act < ACTS ? ' and +5 License Levels' : ''}.` : n.kind === 'combat' ? 'After the fight: field repairs, and sometimes an event.' : n.kind === 'supply' ? 'No fight. Choose one item.' : 'No fight. Full repair; destroyed mechs are reprinted.'
+      const stakes = n.kind === 'elite' ? 'Tougher hostiles. Win to choose a supply reward.' : n.kind === 'boss' ? `Ends Act ${n.act}. Win for a supply reward${n.act < ACTS ? ` and +${actLevel(n.act + 1) - actLevel(n.act)} License Levels (LL${actLevel(n.act + 1)})` : ''}.` : n.kind === 'combat' ? 'After the fight: field repairs, and sometimes an event.' : n.kind === 'supply' ? 'No fight. Choose one item.' : 'No fight. Full repair; destroyed mechs are reprinted.'
       const state = n.cleared ? '<span class="good">✓ Cleared</span>' : avail.has(n.id) ? '<span class="warnc">▶ Available: click to enter</span>' : run.current === n.id ? 'You are here' : '<span class="muted">Locked: reach it through a connected node</span>'
       card.innerHTML = ahead
         ? `<div class="nk">${esc(KIND[n.kind] ?? n.kind)}</div><p><span class="redact">████ ███ ██████</span></p><div class="muted small">Not yet reached.</div>`
@@ -680,8 +691,10 @@ export class App {
   }
 
   /**
-   * Start a run: act 1 is fought at LL0. Pilots at another level (or with unspent points) get a run-only
-   * copy fitted to LL0 that must be finished in the builder before the run begins.
+   * Start a run: act 1 is fought at LL2 (actLevel(1)). Pilots at another level (or with unspent points) get a
+   * run-only copy fitted to that level that must be finished in the builder before the run begins: a lower-level
+   * pilot (such as an LL0 COMP/CON pregen) keeps its build and has new points to spend; a higher-level one is
+   * cut down to what the level allows.
    */
   prepareRun(squad: PilotBuild[]) {
     const level = actLevel(1)
@@ -698,7 +711,7 @@ export class App {
     this.clear()
     this.root.innerHTML = this.gateHtml({
       title: `Squad preparation — Act 1 (LL${level})`,
-      intro: `Every run starts at <b>License Level ${level}</b> (act 2 is LL${actLevel(2)}, act 3 LL${actLevel(3)}). Pilots at another level have been fitted to LL${level} for this run, keeping what that level allows — your roster pilots are not changed. Finish each build: it must be legal with every point spent.`,
+      intro: `Every run starts at <b>License Level ${level}</b> (act 2 is LL${actLevel(2)}, act 3 LL${actLevel(3)}). Pilots at another level have been fitted to LL${level} for this run: a lower-level pilot keeps its build and has new points to spend, a higher-level one keeps what LL${level} allows. Your roster pilots are not changed. Finish each build: it must be legal with every point spent.`,
       pilots, level, extra: '', go: 'Begin run', back: true, from: this.prepFrom,
     })
     this.on('[data-fit]', el => {
