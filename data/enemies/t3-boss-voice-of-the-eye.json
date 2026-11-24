@@ -211,6 +211,9 @@
     {
       "name": "Cantor of the Second Dawn",
       "role": "Support",
+      "templates": [
+        "Grunt"
+      ],
       "color": "#c0392b",
       "count": 1,
       "description": "Choir mechanics in red-eyed hoods. They keep the Voice whole and never stop singing.",
