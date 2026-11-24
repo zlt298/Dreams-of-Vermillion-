@@ -35,6 +35,18 @@ describe('Threat (p. 64, glossary p. 79)', () => {
     b.move(e, { x: 7, y: 5 })
     expect(b.log.some(l => /OVERWATCH/.test(l.text))).toBe(true)
   })
+  it('only at Threat 1: a gun does not Overwatch a mover that starts 2 spaces away; a listed Threat reaches further', () => {
+    const a = mech({ weapons: 'mw_assault_rifle' })
+    const e = mech({ weapons: 'mw_assault_rifle' }, 'enemy')
+    const b = arena([[a, { x: 2, y: 5 }], [e, { x: 4, y: 5 }]])
+    act(b, e)
+    b.move(e, { x: 8, y: 5 })
+    expect(b.log.some(l => /OVERWATCH/.test(l.text))).toBe(false)
+    expect(b.distance(a, e)).toBeGreaterThan(1)
+    const lance = mech({ weapons: 'mw_impact_lance' }) // Threat 3 listed on the weapon
+    const b2 = arena([[lance, { x: 2, y: 5 }], [mech({}, 'enemy'), { x: 4, y: 5 }]])
+    expect(b2.weaponThreat(lance, lance.weapons[0])).toBe(3)
+  })
 })
 
 describe('hard cover and flanking (p. 66)', () => {

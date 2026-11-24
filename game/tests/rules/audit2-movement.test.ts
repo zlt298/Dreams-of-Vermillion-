@@ -130,6 +130,20 @@ describe('teleport (core p.63, owner ruling)', () => {
     expect(a.moveLeft).toBe(0)
     expect(a.pos).toEqual({ x: 6, y: 5 })
   })
+  it('can teleport several times a turn: each movement action is one jump (standard move, Boost, Overcharge Boost)', () => {
+    const { a, b } = teleporter()
+    b.beginTurn(a)
+    b.move(a, { x: 7, y: 5 })
+    expect(a.pos).toEqual({ x: 7, y: 5 })
+    b.boost(a)
+    b.move(a, { x: 7, y: 8 })
+    expect(a.pos).toEqual({ x: 7, y: 8 })
+    expect(() => b.boost(a)).toThrow() // the action limit is what stops it, not the teleport
+    b.overcharge(a)
+    b.boost(a)
+    b.move(a, { x: 4, y: 8 })
+    expect(a.pos).toEqual({ x: 4, y: 8 })
+  })
   it('reaches up to Speed in one jump', () => {
     const { a, b } = teleporter()
     b.beginTurn(a)
