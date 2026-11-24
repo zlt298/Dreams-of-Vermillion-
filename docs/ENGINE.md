@@ -48,9 +48,10 @@ To add fidelity, register a script keyed by the item id in `game/src/rules/effec
 - Mines follow the core book (planted adjacent, not next to another mine; arm at the end of your turn; set off by entering an adjacent space; Hidden from the other side until found with Search for Mines, then disarmable), with one house rule: **your own side never sets off your mines** (the Smoke Mine, which is meant for allies, excepted).
 - Destructible terrain is a house rule: each level of a terrain block has 10 HP and Evasion 5, and a block with no levels left becomes rubble.
 - Player decisions (reactions, firing modes, effect choices) appear in an in-HUD picker. Per-mech policies (auto / ask / off) cover Brace, Overwatch and other reactions; the AI and Auto turns take the default.
-- Flight altitude is abstract (one level). Flyers land when Immobilized or Stunned, or when they fail an Agility save after Structure or Stress damage.
+- Flight altitude is abstract (one level). Flyers land when Immobilized or Stunned, when they fail an Agility save after Structure or Stress damage, or when they end a turn without moving (unless they hover). Each flying move follows a straight line (hover excepted); flyers pass over ground obstructions and dangerous terrain.
+- Teleporting spends a whole movement (up to Speed) however far it goes, still provokes Overwatch, is stopped by Immobilized and Grapple, and never causes a fall. Climbing is free up to your Size in levels, then 2 movement per extra level. Each specific reaction refreshes at round start. Falls happen at once, not at the end of the turn (house rule).
 - You can INVADE a willing ally: it succeeds automatically, deals no heat and isn't an attack (useful with beneficial invade options).
-- Not implemented (out of scope): pilots on foot (Eject, Mount, Jockey), and narrative skill checks and downtime.
+- Not implemented (out of scope): pilots on foot (Eject, Mount, Jockey), and narrative skill checks and downtime. Lifting, dragging, carrying and jumping aren't generic actions (only the items that do them).
 
 ### Saving, undo and checks
 - **Battles save as you play.** The battle in progress is saved after every action, so closing the tab or reloading doesn't lose it: **Continue run** goes straight back into the fight, exactly where it was.

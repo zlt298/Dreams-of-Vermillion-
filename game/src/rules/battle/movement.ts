@@ -32,13 +32,44 @@ export function passable(bt: Battle, u: Unit, at: Pos, mover: Set<string>): 'ok'
     if (o.destroyed) { res = 'pass'; continue } // wreckage: difficult terrain you can cross (not end a move on, simplification)
     if (o.flags.flat) continue // flat deployables (plates, open-topped bunkers) don't obstruct
     if (o.kind === 'deployable' && !o.flags.isCover && o.stats.size < 1) continue
-    if (o.flags.isCover || o.kind === 'deployable') return 'blocked'
-    // obstructed by hostile characters the same SIZE or larger; smaller ones (and allies) can be passed through
-    // Prowl (Infiltrator): pass freely through enemy spaces during your own turn
-    if (bt.hostile(u, o) && !bt.has(o, 'hidden') && o.stats.size >= u.stats.size && !(u.flags.prowl && u.activeTurn)) return 'blocked'
+    // flyers ignore obstructions on the ground (core p.63): they pass over, but can't end a move there
+    if (u.flying && !o.flying) { res = 'pass'; continue }
+    // objects obstruct by Size, whoever they belong to (core p.62): a larger mover passes through, but can't end there
+    if (o.kind === 'deployable') {
+      if (o.stats.size >= u.stats.size) return 'blocked'
+      res = 'pass'; continue
+    }
+    // characters (drones included): hostiles the same SIZE or larger obstruct, Hidden or not; smaller ones and
+    // allies can be passed through. Prowl (Infiltrator): pass freely through enemy spaces during your own turn
+    if (bt.hostile(u, o) && o.stats.size >= u.stats.size && !(u.flags.prowl && u.activeTurn)) return 'blocked'
     res = 'pass' // may pass through, but not end the move here
   }
   return res
+}
+
+/** Hover (Dusk Wing, Hornet; or a `hover` flag): flight without the straight-line and keep-moving rules (core p.63). */
+const HOVER_SCRIPTS = new Set(['frame:mf_dusk_wing', 'npc:npcf_ssc_total_suite_hornet'])
+export function hovers(bt: Battle, u: Unit): boolean {
+  return !!u.flags.hover || scriptsFor(u).some(s => HOVER_SCRIPTS.has(s.id))
+}
+
+/** Systems, frames and NPC features that give flight or propulsion (zero-g: not Slowed, core p.63). */
+const FLIGHT_SCRIPTS = new Set([
+  'ms_type_i_flight_system', 'ms_rapid_burst_jump_jet_system', 'ms_eva_module', 'cb_all_theater_movement_suite',
+  'frame:mf_dusk_wing', 'npc:npcf_ssc_flight_system_ace', 'npc:npcf_ssc_total_suite_hornet',
+])
+export function hasFlightSystem(bt: Battle, u: Unit): boolean {
+  return !!u.flags.flightCapable || scriptsFor(u).some(s => FLIGHT_SCRIPTS.has(s.id))
+}
+
+/**
+ * Must this unit's voluntary moves follow a straight line? Ramjet and OASIS Wall say so, and so does flight
+ * (core p.63) unless the flyer hovers. Teleports, zero-g floating and intangible movement are exempt.
+ */
+export function straightMovesOnly(bt: Battle, u: Unit): boolean {
+  if (u.flags.teleportMoves) return false
+  if (scriptsFor(u).some(sc => sc.straightMovesOnly?.(bt, u))) return true
+  return u.flying && !u.flags.zeroG && !u.flags.intangible && (u.kind === 'mech' || u.kind === 'npc') && !hovers(bt, u)
 }
 
 export function stepCost(bt: Battle, u: Unit, from: Pos, to: Pos): number {
@@ -50,13 +81,20 @@ export function stepCost(bt: Battle, u: Unit, from: Pos, to: Pos): number {
     return t?.kind === 'rubble' || t?.kind === 'water' || bt.areas.some(a => a.kind === 'difficult' && a.tiles.some(q => q.x === p.x && q.y === p.y))
   }) || fp.some(p => bt.units.some(o => o.destroyed && o.flags.wreck && footprint(o).some(q => q.x === p.x && q.y === p.y)))
   if (difficult) c *= 2
+  // climbing (core p.63): jump up to your Size in levels for free; each level beyond that is climbed at half speed
   const dh = elevationAt(bt.map, u, to) - elevationAt(bt.map, u, from)
-  if (dh > 1 && !u.flags.magClamps) c += dh - 1
+  const jump = Math.max(1, Math.floor(u.stats.size))
+  if (dh > jump && !u.flags.magClamps) c += 2 * (dh - jump)
   return c
 }
 
-/** Dijkstra over anchor positions. Returns reachable stop positions with cost and path. */
-export function reachable(bt: Battle, u: Unit, budget: number, opts: { ignoreEngagement?: boolean; noTakeOff?: boolean } = {}): Map<string, { pos: Pos; cost: number; prev?: string }> {
+export type ReachOpts = { ignoreEngagement?: boolean; noTakeOff?: boolean; anyPath?: boolean }
+
+/**
+ * Dijkstra over anchor positions. Returns reachable stop positions with cost and path. Straight-line movers
+ * (flight without hover, Ramjet, OASIS Wall) only reach spaces along the 8 straight lines, unless `anyPath`.
+ */
+export function reachable(bt: Battle, u: Unit, budget: number, opts: ReachOpts = {}): Map<string, { pos: Pos; cost: number; prev?: string }> {
   // a landed flyer takes off to move (see move()): preview its moves as flying, restoring its state afterwards
   if (u.flags.landed && !u.flying && !opts.noTakeOff) {
     u.flying = true; u.flags.landed = false
@@ -65,7 +103,19 @@ export function reachable(bt: Battle, u: Unit, budget: number, opts: { ignoreEng
   return reachableNow(bt, u, budget, opts)
 }
 
-function reachableNow(bt: Battle, u: Unit, budget: number, opts: { ignoreEngagement?: boolean }): Map<string, { pos: Pos; cost: number; prev?: string }> {
+/** Does entering `np` engage `u` with a hostile that stops its move (core p.62)? */
+function engagementStops(bt: Battle, u: Unit, np: Pos, startAdj: Set<string>, opts: ReachOpts): boolean {
+  // a Hidden mover isn't Engaged by anyone (engagement with a Hidden character is ignored both ways, core p.77)
+  if (opts.ignoreEngagement || u.flags['turn:disengaged'] || u.kind === 'deployable' || bt.has(u, 'hidden')) return false
+  for (const o of bt.alive()) {
+    // characters engage, drones included (core p.78); Hidden ones don't (p.77)
+    if (!bt.hostile(u, o) || startAdj.has(o.id) || (o.kind !== 'mech' && o.kind !== 'npc' && o.kind !== 'drone') || bt.has(o, 'hidden') || u.flags.feint === o.id) continue
+    if ((o.stats.size >= u.stats.size || o.flags.localizedMaze) && bt.adjacent(u, o, np)) return true
+  }
+  return false
+}
+
+function reachableNow(bt: Battle, u: Unit, budget: number, opts: ReachOpts): Map<string, { pos: Pos; cost: number; prev?: string }> {
   const startKey = key(u.pos)
   const dist = new Map<string, { pos: Pos; cost: number; prev?: string; terminal: boolean; stop: boolean }>()
   const startAdj = new Set(bt.alive().filter(o => bt.hostile(u, o) && bt.adjacent(u, o)).map(o => o.id))
@@ -73,19 +123,39 @@ function reachableNow(bt: Battle, u: Unit, budget: number, opts: { ignoreEngagem
   const open: string[] = [startKey]
   const mover = new Set([u.id])
   if (u.flags.teleportMoves) {
-    // teleporting: every free space within range, ignoring terrain, obstacles and engagement
+    // teleporting (core p.63): one jump to any free space within Speed (and what's left of the move), ignoring
+    // terrain, obstacles and engagement. It spends that whole movement however far it goes (owner ruling).
+    const range = Math.min(budget, u.stats.speed)
     const out = new Map<string, { pos: Pos; cost: number; prev?: string }>()
     out.set(startKey, { pos: u.pos, cost: 0 })
-    for (let y = u.pos.y - budget; y <= u.pos.y + budget; y++) for (let x = u.pos.x - budget; x <= u.pos.x + budget; x++) {
+    for (let y = u.pos.y - range; y <= u.pos.y + range; y++) for (let x = u.pos.x - range; x <= u.pos.x + range; x++) {
       const np = { x, y }
       const c = Math.max(Math.abs(x - u.pos.x), Math.abs(y - u.pos.y))
-      if (!c || c > budget || bt.passable(u, np, mover) !== 'ok' || bt.teleportBlocked(u, np) || bt.endBlocked(u, np)) continue
-      out.set(key(np), { pos: np, cost: c, prev: startKey })
+      if (!c || c > range || bt.passable(u, np, mover) !== 'ok' || bt.teleportBlocked(u, np) || bt.endBlocked(u, np)) continue
+      out.set(key(np), { pos: np, cost: range, prev: startKey })
     }
     ;(out as any).all = out
     return out
   }
-  while (open.length) {
+  if (!opts.anyPath && straightMovesOnly(bt, u)) {
+    // one straight line (orthogonal or diagonal) per move
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue
+      let prevKey = startKey, prevPos = u.pos, cost = 0
+      for (let k = 1; ; k++) {
+        const np = { x: u.pos.x + dx * k, y: u.pos.y + dy * k }
+        const pass = bt.passable(u, np, mover)
+        if (pass === 'blocked') break
+        cost += bt.stepCost(u, prevPos, np)
+        if (cost > budget) break
+        const nk = key(np)
+        const terminal = engagementStops(bt, u, np, startAdj, opts)
+        dist.set(nk, { pos: np, cost, prev: prevKey, terminal, stop: pass === 'ok' })
+        if (terminal) break
+        prevKey = nk; prevPos = np
+      }
+    }
+  } else while (open.length) {
     open.sort((a, b) => dist.get(a)!.cost - dist.get(b)!.cost)
     const k = open.shift()!
     const cur = dist.get(k)!
@@ -100,13 +170,7 @@ function reachableNow(bt: Battle, u: Unit, budget: number, opts: { ignoreEngagem
       const nk = key(np)
       const prev = dist.get(nk)
       if (prev && prev.cost <= c) continue
-      let terminal = false
-      if (!opts.ignoreEngagement && !u.flags['turn:disengaged'] && u.kind !== 'deployable') {
-        for (const o of bt.alive()) {
-          if (!bt.hostile(u, o) || startAdj.has(o.id) || (o.kind !== 'mech' && o.kind !== 'npc') || bt.has(o, 'hidden') || u.flags.feint === o.id) continue
-          if ((o.stats.size >= u.stats.size || o.flags.localizedMaze) && bt.adjacent(u, o, np)) { terminal = true; break }
-        }
-      }
+      const terminal = engagementStops(bt, u, np, startAdj, opts)
       dist.set(nk, { pos: np, cost: c, prev: k, terminal, stop: pass === 'ok' })
       open.push(nk)
     }
@@ -118,7 +182,7 @@ function reachableNow(bt: Battle, u: Unit, budget: number, opts: { ignoreEngagem
   return out
 }
 
-export function pathTo(bt: Battle, u: Unit, dest: Pos, budget: number, opts: { ignoreEngagement?: boolean; noTakeOff?: boolean } = {}): { path: Pos[]; cost: number } | null {
+export function pathTo(bt: Battle, u: Unit, dest: Pos, budget: number, opts: ReachOpts = {}):{ path: Pos[]; cost: number } | null {
   const r = bt.reachable(u, budget, opts)
   const all: Map<string, any> = (r as any).all
   const d = r.get(key(dest))
@@ -156,9 +220,10 @@ export function move(bt: Battle, u: Unit, dest: Pos, opts: MoveOpts = { mode: 's
   let p: { path: Pos[]; cost: number } | null
   try {
     // teleporting movers (u.flags.teleportMoves) aren't held by engagement
-    p = bt.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves, noTakeOff: opts.mode === 'involuntary' })
-    // Ramjet / OASIS Wall: voluntary moves must follow a straight line
-    if (opts.mode !== 'involuntary' && !u.flags.teleportMoves && scriptsFor(u).some(sc => sc.straightMovesOnly?.(bt, u))) p = bt.straightPath(u, dest, budget)
+    // flight (without hover), Ramjet, OASIS Wall: each voluntary move follows a straight line (reachable keeps to it)
+    p = bt.pathTo(u, dest, budget, { ignoreEngagement: opts.ignoreEngagement || opts.mode === 'involuntary' || !!u.flags.teleportMoves, noTakeOff: opts.mode === 'involuntary', anyPath: opts.mode === 'involuntary' })
+    // explain a refused straight-line move (straightPath throws the reason)
+    if (!p && opts.mode !== 'involuntary' && straightMovesOnly(bt, u)) { bt.straightPath(u, dest, budget); throw new Error('Engagement stops the move before that space') }
     if (!p) throw new Error('Unreachable')
     if (opts.mode !== 'involuntary' && p.path.length > 1) for (const sc of scriptsFor(u)) { const v = sc.validateMove?.(bt, u, dest, p.path, opts.mode); if (v && v !== true) throw new Error(v) }
     if (p.path.length > 1) for (const o of bt.alive()) if (o !== u) for (const sc of scriptsFor(o)) { const v = sc.validateAnyMove?.(bt, o, u, dest, opts.mode); if (v && v !== true) throw new Error(v) }
@@ -215,11 +280,18 @@ export function undoMove(bt: Battle, u: Unit) {
   bt.emit({ type: 'move', unitId: u.id, path: [from, m.pos] })
 }
 
-/** Move along an explicit path (straight swings, scripted dashes): same triggers as a normal move. */
-export function moveAlong(bt: Battle, u: Unit, path: Pos[]) {
+/**
+ * Move along an explicit path (straight swings, scripted dashes): same triggers as a normal move, Overwatch
+ * included (core p.73: any voluntary movement started in Threat), unless the movement provokes no reactions.
+ */
+export function moveAlong(bt: Battle, u: Unit, path: Pos[], opts: { noReactions?: boolean } = {}) {
   if (path.length < 2) return
   u.actedThisTurn = true
   u.flags['turn:moved'] = true
+  if (!opts.noReactions && u.kind !== 'deployable' && !u.flags['turn:disengaged']) {
+    bt.triggerOverwatch(u)
+    if (u.destroyed || bt.has(u, 'stunned') || bt.has(u, 'immobilized')) return
+  }
   bt.followPath(u, path)
 }
 
@@ -230,7 +302,9 @@ export function followPath(bt: Battle, u: Unit, path: Pos[]) {
   for (let si = 1; si < path.length; si++) {
     const step = path[si]
     const e = elevationAt(bt.map, u, step)
-    if (e < prevE) maxDrop = Math.max(maxDrop, prevE - e)
+    // a teleport (a jump between non-adjacent spaces) lands on its destination: it is never a fall (core p.63)
+    const teleport = chebyshev(path[si - 1], step) > 1
+    if (e < prevE && !teleport) maxDrop = Math.max(maxDrop, prevE - e)
     prevE = e
     lowest = Math.min(lowest, e)
     const before = footprint(u, path[si - 1])
@@ -240,12 +314,8 @@ export function followPath(bt: Battle, u: Unit, path: Pos[]) {
       if (bt.mineTriggeredBy(m, u, before)) bt.detonateMine(m, u)
       if (u.destroyed) break
     }
-    // hazard tiles
-    const hz = footprint(u).some(q => tileAt(bt.map, q)?.kind === 'hazard')
-    if (hz && !u.flags['round:hazard'] && !u.flags.ignoreHazard) {
-      u.flags['round:hazard'] = true
-      if (!bt.check(u, 'eng')) bt.applyDamage(u, [{ type: 'Energy', amount: 5 }], {})
-    }
+    // dangerous terrain (core p.62): once per round, an Engineering check or 5 damage of the hazard's type; flyers pass over it
+    if (!u.flying) hazardCheck(bt, u)
     if (u.destroyed) break
   }
   bt.emit({ type: 'move', unitId: u.id, path })
@@ -255,11 +325,51 @@ export function followPath(bt: Battle, u: Unit, path: Pos[]) {
     bt.say(`${u.name} falls ${maxDrop} spaces.`)
     bt.applyDamage(u, [{ type: 'Kinetic', amount: dmg }], { ap: true })
   }
-  // hidden is lost if no longer in cover / out of sight
-  if (bt.has(u, 'hidden') && !(u.flags.prowl && u.activeTurn) && !bt.canHide(u)) bt.removeStatus(u, 'hidden')
   if (bt.grapples.length && bt.draggingId !== u.id) bt.syncGrapples()
   if (u.flags.zeroG || bt.areas.some(a => a.kind === 'zero_g')) bt.syncZeroG(u)
+  // Hidden is lost by anyone (not just the mover) a hostile can now see without cover
+  recheckHidden(bt)
   bt.updateEngagementTerminal(u)
+}
+
+/** Dangerous terrain (core p.62): entering it or ending a turn in it, once per round: Engineering check or 5 damage. */
+export function hazardCheck(bt: Battle, u: Unit) {
+  if (u.destroyed || u.flags.ignoreHazard || u.flags['round:hazard']) return
+  const tile = footprint(u).map(q => tileAt(bt.map, q)).find(t => t?.kind === 'hazard')
+  if (!tile) return
+  u.flags['round:hazard'] = true
+  // the hazard's damage type (kinetic, energy, explosive or burn) defaults to Energy
+  if (!bt.check(u, 'eng')) bt.applyDamage(u, [{ type: tile.hazardType ?? 'Energy', amount: 5 }], {})
+}
+
+/**
+ * Does `u` keep Hidden where it stands (core p.69)? It's lost once a hostile can draw line of sight to it without
+ * the cover that hid it. Invisible characters keep it anywhere, and Prowl keeps it through the Infiltrator's own turn.
+ */
+export function keepsHidden(bt: Battle, u: Unit): boolean {
+  if (u.flags.trackedBy && !bt.unit(u.flags.trackedBy)?.destroyed) return false
+  if (u.flags.prowl && u.activeTurn) return true
+  if (bt.has(u, 'invisible') && !bt.inRevealField(u)) return true
+  const insideSoft = footprint(u).every(p => tileAt(bt.map, p)?.kind === 'forest' || bt.areas.some(a => a.kind === 'soft_cover' && a.tiles.some(t => t.x === p.x && t.y === p.y)))
+  return bt.alive().filter(o => bt.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc')).every(o => {
+    if (!bt.los(o, u)) return true
+    const c = bt.cover(o, u)
+    return c === 'hard' || (c === 'soft' && insideSoft)
+  })
+}
+
+/**
+ * Re-check every Hidden character: after any unit moves, after terrain changes or cover is destroyed, and when
+ * Invisible ends. Those no longer in cover from every hostile that can see them lose Hidden.
+ */
+export function recheckHidden(bt: Battle) {
+  if ((bt as any).recheckingHidden) return
+  const hidden = bt.alive().filter(u => u.statuses.some(s => s.id === 'hidden'))
+  if (!hidden.length) return
+  ;(bt as any).recheckingHidden = true
+  try {
+    for (const u of hidden) if (!u.destroyed && bt.has(u, 'hidden') && !keepsHidden(bt, u)) bt.removeStatus(u, 'hidden')
+  } finally { (bt as any).recheckingHidden = false }
 }
 
 /** Push/pull (involuntary). dir: +1 away from source, -1 toward source. */
@@ -283,7 +393,8 @@ export function forceMove(bt: Battle, target: Unit, source: Unit | Pos, spaces: 
     // constructs that dissipate when something is pushed into them (H0R_OS Ideal Image)
     for (const o of bt.alive()) if (o.flags.dissipateOnPush && footprint(o).some(q => footprint(target, np).some(r => r.x === q.x && r.y === q.y))) bt.removeUnit(o, 'dissipates')
     if (bt.alive().some(o => scriptsFor(o).some(sc => sc.blockForcedStep?.(bt, o, target, target.pos, np)))) { bt.say(`${target.name} is stopped by a barrier.`); break }
-    if (bt.passable(target, np, new Set([target.id])) !== 'ok') {
+    // involuntary movement passes through allies and smaller characters (core p.62), but can't end there (below)
+    if (bt.passable(target, np, new Set([target.id])) === 'blocked') {
       bt.say(`${target.name} slams into an obstacle.`)
       break
     }
@@ -292,7 +403,8 @@ export function forceMove(bt: Battle, target: Unit, source: Unit | Pos, spaces: 
     target.pos = np
     path.push(np)
   }
-  while (path.length > 1 && bt.endBlocked(target, path[path.length - 1])) { path.pop(); target.pos = path[path.length - 1] }
+  const self = new Set([target.id])
+  while (path.length > 1 && (bt.passable(target, path[path.length - 1], self) !== 'ok' || bt.endBlocked(target, path[path.length - 1]))) { path.pop(); target.pos = path[path.length - 1] }
   if (path.length > 1) {
     bt.say(`${target.name} is ${dir === 1 ? 'knocked back' : 'pulled'} ${path.length - 1}.`)
     bt.followPath(target, path)

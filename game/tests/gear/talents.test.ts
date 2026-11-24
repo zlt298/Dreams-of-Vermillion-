@@ -31,6 +31,7 @@ describe('Ace', () => {
   it('Ace 3 (Supersonic): spin up and nominate a target when ending the turn flying', () => {
     const { a, b } = setup9([['t_ace', 3]])
     a.flying = true
+    b.move(a, { x: a.pos.x + 1, y: a.pos.y }) // a flyer must move to stay up (core p.63)
     b.useCustom(a, custom(b, a, /Spin Up/))
     b.endTurn(a)
     expect(a.flags.supersonic).toBeDefined()
@@ -38,6 +39,7 @@ describe('Ace', () => {
   it('Ace 3: Supersonic flies you next to the nominee when its turn ends', () => {
     const { a, e, b } = setup12([['t_ace', 3]])
     a.flying = true
+    b.move(a, { x: a.pos.x + 1, y: a.pos.y }) // a flyer must move to stay up (core p.63)
     b.useCustom(a, custom(b, a, /Spin Up/))
     b.endTurn(a)
     expect(a.flags.supersonic).toBe(e.id)

@@ -2,7 +2,7 @@
 // best plan through the normal Battle API, so the AI obeys exactly the same rules as players.
 import { PendingChoice, type Battle } from '../rules/battle'
 import { Lancer } from '../data/lancer'
-import { blastTiles, lineTiles, coneTiles, burstTiles, key, unitsOnTiles, footprint, tileAt } from '../rules/grid'
+import { blastTiles, lineTiles, coneTiles, burstTiles, key, unitsOnTiles, footprint, tileAt, distanceToTile } from '../rules/grid'
 import type { Effect, Pos, Unit, Weapon } from '../rules/types'
 import type { CustomAction } from '../rules/effects/registry'
 import { averageDice } from '../rules/rng'
@@ -173,8 +173,9 @@ function customValue(b: Battle, u: Unit, a: CustomAction, from: Pos): { value: n
     if (a.target === 'tile' && a.area) {
       let best: { value: number; target?: Pos } | null = null
       for (const h of hostiles) {
-        const aim = h.pos
-        if (a.range != null && b.distance(u, h) > a.range + 1) continue
+        // aim at the hostile's nearest space: the engine checks the action's range to the aimed space
+        const aim = footprint(h).reduce((x, y) => (distanceToTile(b.map, u, y) < distanceToTile(b.map, u, x) ? y : x))
+        if (a.range != null && a.area.shape !== 'line' && a.area.shape !== 'cone' && distanceToTile(b.map, u, aim) > a.range) continue
         const tiles = a.area.shape === 'line' ? lineTiles(b.map, u, aim, a.area.size) : a.area.shape === 'cone' ? coneTiles(b.map, u, aim, a.area.size) : blastTiles(b.map, aim, a.area.size)
         let v = 0
         for (const t of unitsOnTiles(b.alive(), tiles)) if (t !== u) v += b.hostile(u, t) ? (f ? effectValue(b, u, t, effects) : (a.aiScore?.(b, u, t) ?? 3) * 0.6) : -4

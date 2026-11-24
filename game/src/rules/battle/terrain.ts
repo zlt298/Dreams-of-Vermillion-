@@ -189,10 +189,11 @@ export function disengage(bt: Battle, u: Unit) {
 export function canHide(bt: Battle, u: Unit): boolean {
   if (u.flags.trackedBy && !bt.unit(u.flags.trackedBy)?.destroyed) return false
   if (bt.inRevealField(u)) return false
+  // Engaged characters can't Hide, even Invisible ones (core p.69)
+  if (bt.isEngaged(u)) return false
   if (bt.has(u, 'invisible')) return true
   // Prowl (Infiltrator): Hide even in plain sight during your own turn
-  if (u.flags.prowl && u.activeTurn && !bt.isEngaged(u)) return true
-  if (bt.isEngaged(u)) return false
+  if (u.flags.prowl && u.activeTurn) return true
   const insideSoft = footprint(u).every(p => tileAt(bt.map, p)?.kind === 'forest' || bt.areas.some(a => a.kind === 'soft_cover' && a.tiles.some(t => t.x === p.x && t.y === p.y)))
   return bt.alive().filter(o => bt.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc')).every(o => {
     if (!bt.los(o, u)) return true

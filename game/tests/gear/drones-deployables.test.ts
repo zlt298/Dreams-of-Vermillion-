@@ -182,6 +182,6 @@ describe('fields and AI', () => {
     const b = battle([...players, ...enemies], flatMap(16, 20), 11)
     autoBattle(b, 10)
     expect(aiErrors).toEqual([])
-    expect(b.units.filter(u => u.kind === 'drone' || u.kind === 'deployable').length).toBe(16) // seeded: exactly what this battle deploys (16 since the AI deploy-once fix)
+    expect(b.units.filter(u => u.kind === 'drone' || u.kind === 'deployable').length).toBe(13) // seeded: exactly what this battle deploys (13 since audit 2's movement rules: drones engage, Threat 1 Overwatch, flight)
   })
 })
