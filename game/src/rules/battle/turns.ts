@@ -12,6 +12,7 @@ import { hasTag, tagVal, nextUid, isWeaponType } from '../stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
+import { hazardCheck, hovers } from './movement'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
 
 export function start(bt: Battle) {
@@ -67,8 +68,9 @@ export function beginTurn(bt: Battle, u: Unit) {
   u.actedThisTurn = false
   u.boostedThisTurn = false
   u.flags.fullTechLeft = 0
-  for (const k of Object.keys(u.flags)) if (k.startsWith('turn:') || k.startsWith('react:')) delete u.flags[k]
+  for (const k of Object.keys(u.flags)) if (k.startsWith('turn:')) delete u.flags[k]
   // "You can only take one reaction per turn – your turn or other characters' turns": refresh everyone's per-turn budget
+  // (each specific reaction is 1/round on top of that: see canSpend; those refresh at round start)
   for (const o of bt.units) if (!o.destroyed) o.reactionsLeft = bt.has(o, 'bracing_recovery') ? 0 : o.reactionsPerRound
   bt.tickStatuses(u, true)
   if (bt.grapples.length) bt.grappleContest(u)
@@ -106,11 +108,10 @@ export function endTurnInner(bt: Battle, u: Unit) {
   if (bt.has(u, 'hidden') && bt.inRevealField(u)) bt.removeStatus(u, 'hidden')
   // Prowl ends with the turn: lose Hidden if exposed now
   if (u.flags.prowl && bt.has(u, 'hidden')) { u.activeTurn = false; const ok = bt.canHide(u); u.activeTurn = true; if (!ok) bt.removeStatus(u, 'hidden') }
-  // dangerous terrain: ending a turn in it also requires the (once per round) Engineering check
-  if (!u.destroyed && !u.flying && !u.flags.ignoreHazard && !u.flags['round:hazard'] && footprint(u).some(q => tileAt(bt.map, q)?.kind === 'hazard')) {
-    u.flags['round:hazard'] = true
-    if (!bt.check(u, 'eng')) bt.applyDamage(u, [{ type: 'Energy', amount: 5 }], {})
-  }
+  // flight (core p.63): a flyer that didn't move at least 1 space this turn falls (lands), unless it hovers
+  if (!u.destroyed && u.flying && !u.flags['turn:moved'] && !u.flags.zeroG && !hovers(bt, u)) bt.land(u, 'stalls without moving')
+  // dangerous terrain: ending a turn in it also requires the (once per round) Engineering check; flyers are above it
+  if (!u.flying) hazardCheck(bt, u)
   // burn
   if (u.burn > 0 && !u.destroyed) {
     if (bt.check(u, 'eng')) { bt.say(`${u.name} clears burn.`); u.burn = 0 }
@@ -212,9 +213,9 @@ export function quickUsed(bt: Battle, u: Unit, action: string): boolean {
 export function canSpend(bt: Battle, u: Unit, cost: 'quick' | 'full' | 'protocol' | 'free' | 'reaction' | 'move', action?: string): true | string {
   if (u.destroyed) return 'Destroyed'
   if (cost === 'reaction') {
-    // one reaction per turn (any character's turn); each reaction type 1/round, refreshing at your own turn start
+    // one reaction per turn (any character's turn); each specific reaction 1/round, refreshing at round start
     if (u.reactionsLeft <= 0) return 'Already reacted this turn'
-    if (action && u.flags[`react:${action}`] && !(action === 'overwatch' && u.traits?.includes('reflex'))) return `${actionLabel(action)} already used this round`
+    if (action && u.flags[`round:react:${action}`] && !(action === 'overwatch' && u.traits?.includes('reflex'))) return `${actionLabel(action)} already used this round`
     if (bt.has(u, 'grappled') && !(action === 'brace' && u.flags.braceWhileGrappled)) return 'Grappled'
     if (bt.has(u, 'stunned')) return 'Stunned'
     if (bt.has(u, 'jammed')) return 'Jammed'
@@ -247,7 +248,7 @@ export function spend(bt: Battle, u: Unit, cost: 'quick' | 'full' | 'protocol' |
     for (const o of bt.alive()) for (const sc of scriptsFor(o)) sc.onAnyAction?.(bt, o, u, 'reaction')
     u.reactionsLeft--
     if (u.flags.ghostweave && bt.has(u, 'invisible')) bt.removeStatus(u, 'invisible')
-    if (action) u.flags[`react:${action}`] = true
+    if (action) u.flags[`round:react:${action}`] = true
     if (bt.has(u, 'hidden')) bt.removeStatus(u, 'hidden') // taking reactions reveals you
     return
   }

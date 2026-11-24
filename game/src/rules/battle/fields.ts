@@ -12,6 +12,7 @@ import { hasTag, tagVal, nextUid, isWeaponType } from '../stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
+import { hasFlightSystem } from './movement'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
 
 /** Every persistent zone on the map (terrain areas, drone and system fields), for overlays and tooltips. */
@@ -40,14 +41,17 @@ export function fieldOverlays(bt: Battle): FieldOverlay[] {
   return out
 }
 
-/** Zero-g areas: characters inside can fly and can't fall, but are Slowed unless they already fly. */
+/** Zero-g areas (core p.63): characters inside can fly and can't fall, but are Slowed without a propulsion or flight system. */
 export function syncZeroG(bt: Battle, u: Unit) {
   if (u.destroyed || (u.kind !== 'mech' && u.kind !== 'npc')) return
   const inside = bt.areas.some(a => a.kind === 'zero_g' && footprint(u).some(p => a.tiles.some(t => t.x === p.x && t.y === p.y)))
   if (inside && !u.flags.zeroG) {
     u.flags.zeroG = true
     u.flags.zeroGNative = u.flying
-    if (!u.flying) { u.flying = true; u.statuses.push({ id: 'slowed', source: u.id, data: { zeroG: true } }); bt.say(`${u.name} floats in zero-g.`, 'status') }
+    // owning flight (even switched off, or landed) is enough to manoeuvre
+    const propelled = u.flying || !!u.flags.landed || hasFlightSystem(bt, u)
+    if (!u.flying) { u.flying = true; bt.say(`${u.name} floats in zero-g.`, 'status') }
+    if (!propelled) u.statuses.push({ id: 'slowed', source: u.id, data: { zeroG: true } })
   } else if (!inside && u.flags.zeroG) {
     u.flags.zeroG = false
     u.flying = !!u.flags.zeroGNative
@@ -221,9 +225,30 @@ function heatSelfOf(bt: Battle, u: Unit, a: CustomAction): number {
   return rollDice(bt.rng, tag.val as any).total
 }
 
+/**
+ * A scripted action's declared range (from the user, footprint-aware) and target side, for every caller: the
+ * player, the AI and scripts alike. Actions without a target (or only aimed at their user) aren't checked here.
+ */
+export function customTargetValid(bt: Battle, u: Unit, a: CustomAction, target?: Unit | Pos): true | string {
+  if (!target || a.target === 'none') return true
+  const unit = 'id' in target ? (target as Unit) : undefined
+  if (a.target === 'self') return !unit || unit === u ? true : 'This only targets yourself'
+  if (unit) {
+    if (a.target === 'ally' && bt.hostile(u, unit)) return 'Target yourself or an ally'
+    if (a.target === 'enemy' && !bt.hostile(u, unit) && unit.side !== 'neutral') return 'Target a hostile'
+    if (a.range != null && bt.distance(u, unit) > a.range) return `Out of range (${a.range})`
+    return true
+  }
+  // a Line or Cone is aimed in a direction: its range is its length, not a distance to the aimed space
+  if (a.range != null && a.area?.shape !== 'line' && a.area?.shape !== 'cone' && distanceToTile(bt.map, u, target as Pos) > a.range) return `Out of range (${a.range})`
+  return true
+}
+
 export function useCustom(bt: Battle, u: Unit, a: CustomAction, target?: Unit | Pos) {
   const ok = a.usable(bt, u)
   if (ok !== true) throw new Error(ok)
+  const valid = customTargetValid(bt, u, a, target)
+  if (valid !== true) throw new Error(valid)
   const cost = a.activation === 'quick_tech' ? null : a.activation === 'full_tech' ? 'full' : a.activation
   if (a.activation === 'quick_tech') {
     const option = a.techOption ?? `qt:${a.sourceUid ?? a.key}`

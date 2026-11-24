@@ -3,7 +3,7 @@ import type { Pos, Unit } from './types'
 
 export type TileKind = 'ground' | 'block' | 'forest' | 'rubble' | 'water' | 'hazard'
 /** `skin` only changes how a tile looks (e.g. 'mars': regolith breaking through a cleanroom floor). */
-export interface Tile { h: number; kind: TileKind; skin?: 'mars'; indestructible?: boolean; owner?: string }
+export interface Tile { h: number; kind: TileKind; skin?: 'mars'; indestructible?: boolean; owner?: string; /** dangerous terrain's damage type (default Energy) */ hazardType?: 'Kinetic' | 'Energy' | 'Explosive' | 'Burn' }
 
 export interface GridMap {
   w: number

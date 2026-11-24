@@ -604,7 +604,7 @@ describe('audit: reactions, grapples and the rest of the action list', () => {
     expect(b.canSpend(a, 'reaction', 'overwatch')).not.toBe(true)
   })
 
-  it('a reaction used this round stays used until its owner starts its next turn, even across a new round', () => {
+  it('a reaction used this round stays used through its owner\'s own turn and refreshes at the next round start (owner ruling)', () => {
     const a = pregenUnit('Assault'); const a2 = pregenUnit('Vanguard')
     const e = pregenUnit('Sniper', 'enemy')
     a.pos = { x: 5, y: 5 }; a2.pos = { x: 1, y: 12 }; e.pos = { x: 6, y: 5 }
@@ -618,10 +618,10 @@ describe('audit: reactions, grapples and the rest of the action list', () => {
     expect(a.reactionsLeft).toBe(r - 1)
     b.endTurn(e)
     b.beginTurn(a2); b.endTurn(a2)
-    // round 2 opens with the enemy (a player took the last turn): a's Overwatch is still spent
+    // round 2 opens with the enemy (a player took the last turn): a's Overwatch is back (it refreshes at round start)
     expect(b.round).toBe(2)
     expect(b.currentSide).toBe('enemy')
-    expect(b.canSpend(a, 'reaction', 'overwatch')).not.toBe(true)
+    expect(b.canSpend(a, 'reaction', 'overwatch')).toBe(true)
   })
 
   it('a Grapple ends when the two are knocked apart', () => {

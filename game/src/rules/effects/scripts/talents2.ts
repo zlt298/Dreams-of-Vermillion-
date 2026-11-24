@@ -71,15 +71,15 @@ registerScripts([
       self.flying = true
       let best: { pos: Pos; cost: number } | null = null
       try {
-        const r = b.reachable(self, 200, { ignoreEngagement: true })
+        const r = b.reachable(self, 200, { ignoreEngagement: true, anyPath: true })
         for (const n of r.values()) if (footprint(self).length && chebyshev(n.pos, u.pos) <= Math.max(1, Math.ceil(u.stats.size)) && b.adjacent({ ...self, pos: n.pos } as Unit, u) && (!best || n.cost < best.cost)) best = n
       } finally { self.flying = was }
       if (!best) return
       if (!b.offerReaction(self, 'supersonic', 'Supersonic?', `${u.name}'s turn ended. Fly to it?`)) return
       b.spend(self, 'reaction', 'supersonic')
       self.flying = true
-      const p = b.pathTo(self, best.pos, 200, { ignoreEngagement: true })
-      if (p) b.moveAlong(self, p.path)
+      const p = b.pathTo(self, best.pos, 200, { ignoreEngagement: true, anyPath: true })
+      if (p) b.moveAlong(self, p.path, { noReactions: true })
       b.say(`${self.name} goes supersonic to ${u.name}!`)
     },
   },
@@ -196,7 +196,7 @@ registerScripts([
           if (t && !b.save(t, 'sys', self.stats.save, 0, self)) { t.flags.blindUntil = b.round + 1; b.say(`${self.name}'s flash bomb blinds ${t.name}!`) }
         }
         if (b.has(self, 'immobilized') || b.has(self, 'stunned')) return
-        const r = b.reachable(self, self.stats.speed, { ignoreEngagement: true })
+        const r = b.reachable(self, self.stats.speed, { ignoreEngagement: true, anyPath: true })
         const far = (p: Pos) => Math.min(99, ...hostiles(b, self).map(h => chebyshev(h.pos, p)))
         const spots = [...r.values()].filter(n => n.cost > 0)
         if (!spots.length) return
@@ -206,8 +206,8 @@ registerScripts([
         const k = b.choose({ kind: 'mastermind_move', unit: self, title: 'Mastermind: move', options: opts.map(o => ({ label: o.label, hint: o.hint })), defaultIndex: 0 })
         const to = opts[k].to
         if (!to) return
-        const p = b.pathTo(self, to, self.stats.speed, { ignoreEngagement: true })
-        if (p) { b.say(`${self.name} slips away.`); b.moveAlong(self, p.path) }
+        const p = b.pathTo(self, to, self.stats.speed, { ignoreEngagement: true, anyPath: true })
+        if (p) { b.say(`${self.name} slips away.`); b.moveAlong(self, p.path, { noReactions: true }) }
       } finally { delete self.flags.mastermindBusy }
     },
   },

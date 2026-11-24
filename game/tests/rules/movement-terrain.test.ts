@@ -28,7 +28,8 @@ describe('movement', () => {
     const { a, b } = duel({ map: (x) => (x >= 2 ? { h: 3, kind: 'ground' } : undefined) })
     b.beginTurn(a)
     const p = b.pathTo(a, { x: 2, y: 5 }, 10)!
-    expect(p.cost).toBe(3)
+    // Size 1: jump 1 level free, climb the other 2 at half speed (core p.63)
+    expect(p.cost).toBe(5)
   })
 
   it('knockback pushes targets away', () => {

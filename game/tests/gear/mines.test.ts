@@ -197,7 +197,7 @@ describe('Roller Directed-Payload Charges', () => {
     e.pos = { x: 5, y: 9 }
     e.flying = true
     e.moveLeft = 10
-    b.move(e, { x: 6, y: 6 })
+    b.move(e, { x: 5, y: 6 }) // flight follows a straight line (core p.63)
     expect(b.mines).toHaveLength(0)
   })
   it('Roller Grenade detonates on the first character along its line', () => {

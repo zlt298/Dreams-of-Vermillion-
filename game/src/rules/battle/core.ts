@@ -233,6 +233,8 @@ export class Battle {
   cacheVersion = -1
   invalidateTerrain() {
     this.terrainVersion++
+    // cover may have changed or been destroyed: Hidden characters re-check it (core p.69)
+    movement.recheckHidden(this)
   }
   checkCaches() {
     if (this.cacheVersion !== this.terrainVersion || this.losCache.size > 50000) {
@@ -317,8 +319,9 @@ export class Battle {
     return u.statuses.some(x => x.id === s)
   }
   isEngaged(u: Unit, at: Pos = u.pos): boolean {
-    if (u.kind === 'deployable') return false
-    return this.alive().some(o => o !== u && this.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc') && !this.has(o, 'hidden') &&
+    // Hidden characters don't cause engagement, and aren't engaged themselves (core p.77); drones are characters (p.78)
+    if (u.kind === 'deployable' || this.has(u, 'hidden')) return false
+    return this.alive().some(o => o !== u && this.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc' || o.kind === 'drone') && !this.has(o, 'hidden') &&
       this.adjacent(u, o, at))
   }
   /** symmetric: both sides use ground elevation (flying doesn't lift a unit out of reach of its neighbours) */
@@ -375,6 +378,8 @@ export class Battle {
       this.emit({ type: 'status', unitId: u.id, status: id, added: false })
       this.say(`${u.name} is no longer ${id}.`, 'status')
       for (const s of scriptsFor(u)) s.onStatusRemoved?.(this, u, id)
+      // Hidden while Invisible lasts past Invisible only in cover (core p.69)
+      if (id === 'invisible') movement.recheckHidden(this)
     }
   }
   tickStatuses(clock: Unit, atStart: boolean) {
@@ -530,9 +535,9 @@ export class Battle {
   stepCost(u: Unit, from: Pos, to: Pos): number { return movement.stepCost(this, u, from, to) }
 
   /** Dijkstra over anchor positions. Returns reachable stop positions with cost and path. */
-  reachable(u: Unit, budget: number, opts: { ignoreEngagement?: boolean; noTakeOff?: boolean } = {}): Map<string, { pos: Pos; cost: number; prev?: string }> { return movement.reachable(this, u, budget, opts) }
+  reachable(u: Unit, budget: number, opts: movement.ReachOpts = {}): Map<string, { pos: Pos; cost: number; prev?: string }> { return movement.reachable(this, u, budget, opts) }
 
-  pathTo(u: Unit, dest: Pos, budget: number, opts: { ignoreEngagement?: boolean; noTakeOff?: boolean } = {}): { path: Pos[]; cost: number } | null { return movement.pathTo(this, u, dest, budget, opts) }
+  pathTo(u: Unit, dest: Pos, budget: number, opts: movement.ReachOpts = {}): { path: Pos[]; cost: number } | null { return movement.pathTo(this, u, dest, budget, opts) }
 
   canMove(u: Unit, mode: MoveOpts['mode']): true | string { return movement.canMove(this, u, mode) }
 
@@ -547,7 +552,7 @@ export class Battle {
   undoMove(u: Unit) { return this.command('undoMove', [u], () => movement.undoMove(this, u)) }
 
   /** Move along an explicit path (straight swings, scripted dashes): same triggers as a normal move. */
-  moveAlong(u: Unit, path: Pos[]) { return movement.moveAlong(this, u, path) }
+  moveAlong(u: Unit, path: Pos[], opts: { noReactions?: boolean } = {}) { return movement.moveAlong(this, u, path, opts) }
   followPath(u: Unit, path: Pos[]) { return movement.followPath(this, u, path) }
   updateEngagementTerminal(_u: Unit) {}
 

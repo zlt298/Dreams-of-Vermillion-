@@ -37,6 +37,8 @@ export function bestThreatWeapon(bt: Battle, o: Unit, target: Unit): Weapon | nu
     if (!bt.weaponReady(o, w)) continue
     const pr = w.profiles[w.profileIndex]
     if (bt.isAoE(pr) || hasTag(pr.tags, 'tg_ordnance')) continue // Ordnance can't be used for Overwatch
+    // Overwatch is a Skirmish, which a Superheavy weapon can't make (core p.73)
+    if (w.size === 'Superheavy' && w.dataId !== 'mw_leviathan_heavy_assault_cannon') continue
     const threat = bt.weaponThreat(o, w)
     if (threat <= 0 || bt.distance(o, target) > threat) continue
     // a target the attack would refuse (Hidden, intangible, no line of sight) doesn't provoke the reaction
@@ -88,7 +90,8 @@ export function ranges(bt: Battle, u: Unit, w: Weapon): RangeData[] {
 export function weaponThreat(bt: Battle, u: Unit, w: Weapon): number {
   const rs = bt.ranges(u, w)
   const t = rs.find(r => r.type === 'Threat')
-  let v = t ? Number(t.val) : bt.isMelee(w) ? 1 : 0
+  // every weapon has Threat 1 unless it says otherwise (core p.73)
+  let v = t ? Number(t.val) : 1
   if (u.flags.hyperReflex && !bt.isMelee(w) && !bt.isAoE(bt.profile(w))) v = Math.max(v, 3)
   return v
 }
