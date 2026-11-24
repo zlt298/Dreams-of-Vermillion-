@@ -25,7 +25,7 @@ You are designing original enemy teams for the Lancer-based roguelike in this re
    - For each weapon, check its average damage against the role/tier band in the doc (+35%, ×1.5 with recharge/uses, ×0.85 for AoE, ×0.8 for Grunts).
 3. **Write the file** to `data/enemies/<id>.json`. Use the id `t<tier>-<kebab-name>`, which must be unique. Use only effect kinds, statuses, tags and triggers listed in the doc. Avoid `text` effects: the engine doesn't execute them. Use original names; never Massif NPC names or real brands.
 4. **Validate**: `cd game && npm run validate-enemies -- ../data/enemies/<id>.json`. Fix every `error` and reconsider every `warn`, then re-run until it passes.
-5. **Balance test** (recommended): `cd game && npx tsx scripts/simulate.ts 10 <team-id>` plays AI vs AI against a squad matched to the tier. Tier 1 faces the LL0 COMP/CON pregens, tier 2 the legal LL5 sample squad and tier 3 the LL10 sample squad (`game/src/data/squads/`). Battles run on 18×36 maps with a 30-round cap; set `MAX_ROUNDS` to change it. Ranged-heavy teams get more value from the long approach than melee swarms. Aim for:
+5. **Balance test** (recommended): `cd game && npx tsx scripts/simulate.ts 10 <team-id>` plays AI vs AI against a squad matched to the tier. Each tier faces the legal sample squad at its act's License Level: tier 1 LL2, tier 2 LL5, tier 3 LL8 (`game/src/data/squads/ll2.json`, `ll5.json`, `ll8.json`). Battles run on 18×36 maps with a 30-round cap; set `MAX_ROUNDS` to change it. Ranged-heavy teams get more value from the long approach than melee swarms. Aim for:
 
    | kind | mechs lost per fight (typical squad) |
    |---|---|
