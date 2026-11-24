@@ -302,7 +302,8 @@ export function applyRepair(run: RunState, pilotId: string, optId: string) {
   const u = buildMechUnit(p)
   c.repairs -= opt.cost
   if (optId === 'hp') c.hp = u.stats.hp
-  else if (optId === 'structure') { c.structure++; c.hp = u.stats.hp }
+  // a Structure repair restores only that Structure; full HP is its own 1-Repair purchase (core book p.82)
+  else if (optId === 'structure') c.structure++
   else if (optId === 'stress') c.stress++
   else if (optId.startsWith('w:')) c.destroyedWeapons = c.destroyedWeapons.filter(x => x !== optId.slice(2))
   else if (optId.startsWith('s:')) c.destroyedSystems = c.destroyedSystems.filter(x => x !== optId.slice(2))

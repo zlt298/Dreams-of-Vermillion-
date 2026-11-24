@@ -149,7 +149,8 @@ export function invade(bt: Battle, u: Unit, t: Unit, option: 'fragment' | { name
     if (bt.hostile(u, t)) bt.applyDamage(t, [{ type: 'Heat', amount: 2 }], { source: u, attack: ctx })
     if (option === 'fragment') {
       bt.addStatus(t, 'impaired', 'next_turn_end_target', u)
-      bt.addStatus(t, 'slowed', 'next_turn_end_target', u)
+      // an NPC's Invade (core book p.280) deals 2 heat and Impairs; it doesn't Slow
+      if (u.kind !== 'npc') bt.addStatus(t, 'slowed', 'next_turn_end_target', u)
     } else bt.runEffects(u, t, option.effects, ctx)
   }
   return ctx

@@ -50,7 +50,8 @@ function effectValue(b: Battle, src: Unit, t: Unit, effects: Effect[]): number {
  * is Energy damage to a character without a Heat Cap, and matters most when it would overheat the target.
  */
 function invadeValue(b: Battle, u: Unit, t: Unit): number {
-  const status = effectValue(b, u, t, [{ do: 'status', status: 'impaired' } as Effect, { do: 'status', status: 'slowed' } as Effect])
+  // an NPC's Invade only Impairs (no Slowed)
+  const status = effectValue(b, u, t, u.kind === 'npc' ? [{ do: 'status', status: 'impaired' } as Effect] : [{ do: 'status', status: 'impaired' } as Effect, { do: 'status', status: 'slowed' } as Effect])
   return status + invadeHeatValue(t)
 }
 /** The 2 heat every Invade deals on a hit (see invadeValue). */
@@ -326,7 +327,8 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
     const r = customValue(b, u, a, p)
     if (r && r.value > 0.5) opts.push({ kind: 'custom', action: a, target: r.target, value: r.value, cost: c })
   }
-  if (u.kind === 'mech' && !b.has(u, 'jammed') && (b.canQuickTech(u, 'invade') === true || b.canQuickTech(u, 'lock_on') === true)) {
+  // mechs and NPCs alike can Invade and Lock On (NPC quick tech, core book p.280)
+  if ((u.kind === 'mech' || (u.kind === 'npc' && u.role !== 'Biological')) && !b.has(u, 'jammed') && (b.canQuickTech(u, 'invade') === true || b.canQuickTech(u, 'lock_on') === true)) {
     for (const t of hostiles) {
       if (t.kind !== 'mech' && t.kind !== 'npc') continue
       const saved = u.pos

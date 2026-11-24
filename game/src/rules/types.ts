@@ -89,6 +89,8 @@ export interface Weapon {
   noBonusDamage?: boolean
   bonuses: BonusData[]    // core bonus / mount bonuses that apply to this weapon
   flags?: Record<string, any>
+  /** an integrated weapon (frame, talent or the Integrated Weapon core bonus mount): System Trauma can't destroy it and it takes no mods */
+  integrated?: boolean
 }
 
 export interface SystemInst {

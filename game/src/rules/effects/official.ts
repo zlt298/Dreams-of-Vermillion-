@@ -103,10 +103,10 @@ registerScripts([
   flier('npc:npcf_ssc_flight_system_ace', 'Flies when moving or boosting'),
   {
     id: 'npc:npcf_barrel_roll_ace', note: 'Barrel Roll (Recharge 5+): when hit, the attack misses and the Ace flies away 6', partial: true,
-    onTurnStart(b, self) { if (self.flags.barrelSpent && b.rng.d(6) >= 5) { self.flags.barrelSpent = false; b.say(`${self.name}'s Barrel Roll recharges.`) } },
+    // Recharge 5+: rolled with the NPC's single Recharge roll (npc:base)
     afterAnyRoll(b, self, ctx) {
-      if (ctx.target !== self || !ctx.hit || ctx.tech || self.flags.barrelSpent || !react(b, self, 'barrel_roll')) return
-      self.flags.barrelSpent = true
+      if (ctx.target !== self || !ctx.hit || ctx.tech || self.flags['recharge:barrel_roll'] || !react(b, self, 'barrel_roll')) return
+      self.flags['recharge:barrel_roll'] = 5
       ctx.hit = false; ctx.crit = false
       b.say(`${self.name} barrel-rolls out of the way!`, 'attack')
       b.forceMove(self, ctx.attacker, 6, 1)

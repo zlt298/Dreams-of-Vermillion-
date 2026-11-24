@@ -48,7 +48,7 @@ Multiple non-Grunt templates cost the most expensive one, plus 0.5 for each extr
 
 | tier | per-PC rate |
 |---|---|
-| 1 | 0.8 |
+| 1 | 1.0 |
 | 2 | 1.2 |
 | 3 | 1.0 |
 
@@ -58,7 +58,9 @@ These rates were set on **attrition**, not win rate: in a run, damage carries ov
 
 A team **may not exceed the target by more than 25%**. Going under 60% of the target produces a warning.
 
-Example: a tier-1 standard team for 4 PCs targets a budget of 3.2, with a maximum of 4.
+A **standard** team needs a budget of **at least 1 per player** (`designedFor`): the core book's standard fight has one or two NPCs per player, or three or four Grunts each (p.283). The validator refuses a standard team below that floor, and when the game rescales a standard team for a different squad size it tops the roster up (cheapest units first) so the floor still holds. The official-NPC generator follows the same floor.
+
+Example: a tier-1 standard team for 4 PCs targets a budget of 4, with a maximum of 5 and a minimum of 4.
 
 ---
 
@@ -75,7 +77,7 @@ Example: a tier-1 standard team for 4 PCs targets a budget of 3.2, with a maximu
   "features": [ /* §5 */ ],
   "mechWeapons": ["mw_assault_rifle"], // Mercenary only: up to 2 lancer-data weapon ids
   "veterancy": "agi",              // Veteran only: hull | agi | sys | eng (default: the role's best skill)
-  "veteranTrait": "deadly",        // Veteran only: one trait from §5.1
+  "veteranTraits": ["deadly"],     // Veteran only: one trait per tier from §5.1 (T2 two, T3 three)
   "description": "flavour shown on hover"
 }
 ```
@@ -91,7 +93,7 @@ Example: a tier-1 standard team for 4 PCs targets a budget of 3.2, with a maximu
 | Support | 12 | 1 | 8 | 10 | 8 | 4 | 15 | 1 | 0 | 0 | 1 | 2 |
 | Biological | 14 | 0 | 8 | 4 | — | 5 | 8 | 1 | 2 | 1 | −2 | 0 |
 
-Biological units have no heat cap, so they ignore heat entirely.
+Biological units have no heat cap: any heat they would take is dealt to them as Energy damage instead.
 
 How each role plays:
 
@@ -127,21 +129,23 @@ Tech attack = attack bonus + Sys (if positive). Every unit starts with 1 structu
 
 | Template | Effect | Feature slots |
 |---|---|---|
-| **Grunt** | 1 HP. Any damage destroys it, including Reliable damage on a miss and heat from an enemy. A successful save leaves it completely unharmed (no half damage). Grunts are glass cannons: dangerous, and they soak up player actions. | −1 |
-| **Veteran** | +1 structure, +1 stress. **Veterancy**: +1 accuracy on checks and saves with one skill (`veterancy`). One **Veteran trait** (`veteranTrait`, §5.1). Can score critical hits. | 0 |
-| **Elite** | +1 structure, +1 stress (rolls on the structure and overheating tables). **Two separate turns each round.** | 0 |
-| **Commander** | +1 structure, +1 stress. **Voice of Authority**: 1/round reaction, an ally may reroll a missed attack. **Military Discipline**: adjacent allies get +1 accuracy on attacks, checks and saves (not while the Commander is Jammed). | 0 |
-| **Ultra** | +3 structure, +3 stress (4 each), +5 HP. **Two turns each round** (three if facing 5+ hostiles); reactions refresh every turn. **Deadly** (+1d6 on crits), **Juggernaut** (clears a condition at turn start, repairs a destroyed weapon/system at turn end), **Legendary** (structure/overheat checks rolled twice, keep the better), **Reflex** (Overwatch any number of times per round). Can score critical hits. Use at most one per encounter. | +3 |
+| **Grunt** | 1 HP, 1 structure, 1 stress, and it can never gain more (trait `stats` and `stats` overrides can't raise them; the Grunt template is applied after every other template). It keeps its Armor. Any damage destroys it, including Reliable damage on a miss and heat from an enemy. A successful save leaves it completely unharmed (no half damage). **Rank and File**: can't be a Veteran, Elite or Ultra. Grunts are glass cannons: dangerous, and they soak up player actions. | −1 |
+| **Veteran** | +1 structure, +1 stress. **Veterancy**: +1 accuracy on checks and saves with one skill (`veterancy`). **One Veteran trait per tier** (`veteranTraits`, §5.1: T1 one, T2 two, T3 three). Can score critical hits. | 0 |
+| **Elite** | +1 structure, +1 stress (rolls on the structure and overheating tables). **Two separate turns each round**; its reactions still refresh only once per round. **Specialist Kit**: one extra feature. Can't be a Grunt or Ultra. | +1 |
+| **Commander** | +1 structure, +1 stress. **Voice of Authority**: 1/round reaction, an ally may reroll a failed attack, check or save (not while the Commander is Jammed). **Military Discipline**: adjacent allies get +1 accuracy on attacks, checks and saves (not while the Commander is Jammed). | 0 |
+| **Ultra** | +3 structure, +3 stress (4 each), +5 HP. **Two turns each round** (three if facing 5+ hostiles); its reactions refresh at each of its turns. **Deadly** (+1d6 on crits), **Juggernaut** (clears a condition at turn start, repairs a destroyed weapon/system at turn end), **Legendary** (structure/overheat checks rolled twice, keep the better), **Reflex** (Overwatch any number of times per round). Can score critical hits. Use at most one per encounter. | +3 |
 | **Mercenary** | **Opportunist**: +1 accuracy when the target is engaged by an ally. House rule: may carry up to 2 licensed mech weapons from lancer-data (`mechWeapons`); Superheavy only at tier 3. | 0 |
 
 These follow the official LANCER templates. Only Veterans and Ultras can score critical hits; other NPCs can't. Ultra can't combine with Grunt or Elite.
 
 ### 5.1 Veteran traits
 
-| `veteranTrait` | Effect |
+A Veteran takes one distinct trait per tier. (Older files may give a single `veteranTrait`; it counts as one entry.)
+
+| trait | Effect |
 |---|---|
 | `deadly` | +1d6 damage on critical hits |
-| `feign_death` | The first time it would be destroyed it survives on 1 HP and becomes Hidden |
+| `feign_death` | The first time it would be destroyed (a crushing hit included) it survives on 1 HP and becomes Hidden |
 | `hacker` | +2 heat on successful tech attacks |
 | `hardened_target` | +1 accuracy on Systems saves; tech attacks against it take +1 difficulty |
 | `insulated` | Immune to Burn |
@@ -152,7 +156,15 @@ These follow the official LANCER templates. Only Veterans and Ultras can score c
 
 Base feature slots by tier: T1 3, T2 4, T3 5.
 
-NPCs with 1 stress don't roll on the overheating table. When they exceed their heat cap, they clear heat and become **Exposed**. NPCs never crit.
+NPCs with 1 stress don't roll on the overheating table. When they exceed their heat cap they clear heat like a mech (heat beyond the cap carries over) and become **Exposed**.
+
+**Critical hits.** Only Veterans and Ultras can score critical hits; every other NPC's 20s are ordinary hits. *House rule:* this ruleset's NPC weapons roll their damage dice (the core book gives NPCs fixed damage), and a Veteran's or Ultra's critical hit rolls that damage twice and keeps the higher, like a player's, before adding Deadly.
+
+**Recharge.** At the start of each of its turns, an NPC with any spent Recharge item rolls **one** d6; every spent item whose Recharge target that roll meets is ready again.
+
+**Improvised Attack.** An NPC's Improvised Attack is a melee attack at +1/+2/+3 (by tier) that deals a fixed 3/4/6 kinetic damage.
+
+**Invade.** An NPC's Invade deals 2 heat and Impairs the target (no Slowed).
 
 ## 6. Features
 
@@ -240,7 +252,7 @@ Hook triggers are `turn_start`, `turn_end`, `hit_by_melee`, `damaged`, `ally_des
 
 Unit tokens fly if a trait name contains *flying*, *flight* or *hover*.
 
-### 6.5 Reaction (uses the unit's 1 reaction per round)
+### 6.5 Reaction (uses the unit's 1 reaction per round; Ultras regain theirs at each of their turns)
 ```jsonc
 { "type": "reaction", "name": "Counter-Slash", "trigger": "hit_by_melee",
   "frequency": "1/round",          // or 1/scene

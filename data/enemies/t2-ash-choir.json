@@ -218,7 +218,7 @@
       "templates": [
         "Veteran"
       ],
-      "veteranTrait": "shock_armor"
+      "veteranTraits": ["shock_armor", "insulated"]
     },
     {
       "name": "Kiln Thrall",

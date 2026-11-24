@@ -5,7 +5,8 @@ import { averageDice } from '../rules/rng'
 import type { Effect } from '../rules/types'
 import {
   type EnemyTeam, type EnemyUnitDef, type Feature, type NpcStats, type Tier,
-  ROLES, TEMPLATES, VETERAN_TRAITS, DAMAGE_BAND, DAMAGE_TOLERANCE, STAT_TOLERANCE, baselineStats, featureSlots, teamBudget, BUDGET_PER_PC, KIND_MULT,
+  ROLES, TEMPLATES, TEMPLATE_RULES, VETERAN_TRAITS, DAMAGE_BAND, DAMAGE_TOLERANCE, STAT_TOLERANCE, baselineStats, featureSlots, teamBudget, veteranTraitsOf,
+  BUDGET_PER_PC, KIND_MULT, MIN_STANDARD_PER_PC,
 } from './ruleset'
 
 export interface ValidationResult { ok: boolean; errors: string[]; warnings: string[]; budget: number }
@@ -92,6 +93,8 @@ function checkFeature(u: EnemyUnitDef, tier: Tier, f: Feature, i: number, errors
       break
     case 'trait':
       for (const k of Object.keys(f.stats ?? {})) if (!(k in baselineStats('Striker', 1))) errors.push(`${where}: unknown stat '${k}'`)
+      // Chaff and Weak: a Grunt can't gain HP, Structure or Stress
+      if ((u.templates ?? []).includes('Grunt')) for (const k of ['hp', 'structure', 'stress']) if (f.stats && k in f.stats) errors.push(`${where}: a Grunt can't gain ${k}`)
       for (const s of f.immune ?? []) if (!STATUSES.includes(s)) errors.push(`${where}: unknown immunity '${s}'`)
       for (const r of f.resist ?? []) if (![...DAMAGE_TYPES, 'all'].includes(r)) errors.push(`${where}: unknown resistance '${r}'`)
       if ((f.resist ?? []).includes('all') && !(u.templates ?? []).some(t => t === 'Ultra')) errors.push(`${where}: resistance to all damage is Ultra-only`)
@@ -121,11 +124,17 @@ export function validateTeam(t: EnemyTeam): ValidationResult {
     if (!u.name) errors.push('unit missing name')
     if (!ROLES.includes(u.role)) errors.push(`${u.name}: unknown role '${u.role}'`)
     for (const tp of u.templates ?? []) if (!TEMPLATES.includes(tp)) errors.push(`${u.name}: unknown template '${tp}'`)
-    if ((u.templates ?? []).includes('Grunt') && (u.templates ?? []).some(x => x === 'Elite' || x === 'Ultra')) errors.push(`${u.name}: Grunt cannot combine with Elite/Ultra`)
-    if ((u.templates ?? []).includes('Ultra') && (u.templates ?? []).includes('Elite')) errors.push(`${u.name}: Ultra cannot combine with Elite`)
+    // Rank and File (Grunt), Career Soldier (Elite), Ultra: template exclusions
+    for (const tp of u.templates ?? []) {
+      const bad = (TEMPLATE_RULES[tp]?.excludes ?? []).filter(x => (u.templates ?? []).includes(x))
+      if (bad.length) errors.push(`${u.name}: ${tp} cannot combine with ${bad.join('/')}`)
+    }
     if ((u as any).baseStats || (u as any).officialClass) errors.push(`${u.name}: baseStats/officialClass are reserved for imported official NPCs`)
-    if (u.veteranTrait && !(u.templates ?? []).includes('Veteran')) errors.push(`${u.name}: veteranTrait requires the Veteran template`)
-    if (u.veteranTrait && !VETERAN_TRAITS.includes(u.veteranTrait)) errors.push(`${u.name}: unknown veteranTrait '${u.veteranTrait}' (one of ${VETERAN_TRAITS.join(', ')})`)
+    const vts = veteranTraitsOf(u)
+    if (vts.length && !(u.templates ?? []).includes('Veteran')) errors.push(`${u.name}: veteranTrait(s) requires the Veteran template`)
+    for (const vt of vts) if (!VETERAN_TRAITS.includes(vt)) errors.push(`${u.name}: unknown veteranTrait '${vt}' (one of ${VETERAN_TRAITS.join(', ')})`)
+    // Veteran Traits: one per tier (T1 one, T2 two, T3 three)
+    if ((u.templates ?? []).includes('Veteran') && vts.length !== tier) errors.push(`${u.name}: a T${tier} Veteran takes ${tier} Veteran trait(s) (has ${vts.length})`)
     if (u.veterancy && !['hull', 'agi', 'sys', 'eng'].includes(u.veterancy)) errors.push(`${u.name}: veterancy must be hull, agi, sys or eng`)
     if (u.count != null && (u.count < 1 || u.count > 8)) errors.push(`${u.name}: count must be 1-8`)
     if (!ROLES.includes(u.role)) continue
@@ -135,6 +144,7 @@ export function validateTeam(t: EnemyTeam): ValidationResult {
       if (!(key in base)) { errors.push(`${u.name}: unknown stat '${k}'`); continue }
       const tol = STAT_TOLERANCE[key]
       if (tol == null) { errors.push(`${u.name}: stat '${k}' is set by role/tier/template and cannot be overridden`); continue }
+      if (key === 'hp' && (u.templates ?? []).includes('Grunt')) { errors.push(`${u.name}: a Grunt has 1 HP; hp cannot be overridden`); continue }
       const delta = (v as number) - base[key]
       const lim = key === 'hp' ? Math.ceil(base.hp * tol) : tol
       if (Math.abs(delta) > lim) errors.push(`${u.name}: ${k} ${v} deviates from baseline ${base[key]} by more than ${lim}`)
@@ -161,6 +171,9 @@ export function validateTeam(t: EnemyTeam): ValidationResult {
   if (t.kind === 'elite' && !t.units.some(u => u.templates?.includes('Elite'))) errors.push('an elite team needs at least one Elite')
   if (budget > target * 1.25) errors.push(`budget ${budget} exceeds ${(target * 1.25).toFixed(2)} (target ${target} for ${t.designedFor} PCs at T${tier}${t.kind ? ' ' + t.kind : ''})`)
   if (budget < target * 0.6) warnings.push(`budget ${budget} is well under the target ${target}`)
+  // core book p.283: a standard fight has at least one NPC (1 budget point) per player
+  const floor = MIN_STANDARD_PER_PC * (t.designedFor ?? 4)
+  if ((t.kind ?? 'standard') === 'standard' && budget < floor) errors.push(`budget ${budget} is under ${floor}: a standard encounter needs at least one NPC per player`)
   if (t.kind === 'boss' && !t.units.some(u => (u.templates ?? []).includes('Ultra'))) warnings.push('boss teams should include an Ultra')
   if (t.units.reduce((n, u) => n + ((u.templates ?? []).includes('Ultra') ? u.count ?? 1 : 0), 0) > 1) warnings.push('the core book recommends at most one Ultra per encounter')
   return { ok: errors.length === 0, errors, warnings, budget }

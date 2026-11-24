@@ -3,7 +3,7 @@
 import { Lancer, type WeaponData } from '../data/lancer'
 import { resolveUnknown, type PilotBuild } from '../import/compcon'
 import { validateBuild, MAX_SKILL, MAX_LICENSE_RANK, MAX_LL, slotSizes } from '../rules/legality'
-import { buildMechUnit } from '../rules/stats'
+import { buildMechUnit, talentIntegrated } from '../rules/stats'
 import {
   newDraft, editable, setFrame, setMountBonus, toggleCoreBonus, setTalentRank, licenseRank, setLicenseRank, pruneCoreBonuses,
   frameOptions, weaponOptions, modOptions, systemOptions, coreBonusOptions, setWeapon, MOUNT_CBS,
@@ -103,7 +103,7 @@ export function builderScreen(root: HTMLElement, opts: BuilderOptions) {
       const slots = m.slots.map((s, si) => {
         if (!slotSizes(m, si).length && !s.weaponId) return `<div class="slot muted small">— used by the Main weapon —</div>`
         const w = s.weaponId ? Lancer.weapons.get(s.weaponId) : undefined
-        const mods = modOptions(p, s.weaponId)
+        const mods = modOptions(p, s.weaponId, mi, si)
         return `<div class="slot"><select data-weapon="${mi}:${si}">${grouped(weaponOptions(p, mi, si), s.weaponId, '— empty —')}</select>
           ${w && mods.length ? `<select data-mod="${mi}:${si}">${grouped(mods, s.modId, '— no mod —')}</select>` : ''}
           ${w ? `<div>${weaponDetail(w)}</div>` : ''}</div>`
@@ -116,7 +116,7 @@ export function builderScreen(root: HTMLElement, opts: BuilderOptions) {
       const choices = p.mech.mounts.map((m, i) => ({ m, i })).filter(({ m }) => m.type !== 'CB-Integrated')
       return `<label class="small">${esc(Lancer.coreBonuses.get(c)!.name)} on <select data-mountcb="${c}"><option value="-1">— choose a mount —</option>${choices.map(({ m, i }) => `<option value="${i}" ${i === at ? 'selected' : ''}>#${i + 1} ${esc(m.type)}</option>`).join('')}</select></label>`
     }).join(' ')
-    const integrated = [...(f?.core_system.integrated ?? []), ...p.talents.flatMap(t => Lancer.talents.get(t.id)?.ranks.slice(0, t.rank).flatMap(r => r.integrated ?? []) ?? [])]
+    const integrated = [...(f?.core_system.integrated ?? []), ...p.talents.flatMap(t => talentIntegrated(t.id, t.rank))]
       .map(id => Lancer.weapons.get(id)?.name ?? Lancer.systems.get(id)?.name ?? id)
 
     const systems = p.mech.systems.map((id, i) => {

@@ -414,6 +414,12 @@ export function improvisedAttack(bt: Battle, u: Unit, t: Unit) {
   }
   const brawler = u.bonuses.find(b => b.id === 'damage' && b.weapon_types?.includes('Improvised') && typeof b.val === 'string')
   if (brawler) w.profiles[0].damage = [{ type: 'Kinetic', val: brawler.val }]
+  // NPCs (core book p.280): +1/+2/+3 to hit and a fixed 3/4/6 damage by tier
+  if (u.kind === 'npc') {
+    const tier = Math.min(3, Math.max(1, u.tier ?? 1))
+    w.attackBonus = tier
+    w.profiles[0].damage = [{ type: 'Kinetic', val: [3, 4, 6][tier - 1] }]
+  }
   const r = bt.weaponAttack(u, w, { targetId: t.id }, 'improvised')
   if (!r.ok && !r.ctxs.length) { refund(); throw new Error(r.reason ?? 'Cannot attack') }
 }
