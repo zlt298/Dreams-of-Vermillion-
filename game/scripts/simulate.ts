@@ -1,5 +1,5 @@
-// Balance sim: AI vs AI. Tier 1 teams face the LL0 COMP/CON pregens, tier 2 the LL5 sample squad,
-// tier 3 the LL10 sample squad.  npx tsx scripts/simulate.ts [N] [team-id-filter]
+// Balance sim: AI vs AI. Each tier faces the sample squad at its act's level: tier 1 LL2, tier 2 LL5,
+// tier 3 LL8.  npx tsx scripts/simulate.ts [N] [team-id-filter]
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { buildTeam } from '../src/enemies/build'
@@ -8,9 +8,9 @@ import { Battle } from '../src/rules/battle'
 import { importPilots } from '../src/import/compcon'
 import { buildMechUnit } from '../src/rules/stats'
 import { generateMap } from '../src/run/mapgen'
-import pregens from '../src/data/pregens/pregens.json'
+import ll2 from '../src/data/squads/ll2.json'
 import ll5 from '../src/data/squads/ll5.json'
-import ll10 from '../src/data/squads/ll10.json'
+import ll8 from '../src/data/squads/ll8.json'
 import '../src/rules/effects/scripts'
 import { readLcp } from '../src/import/lcp'
 import { generateOfficialTeam } from '../src/enemies/official'
@@ -18,9 +18,9 @@ import { generateOfficialTeam } from '../src/enemies/official'
 const N = Number(process.argv[2] ?? 6)
 const filter = process.argv[3]
 const squads: Record<number, any[]> = {
-  1: ['Vanguard', 'Assault', 'Sniper', 'Fire Support'].map(n => (pregens as any[]).find(p => p.name === n)),
+  1: ll2 as any[],
   2: ll5 as any[],
-  3: ll10 as any[],
+  3: ll8 as any[],
 }
 const dir = resolve(import.meta.dirname, '../../data/enemies')
 const teams: { team: any; official?: boolean }[] = readdirSync(dir).filter(f => f.endsWith('.json')).map(f => ({ team: JSON.parse(readFileSync(join(dir, f), 'utf8')) }))
@@ -46,6 +46,6 @@ for (const { team, official } of teams) {
     rounds += b.round
     lost += squad.filter(u => u.destroyed).length
   }
-  const sq = team.tier === 1 ? 'LL0' : team.tier === 2 ? 'LL5' : 'LL10'
+  const sq = team.tier === 1 ? 'LL2' : team.tier === 2 ? 'LL5' : 'LL8'
   console.log(`${team.id.padEnd(28)} vs ${sq}  player win ${wins}/${N}  no result ${capped}  avg rounds ${(rounds / N).toFixed(1)}  mechs lost/fight ${(lost / N).toFixed(1)}`)
 }

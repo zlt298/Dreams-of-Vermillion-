@@ -162,6 +162,93 @@
           }
         }
       ]
+    },
+    {
+      "name": "Choir Signaller",
+      "role": "Controller",
+      "color": "#9b59b6",
+      "features": [
+        {
+          "type": "tech",
+          "name": "Target Painter",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "lockon",
+              "duration": "until_cleared"
+            }
+          ]
+        },
+        {
+          "type": "tech",
+          "name": "Jamming Burst",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "jammed",
+              "save": "sys",
+              "duration": "next_turn_end_target"
+            }
+          ],
+          "recharge": 5
+        },
+        {
+          "type": "weapon",
+          "name": "Sidearm",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 5
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d3+1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Choir Bulwark",
+      "role": "Defender",
+      "color": "#7f8c8d",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Shield Bash",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ],
+          "onHit": [
+            {
+              "do": "push",
+              "val": 2
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Tower Shield",
+          "resist": [
+            "Kinetic"
+          ]
+        }
+      ]
     }
   ]
 }

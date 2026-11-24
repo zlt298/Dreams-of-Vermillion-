@@ -224,7 +224,7 @@
           "effects": [
             {
               "do": "heal",
-              "val": "1d6+2"
+              "val": "1d6"
             }
           ],
           "recharge": 6
@@ -238,7 +238,7 @@
           "effects": [
             {
               "do": "overshield",
-              "val": 3
+              "val": 2
             }
           ],
           "recharge": 5

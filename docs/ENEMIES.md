@@ -8,7 +8,7 @@ Massif's NPC data is a paid content pack, so the bundled enemies use an **origin
 - Teams: `data/enemies/*.json`. The game loads every valid file automatically. Twenty teams ship, covering all tiers and including three bosses. They're named for the campaign's factions: the Choir of the Second Dawn, the Annex's print anomalies and subverted security, Choir-paid mercenaries, and the Martian incursion.
 - **Generate more with Claude.** The project skill [`.claude/skills/generate-enemies`](../.claude/skills/generate-enemies/SKILL.md) designs teams from the ruleset, writes the JSON and validates it. Ask Claude Code something like *"generate two tier-2 enemy teams themed around rogue terraforming drones"* or *"make a tier 3 boss"*.
 - Validate: `cd game && npm run validate-enemies`.
-- Balance check: `npx tsx scripts/simulate.ts 10 [team-id]` runs AI vs AI on 18×36 maps. Tier 1 faces the LL0 pregens, tier 2 the LL5 sample squad and tier 3 the LL10 sample squad (the squad's level in acts 2 and 3).
+- Balance check: `npx tsx scripts/simulate.ts 10 [team-id]` runs AI vs AI on 18×36 maps. Tier 1 faces the LL2 sample squad, tier 2 the LL5 one and tier 3 the LL8 one (the squad's level in acts 1, 2 and 3).
 
 ### Official NPCs from your own content pack
 

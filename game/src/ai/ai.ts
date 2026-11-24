@@ -76,13 +76,25 @@ function attackValue(b: Battle, u: Unit, w: Weapon, t: Unit, from: Pos): number 
   const pr = b.profile(w)
   v += p.chance * effectValue(b, u, t, pr.onHit)
   const hp = t.hp + t.overshield
-  if (p.expectedDamage / Math.max(0.01, p.chance) >= hp) v += 4 * p.chance * (t.isGrunt ? 0.5 : 1) // likely kill / structure
+  const perHit = p.expectedDamage / Math.max(0.01, p.chance)
+  if (perHit >= hp) v += 4 * p.chance * (t.isGrunt ? 0.5 : 1) // likely kill / structure
+  // focus fire: damage on a character already down structure or HP brings its destruction closer
+  if (t.kind === 'mech' || t.kind === 'npc') {
+    const lostStructure = t.stats.structure > 1 ? (t.stats.structure - t.structure) / (t.stats.structure - 1) : 0
+    v *= 1 + 0.3 * lostStructure + 0.3 * Math.max(0, 1 - t.hp / Math.max(1, t.stats.hp))
+  }
   if (t.isGrunt) {
     // a grunt dies to any hit, and to Reliable damage on a miss
     const kill = tagVal(pr.tags, 'tg_reliable') ? 1 : p.chance
     v = 3 * kill + 1
   }
-  if (t.kind === 'deployable' || t.kind === 'drone') v *= 0.4
+  // drones and deployables: worth what destroying them is worth. Damage that leaves one standing (a Jericho
+  // cover, a shield generator) achieves little; valuing it at 0.4 × damage had snipers plinking cover all fight
+  // (and a Loading, Limited or Recharge weapon spent on one isn't there for a character next turn)
+  if (t.kind === 'deployable' || t.kind === 'drone') {
+    v = perHit >= hp ? 3 * p.chance : 1.5 * p.expectedDamage / Math.max(1, hp)
+    if (hasTag(pr.tags, 'tg_loading') || w.usesLeft != null || w.recharge) v -= 0.25 * pr.damage.reduce((a, d) => a + averageDice(d.val), 0)
+  }
   const heat = tagVal(pr.tags, 'tg_heat_self') ?? 0
   if (heat && u.stats.heatcap > 0) v -= heat * (u.heat + heat > u.stats.heatcap ? 4 : 0.5)
   return v
@@ -199,15 +211,28 @@ function costOf(a: CustomAction): 'quick' | 'full' | 'protocol' | 'free' | null 
   return null
 }
 
-interface Threat { h: Unit; reach: number; best: number }
+interface Threat { h: Unit; reach: number; best: number; share: number }
 
-/** Per-plan summary of each hostile's reach and best damage (independent of our position). */
+/**
+ * Per-plan summary of each hostile's reach and best damage (independent of our position), and the share of its
+ * attention we can expect: a hostile attacks one target a turn, so the more of our side already stands inside its
+ * threat range, the less of its damage lands on us. Counting every hostile's full damage made each unit price the
+ * whole enemy team's fire at itself, and cautious roles then parked at the edge of a long-ranged squad's threat
+ * range for the whole fight.
+ */
 function threatsAgainst(b: Battle, u: Unit): Threat[] {
-  return b.alive().filter(h => b.hostile(u, h) && (h.kind === 'mech' || h.kind === 'npc')).map(h => ({
-    h,
-    reach: Math.max(1, ...h.weapons.filter(w => !w.destroyed).map(w => b.weaponReach(h, w))),
-    best: Math.max(0, ...h.weapons.filter(w => !w.destroyed && !w.tech).map(w => b.profile(w).damage.reduce((a, d) => a + averageDice(d.val), 0))),
-  }))
+  const live = b.alive()
+  const allies = live.filter(a => a !== u && !b.hostile(u, a) && (a.kind === 'mech' || a.kind === 'npc'))
+  return live.filter(h => b.hostile(u, h) && (h.kind === 'mech' || h.kind === 'npc')).map(h => {
+    const reach = Math.max(1, ...h.weapons.filter(w => !w.destroyed).map(w => b.weaponReach(h, w)))
+    const exposed = allies.filter(a => b.distance(a, h) <= reach + h.stats.speed).length
+    return {
+      h,
+      reach,
+      best: Math.max(0, ...h.weapons.filter(w => !w.destroyed && !w.tech).map(w => b.profile(w).damage.reduce((a, d) => a + averageDice(d.val), 0))),
+      share: 1 / (1 + 0.5 * exposed),
+    }
+  })
 }
 
 /** Expected damage from ending a turn at `p`: dangerous terrain (5 energy on a failed Engineering check) and damage areas. */
@@ -238,38 +263,57 @@ export function stallRounds(b: Battle, grace = 3): number {
 }
 let stall = 0
 
-function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAgainst(b, u)): number {
+/** What positionTerms needs that doesn't depend on the candidate tile: worked out once per plan. */
+interface PosCtx { threats: Threat[]; anchors: Unit[]; myReach: number; alliesFighting: boolean }
+
+function posCtx(b: Battle, u: Unit): PosCtx {
+  const threats = threatsAgainst(b, u)
+  // Support and Defender stay near allies, and the allies to stay near are the ones in the fight: anchoring to the
+  // nearest ally kept a Support beside an artillery piece at the back of the map for the whole fight
+  const allies = b.alive().filter(a => a !== u && !b.hostile(u, a) && (a.kind === 'npc' || a.kind === 'mech'))
+  const reachOf = (a: Unit) => Math.max(1, ...a.weapons.filter(w => !w.destroyed).map(w => b.weaponReach(a, w)))
+  const fighting = allies.filter(a => threats.some(t => b.distance(a, t.h) <= reachOf(a) + a.stats.speed))
+  // the advance pull aims for the reach of what the unit can fire now (or after a reload), not a recharging main gun
+  const ready = u.weapons.filter(w => !w.destroyed && (b.weaponUsable(u, w) === true || (!w.loaded && w.usesLeft !== 0)))
+  const myReach = ready.length ? Math.max(1, ...ready.map(w => b.weaponReach(u, w))) : reachOf(u)
+  return { threats, anchors: fighting.length ? fighting : allies, myReach, alliesFighting: fighting.length > 0 }
+}
+
+/**
+ * How good it is to end the turn at `p`, before actions (`v`), with its danger term (already weighted by caution)
+ * and the distance to the nearest hostile, which planFor weighs further.
+ */
+function positionTerms(b: Battle, u: Unit, p: Pos, ctx: PosCtx): { v: number; danger: number; nearest: number } {
+  const { threats, anchors, myReach } = ctx
   const hazard = hazardCost(b, u, p)
-  if (!threats.length) return -hazard
+  if (!threats.length) return { v: -hazard, danger: 0, nearest: Infinity }
   const saved = u.pos
   u.pos = p
   try {
     let danger = 0
     let nearest = Infinity
-    for (const { h, reach, best } of threats) {
+    for (const { h, reach, best, share } of threats) {
       const d = b.distance(u, h)
       nearest = Math.min(nearest, d)
       if (d > reach + h.stats.speed) continue
       const cover = b.cover(h, u)
       const chance = cover === 'hard' ? 0.35 : cover === 'soft' ? 0.5 : 0.65
-      danger += best * chance * (d <= reach ? 1 : 0.6)
+      danger += best * chance * (d <= reach ? 1 : 0.6) * share
     }
     const role = u.role ?? 'mech'
-    let v = -danger * (CAUTION[role] ?? 0.7) * (u.hp < u.stats.hp / 2 ? 1.4 : 1)
+    danger *= (CAUTION[role] ?? 0.7) * (u.hp < u.stats.hp / 2 ? 1.4 : 1)
+    let v = -danger
     if (role === 'Striker' || role === 'Biological') v -= nearest * 0.25
     if (role === 'Artillery' && nearest <= 3) v -= (4 - nearest) * 1.5
     if (role === 'Defender') {
-      const allies = b.alive().filter(a => a !== u && !b.hostile(u, a) && a.kind === 'npc')
-      if (allies.length) v -= Math.min(...allies.map(a => b.distance(u, a))) * 0.2
+      if (anchors.length) v -= Math.min(...anchors.map(a => b.distance(u, a))) * 0.2
       v -= nearest * 0.15
     }
     if (role === 'Support') {
-      const allies = b.alive().filter(a => a !== u && !b.hostile(u, a) && a.kind === 'npc')
-      if (allies.length) v -= Math.min(...allies.map(a => b.distance(u, a))) * 0.25
+      if (anchors.length) v -= Math.min(...anchors.map(a => b.distance(u, a))) * 0.25
     }
     // advance pull: on long maps, units out of their own reach close the distance
     // (artillery/controllers more gently, so they settle near their preferred range)
-    const myReach = Math.max(1, ...u.weapons.filter(w => !w.destroyed).map(w => b.weaponReach(u, w)))
     const k = (role === 'Artillery' || role === 'Controller' ? 0.25 : 0.35) * (1 + stall)
     if (nearest > myReach) v -= (nearest - myReach) * k
     // sitrep objectives
@@ -280,7 +324,7 @@ function positionValue(b: Battle, u: Unit, p: Pos, threats: Threat[] = threatsAg
       v += inZone ? 4 : -dz * 0.35
     }
     if (b.isEngaged(u, p) && u.weapons.every(w => !b.isMelee(w))) v -= 1.5
-    return v - hazard
+    return { v: v - hazard, danger, nearest }
   } finally { u.pos = saved }
 }
 
@@ -344,11 +388,13 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
       } finally { u.pos = saved }
     }
   }
-  // Stabilize: cool down when hot or Exposed; it is also the only general way to reload Loading weapons
-  const unloaded = u.weapons.filter(w => !w.loaded && !w.destroyed).length
-  const loadedLeft = u.weapons.filter(w => !w.destroyed && w.loaded && b.weaponUsable(u, w) === true).length
-  if (u.stats.heatcap > 0 && (b.has(u, 'exposed') || u.heat >= u.stats.heatcap - 1)) opts.push({ kind: 'stabilize', value: 3 + (b.has(u, 'exposed') ? 4 : 0) + u.heat * 0.5 + unloaded, cost: 'full' })
-  else if (unloaded && !loadedLeft) opts.push({ kind: 'stabilize', value: 1.5 + unloaded, cost: 'full' })
+  // Stabilize: cool down when hot or Exposed; it is also the only general way to reload Loading weapons. A reload is
+  // worth part of the reloaded weapons' damage. Offering it only once every weapon was empty left an NPC with a
+  // Loading main gun and an at-will sidearm (Sun-Eye Longshot) firing its main gun once a fight.
+  const unloaded = u.weapons.filter(w => !w.loaded && !w.destroyed && w.usesLeft !== 0)
+  const reload = unloaded.reduce((a, w) => a + 0.5 + 0.5 * b.profile(w).damage.reduce((s, d) => s + averageDice(d.val), 0), 0)
+  if (u.stats.heatcap > 0 && (b.has(u, 'exposed') || u.heat >= u.stats.heatcap - 1)) opts.push({ kind: 'stabilize', value: 3 + (b.has(u, 'exposed') ? 4 : 0) + u.heat * 0.5 + reload, cost: 'full' })
+  else if (unloaded.length) opts.push({ kind: 'stabilize', value: 1 + reload, cost: 'full' })
   if (u.kind === 'mech' && u.coreAvailable && u.frameId) {
     const act = (Lancer.frames.get(u.frameId)?.core_system.activation ?? 'Quick').toLowerCase()
     const near = hostiles.filter(h => (h.kind === 'mech' || h.kind === 'npc') && Math.max(Math.abs(h.pos.x - p.x), Math.abs(h.pos.y - p.y)) <= 10).length
@@ -382,6 +428,10 @@ function bestCombo(opts: Option[], quickSlots: number, fullOk: boolean): { actio
   return { actions: [...prot, ...qa], value: qv + freeVal }
 }
 
+const PRODUCTIVE_RELIEF = 0.4
+const APPROACH_RELIEF = 0.75
+const APPROACH_PULL = 0.5
+
 export function planFor(b: Battle, u: Unit): Plan {
   const quickBase = u.actionsLeft + (u.flags.bonusQuick ?? 0)
   const canBoost = !b.has(u, 'slowed') && !b.has(u, 'immobilized') && quickBase >= 1 && u.moveLeft > 0
@@ -390,23 +440,40 @@ export function planFor(b: Battle, u: Unit): Plan {
   const cands: { pos: Pos; boost: boolean }[] = []
   for (const v of all.values()) cands.push({ pos: v.pos, boost: v.cost > u.moveLeft })
   // prune candidates for speed: keep the most promising ones by position value
-  const threats = threatsAgainst(b, u)
+  const ctx = posCtx(b, u)
   stall = Math.max(stallRounds(b), unitIdleRounds(b, u))
-  let scored = cands.map(c => ({ ...c, pv: positionValue(b, u, c.pos, threats) }))
+  let scored = cands.map(c => {
+    const t = positionTerms(b, u, c.pos, ctx)
+    // prune on the most this tile could score: within reach, the danger relief below may apply
+    return { ...c, pv: t.v, danger: t.danger, nearest: t.nearest, rank: t.v + (t.nearest <= ctx.myReach ? PRODUCTIVE_RELIEF * t.danger : 0) }
+  })
   if (scored.length > 70) {
-    scored.sort((a, b2) => b2.pv - a.pv)
+    scored.sort((a, b2) => b2.rank - a.rank)
     const keep = scored.slice(0, 50)
     // always keep positions close to hostiles (attack opportunities)
     const hostiles = b.alive().filter(h => b.hostile(u, h))
     const close = scored.filter(c => hostiles.some(h => Math.max(Math.abs(h.pos.x - c.pos.x), Math.abs(h.pos.y - c.pos.y)) <= 2)).slice(0, 25)
-    scored = [...new Map([...keep, ...close].map(c => [key(c.pos) + c.boost, c])).values()]
+    // and the furthest advances, for the approach below
+    const forward = [...scored].sort((a, b2) => a.nearest - b2.nearest || b2.pv - a.pv).slice(0, 12)
+    scored = [...new Map([...keep, ...close, ...forward].map(c => [key(c.pos) + c.boost, c])).values()]
   }
+  const evals = scored.map(c => ({ c, combo: bestCombo(optionsAt(b, u, c.pos), quickBase - (c.boost ? 1 : 0), !c.boost && u.actionsLeft >= 2) }))
+  // Approach: once allies are fighting or the opening rounds are over (stall > 0: this unit, or the whole fight, has
+  // gone a while without attacking), and nothing useful is reachable this turn, the danger on the way in is the
+  // price of ever fighting, not something to wait out. One-turn scoring otherwise left ranged units parked at the
+  // edge of a long-ranged squad's threat range (while their team fought at the other end of the map): every step in
+  // costs danger and earns nothing until the step that gets into reach.
+  // Supports follow the allies they support (their anchor term) rather than closing on hostiles themselves.
+  const approach = (stall > 0 || ctx.alliesFighting) && !evals.some(e => e.combo.value >= 1.5)
+  const role = u.role ?? 'mech'
   let best: Plan = { dest: u.pos, boost: false, actions: [], value: -Infinity }
-  for (const c of scored) {
-    const slots = quickBase - (c.boost ? 1 : 0)
-    const fullOk = !c.boost && u.actionsLeft >= 2
-    const combo = bestCombo(optionsAt(b, u, c.pos), slots, fullOk)
-    const v = combo.value + c.pv - (c.boost ? 0.3 : 0)
+  for (const { c, combo } of evals) {
+    // danger taken while doing something useful is partly the price of doing the job: relieve part of it, up to
+    // the value of what the unit does there. Without this, a fragile ranged unit compared one shot against the
+    // whole hostile team's fire and stayed just outside its threat range, sallying out only when idle pressure
+    // built up (every fourth round) and backing off again
+    let v = combo.value + c.pv + Math.min(PRODUCTIVE_RELIEF * c.danger, combo.value) - (c.boost ? 0.3 : 0)
+    if (approach) v += APPROACH_RELIEF * c.danger - (role === 'Support' ? 0 : APPROACH_PULL * Math.max(0, c.nearest - ctx.myReach))
     if (v > best.value) best = { dest: c.pos, boost: c.boost, actions: combo.actions, value: v }
   }
   return best

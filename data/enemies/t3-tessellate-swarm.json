@@ -130,7 +130,7 @@
           "damage": [
             {
               "type": "Kinetic",
-              "val": "2d6+3"
+              "val": "2d6+2"
             }
           ],
           "onHit": [
@@ -162,9 +162,6 @@
         {
           "type": "trait",
           "name": "Chitin Plates",
-          "stats": {
-            "armor": 1
-          },
           "resist": [
             "Kinetic"
           ]

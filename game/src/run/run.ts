@@ -390,8 +390,12 @@ export function applyReward(run: RunState, id: string, pilotId?: string) {
   }
 }
 
-/** The squad's License Level in each act: act 1 LL0, act 2 LL5, act 3 LL10 (core book NPC tiers: T2 LL5-8, T3 LL9-12). */
-export const ACT_LEVEL: Record<number, number> = { 1: 0, 2: 5, 3: 10 }
+/**
+ * The squad's License Level in each act: act 1 LL2, act 2 LL5, act 3 LL8. LL2 lets pilots field a licensed
+ * frame from the first fight, and +3 per act keeps a pilot recognizable after a level-up. Act n still fights
+ * tier-n enemies (the core book pairs T2 with LL5-8 and T3 with LL9-12).
+ */
+export const ACT_LEVEL: Record<number, number> = { 1: 2, 2: 5, 3: 8 }
 export const actLevel = (act: number) => ACT_LEVEL[act] ?? ACT_LEVEL[ACTS]
 
 /**

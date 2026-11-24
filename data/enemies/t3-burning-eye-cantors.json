@@ -170,17 +170,10 @@
           "effects": [
             {
               "do": "overshield",
-              "val": 4,
+              "val": 2,
               "target": "self"
             }
           ]
-        },
-        {
-          "type": "trait",
-          "name": "Choir Armour",
-          "stats": {
-            "armor": 1
-          }
         }
       ]
     },
@@ -229,13 +222,6 @@
           "trigger": "hit_by_melee",
           "frequency": "1/round",
           "attackWith": "Chain Glaive"
-        },
-        {
-          "type": "trait",
-          "name": "Blood-Red Plate",
-          "stats": {
-            "armor": 1
-          }
         },
         {
           "type": "weapon",
