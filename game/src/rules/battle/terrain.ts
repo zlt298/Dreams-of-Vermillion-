@@ -12,6 +12,7 @@ import { hasTag, tagVal, nextUid, isWeaponType } from '../stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
+import * as attacks from './attacks'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
 
 /** Damage a terrain block. Every 10 damage knocks one level off; a block with no levels left becomes rubble. */
@@ -251,7 +252,8 @@ export function ram(bt: Battle, u: Unit, t: Unit) {
   bt.rollToHit(ctx)
   if (ctx.hit) {
     bt.addStatus(t, 'prone', 'until_cleared', u)
-    bt.forceMove(t, u, 1, 1)
+    bt.forceMove(t, u, bt.knockbackDistance(u, 1), 1)
+    attacks.titanomachyFollowUp(bt, u, t)
   }
   for (const s of scriptsFor(u)) s.afterAttack?.(bt, u, ctx, 'attacker')
 }
@@ -267,7 +269,7 @@ export function grapple(bt: Battle, u: Unit, t: Unit) {
   bt.meleeAttackMods(u, t, ctx)
   bt.say(`${u.name} attempts to GRAPPLE ${t.name}.`, 'attack')
   bt.rollToHit(ctx)
-  if (ctx.hit) bt.startGrapple(u, t)
+  if (ctx.hit) { bt.startGrapple(u, t); attacks.titanomachyFollowUp(bt, u, t) }
 }
 
 /** Begin a grapple (also used by systems such as Impale). */

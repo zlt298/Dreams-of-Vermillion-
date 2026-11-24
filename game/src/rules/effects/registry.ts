@@ -7,6 +7,21 @@ import type { DamageData } from '../../data/lancer'
 import type { Battle, Mine } from '../battle'
 import type { Duration, Pos, Profile, StatusId, Unit, Weapon } from '../types'
 
+/**
+ * One source of bonus damage on an attack. It joins the attack's damage packet, so Armor and Resistance apply once
+ * to the whole hit. Add it with `bt.addBonusDamage(ctx, ...)` (see attacks.ts) from beforeAttack or afterAnyRoll.
+ */
+export interface BonusDamage extends DamageData {
+  /** only on a critical hit */
+  critOnly?: boolean
+  /** checked once the attack hits, just before damage is dealt ("first hit each round"); false drops it */
+  onlyIf?: (ctx: AttackCtx) => boolean
+  /** not halved against multiple targets (flat "+X damage" that the item says isn't bonus damage) */
+  notHalved?: boolean
+  /** name for the log */
+  source?: string
+}
+
 export interface AttackCtx {
   attacker: Unit
   target: Unit
@@ -30,7 +45,9 @@ export interface AttackCtx {
   accuracy: number
   difficulty: number
   attackBonus: number
-  bonusDamage: DamageData[]
+  bonusDamage: BonusDamage[]
+  /** the attack can't deal bonus damage (secondary attacks and similar) */
+  noBonusDamage?: boolean
   ignoreCover: boolean
   noLosNeeded: boolean
   reasons: string[]

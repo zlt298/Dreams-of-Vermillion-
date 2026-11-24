@@ -230,6 +230,8 @@ export function canSpend(bt: Battle, u: Unit, cost: 'quick' | 'full' | 'protocol
   if (cost === 'protocol') return u.actedThisTurn ? 'Protocols must be used at the start of a turn' : true
   if (cost === 'free') return true
   if (cost === 'quick') {
+    // a free Ram or Grapple (Titanomachy Mesh) and similar: listed actions cost nothing, once
+    if (action && (u.flags['turn:freeQuick'] ?? []).includes(action)) return true
     if (action && bt.quickUsed(u, action)) return (u.flags.bonusQuick ?? 0) > 0 ? true : `${actionLabel(action)} already taken this turn (repeat it via Overcharge or another free action)`
     return u.actionsLeft >= 1 || (u.flags.bonusQuick ?? 0) > 0 ? true : 'No actions left'
   }
@@ -254,6 +256,10 @@ export function spend(bt: Battle, u: Unit, cost: 'quick' | 'full' | 'protocol' |
   if (cost !== 'protocol') u.actedThisTurn = true
   ;(u.flags['turn:spent'] ??= []).push(action ?? cost)
   for (const o of bt.alive()) for (const sc of scriptsFor(o)) sc.onAnyAction?.(bt, o, u, cost)
+  if (cost === 'quick' && action && (u.flags['turn:freeQuick'] ?? []).includes(action)) {
+    delete u.flags['turn:freeQuick']
+    return
+  }
   if (cost === 'quick') {
     // a repeated action must be paid from the free-action pool
     if ((action && bt.quickUsed(u, action)) || (u.flags.payWithBonus && (u.flags.bonusQuick ?? 0) > 0)) u.flags.bonusQuick--

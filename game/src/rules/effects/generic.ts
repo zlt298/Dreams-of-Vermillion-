@@ -11,6 +11,7 @@ import { blastTiles, burstTiles, coneTiles, distanceToTile, footprint, hasLineOf
 import { rollDice } from '../rng'
 import { blankTurnState, defaultPolicies, nextUid, normalizeStatus } from '../stats'
 import type { Pos, Stat, SystemInst, Unit, Weapon } from '../types'
+import { pointUnit } from '../grid'
 import { getScript, type Activation, type CustomAction } from './registry'
 
 const statOf = (s?: string): Stat | undefined =>
@@ -53,6 +54,8 @@ function rangeVal(a: { range?: { type: string; val: any }[] }, type: string): nu
 
 function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: SystemInst): CustomAction {
   const blast = rangeVal(a, 'Blast'), burst = rangeVal(a, 'Burst'), line = rangeVal(a, 'Line'), cone = rangeVal(a, 'Cone')
+  // a Line, Cone or Burst that also lists a Range is drawn from a point within that Range (core p. 64): Napalm Grenade
+  const thrown = !blast && (burst != null || line != null || cone != null) && rangeVal(a, 'Range') != null
   let range = rangeVal(a, 'Range') ?? rangeVal(a, 'Threat') ?? (a.activation === 'Invade' ? u.stats.sensors : 1)
   if (u.flags.assaultLauncher && sys && Lancer.systems.get(sys.dataId)?.tags?.some(t => t.id === 'tg_grenade')) range = Math.max(range, 15)
   const area = burst ? { shape: 'burst' as const, size: burst } : blast ? { shape: 'blast' as const, size: blast } : line ? { shape: 'line' as const, size: line } : cone ? { shape: 'cone' as const, size: cone } : undefined
@@ -62,8 +65,8 @@ function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: 
     name: a.name,
     activation: activationOf(a.activation) ?? 'quick',
     text: stripHtml(a.detail ?? ''),
-    target: burst ? 'self' : area ? 'tile' : 'enemy',
-    range: burst ? undefined : range,
+    target: burst && !thrown ? 'self' : area ? 'tile' : 'enemy',
+    range: burst && !thrown ? undefined : range,
     techOption: a.activation === 'Invade' ? 'invade' : undefined,
     area,
     sourceUid: sys?.uid,
@@ -74,15 +77,33 @@ function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: 
       if (area) {
         let tiles: Pos[] = []
         const aim = (target && 'x' in target ? target : (target as Unit | undefined)?.pos) ?? self.pos
-        if (burst) tiles = burstTiles(bt.map, self, burst)
+        // the pattern starts from the user, or from the impact point of a thrown one
+        let from: Unit = self
+        if (thrown) {
+          if (distanceToTile(bt.map, self, aim) > range) throw new Error('Out of range')
+          if (!hasLineOfSightToTile(bt.effectiveMap(), self, aim)) throw new Error('No line of sight')
+          from = pointUnit(aim)
+        }
+        if (burst) tiles = burstTiles(bt.map, from, burst)
         else if (blast) {
           if (distanceToTile(bt.map, self, aim) > range) throw new Error('Out of range')
           if (!hasLineOfSightToTile(bt.effectiveMap(), self, aim)) throw new Error('No line of sight')
           tiles = blastTiles(bt.map, aim, blast)
+        } else if (thrown) {
+          // "a path of your choice from its impact location": pick one of the eight directions
+          const dirs = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]
+          const names = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east']
+          const pattern = (i: number) => (line ? lineTiles : coneTiles)(bt.map, from, { x: aim.x + dirs[i][0], y: aim.y + dirs[i][1] }, (line ?? cone)!)
+          const score = (i: number) => bt.areaVictims(self, pattern(i), line ? 'line' : 'cone', (line ?? cone)!, { origin: from }).reduce((n, v) => n + (bt.hostile(self, v) ? 1 : -1.5), 0)
+          let best = 0
+          for (let i = 1; i < 8; i++) if (score(i) > score(best)) best = i
+          const i = bt.choose({ kind: 'pattern_direction', unit: self, title: a.name, text: `Which way does the ${line ? 'line' : 'cone'} go from the impact point?`, options: names.map(n => ({ label: n })), defaultIndex: best })
+          tiles = pattern(i)
         } else if (line) tiles = lineTiles(bt.map, self, aim, line)
         else if (cone) tiles = coneTiles(bt.map, self, aim, cone)
         bt.emit({ type: 'area', tiles, kind: 'attack' })
-        victims = unitsOnTiles(bt.alive(), tiles).filter(v => v !== self)
+        const shape = burst ? 'burst' : blast ? 'blast' : line ? 'line' : 'cone'
+        victims = bt.areaVictims(self, tiles, shape, (burst ?? blast ?? line ?? cone)!, { centre: blast || (thrown && burst) ? aim : undefined, origin: from })
       } else if (target && 'id' in target) victims = [target]
       const parts = (a.damage ?? []).map(d => ({ type: d.type, amount: rollDice(bt.rng, d.val).total, save: statOf(d.save), half: d.save_half }))
       for (const v of victims) {
@@ -142,7 +163,8 @@ export function deployableUnit(owner: Unit, d: DeployableData, pos: Pos): Unit {
   const size = d.size ?? (isDrone ? 0.5 : 1)
   const hpBonus = owner.bonuses.filter(b => b.id === (isDrone ? 'drone_hp' : 'deployable_hp')).reduce((a, b) => a + Number(b.val), 0)
   const resistAll = owner.bonuses.some(b => b.id === (isDrone ? 'drone_resist' : 'deployable_resist'))
-  const hp = (d.hp ?? 5) + hpBonus
+  // objects have 10 HP per Size unless stated (core p. 68); drones 5
+  const hp = (d.hp ?? (isDrone ? 5 : Math.max(5, Math.ceil(10 * size)))) + hpBonus
   const u: Unit = {
     id: nextUid('dep'),
     name: d.name,

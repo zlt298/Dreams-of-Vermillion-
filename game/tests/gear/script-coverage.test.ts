@@ -35,7 +35,6 @@ const NOT_YET_TESTED: Record<string, string> = {
   'npc:npcf_focus_down_scourer': OFFICIAL_SMOKE,
   'npc:npcf_rebound_scan_scout': OFFICIAL_SMOKE,
   'npc:npcf_prowl_specter': OFFICIAL_SMOKE,
-  mw_bristlecrown_flechette_launcher: WEAPON,
   mw_cutter_mkii_plasma_torch: WEAPON,
   mw_daisy_cutter: WEAPON,
   mw_impact_lance: WEAPON,
