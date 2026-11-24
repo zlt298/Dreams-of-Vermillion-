@@ -45,9 +45,15 @@ try {
   // --- GPU leak regression: hovering must not allocate geometries
   const geometries = () => page.evaluate(() => window.__dov.battle.view.renderer.info.memory.geometries)
   await page.evaluate(() => { const b = document.querySelector('button[data-act="activate"]'); b && b.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+  // a turn-start decision (a protocol, a talent choice...) may open first: take its default
+  for (let i = 0; i < 5; i++) {
+    const picked = await page.evaluate(() => { const p = document.querySelector('.picker .picker-opts button.default') ?? document.querySelector('.picker .picker-opts button'); if (p) p.dispatchEvent(new MouseEvent('click', { bubbles: true })); return !!p })
+    if (!picked) break
+    await page.waitForTimeout(200)
+  }
   const g0 = await geometries()
   for (let i = 0; i < 120; i++) await page.mouse.move(300 + (i * 37) % 700, 150 + (i * 53) % 450)
-  await page.evaluate(() => { const s = window.__dov.battle; s.mode = { k: 'attack', action: 'skirmish', weapon: s.b.active.weapons[0] }; s.render() })
+  await page.evaluate(() => { const s = window.__dov.battle; const w = s.b.active?.weapons[0]; if (w) { s.mode = { k: 'attack', action: 'skirmish', weapon: w }; s.render() } })
   for (let i = 0; i < 120; i++) await page.mouse.move(300 + (i * 41) % 700, 150 + (i * 29) % 450)
   const g1 = await geometries()
   console.log(`e2e: geometries ${g0} -> ${g1} over 240 hovers`)

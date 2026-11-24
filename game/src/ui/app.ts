@@ -379,7 +379,11 @@ export class App {
     this.root.innerHTML = `<div class="screen runmap"><div class="hhead"><div><p class="band">OPERATION <span class="redact">████████</span> // PHASE ${run.act} OF 3${run.iteration ? ` // ITERATION ${iterLabel(run.iteration)}` : ''}</p><h2>Campaign — Act ${run.act} <span class="loc">${esc(ACT_LOCATIONS[run.act] ?? '')}</span></h2></div><div><button data-go="repairs">Field repairs</button><button data-go="reimport">Re-import pilots</button><button data-go="abandon" class="warn">Abandon run</button><button data-go="title">Title</button></div></div>
       <div class="opsboard"><div class="opsmain"><div class="squad">${squad}</div>${acts}
       <p class="muted small">⚔ combat · ☠ elite · ⬢ supply · ⛺ rest (full repair) · ♛ act boss · hover a node for its brief</p></div>${telemetryPanel(run)}</div></div>`
-    this.on('[data-node]', el => { if (avail.has(el.dataset.node!)) this.enterNode(run.nodes.find(n => n.id === el.dataset.node)!) })
+    this.on('[data-node]', el => {
+      // touch: a tap opens the node's card (brief, stakes, Enter); a mouse click enters directly
+      if (document.documentElement.hasAttribute('data-touch')) return this.showNodeCard?.(el)
+      if (avail.has(el.dataset.node!)) this.enterNode(run.nodes.find(n => n.id === el.dataset.node)!)
+    })
     this.nodeCards(run, avail, brief)
     this.drawEdges(run, avail)
     void fillPortraits(this.root)
@@ -397,6 +401,8 @@ export class App {
   }
 
   /** Styled hover/focus card for campaign nodes: what it is, the brief, the stakes, and whether it can be entered. */
+  /** Touch: opens a node's docked card (set up by nodeCards). */
+  private showNodeCard: ((el: HTMLElement) => void) | null = null
   private nodeCards(run: RunState, avail: Set<string>, brief: (n: RunNode) => string) {
     const card = document.createElement('div')
     card.className = 'nodecard'
@@ -404,16 +410,25 @@ export class App {
     this.root.querySelector('.runmap')?.appendChild(card)
     const KIND: Record<string, string> = { combat: 'Engagement', elite: 'Elite engagement', supply: 'Supply depot', rest: 'Stand-down', boss: 'Act objective' }
     const SITREP: Record<string, string> = { standard: 'Basic Combat', holdout: 'Holdout', control: 'Control', extraction: 'Extraction', assassination: 'Assassination' }
-    const show = (el: HTMLElement) => {
+    const touch = document.documentElement.hasAttribute('data-touch')
+    const show = (el: HTMLElement, docked = false) => {
       const n = run.nodes.find(x => x.id === el.dataset.node)
       if (!n) return
       const ahead = n.act > run.act
       const fight = n.kind === 'combat' || n.kind === 'elite' || n.kind === 'boss'
       const stakes = n.kind === 'elite' ? 'Tougher hostiles. Win to choose a supply reward.' : n.kind === 'boss' ? `Ends Act ${n.act}. Win for a supply reward${n.act < ACTS ? ` and +${actLevel(n.act + 1) - actLevel(n.act)} License Levels (LL${actLevel(n.act + 1)})` : ''}.` : n.kind === 'combat' ? 'After the fight: field repairs, and sometimes an event.' : n.kind === 'supply' ? 'No fight. Choose one item.' : 'No fight. Full repair; destroyed mechs are reprinted.'
-      const state = n.cleared ? '<span class="good">✓ Cleared</span>' : avail.has(n.id) ? '<span class="warnc">▶ Available: click to enter</span>' : run.current === n.id ? 'You are here' : '<span class="muted">Locked: reach it through a connected node</span>'
+      const state = n.cleared ? '<span class="good">✓ Cleared</span>' : avail.has(n.id) ? `<span class="warnc">▶ Available${docked ? '' : ': click to enter'}</span>` : run.current === n.id ? 'You are here' : '<span class="muted">Locked: reach it through a connected node</span>'
       card.innerHTML = ahead
         ? `<div class="nk">${esc(KIND[n.kind] ?? n.kind)}</div><p><span class="redact">████ ███ ██████</span></p><div class="muted small">Not yet reached.</div>`
         : `<div class="nk">${esc(KIND[n.kind] ?? n.kind)}${fight && n.kind !== 'boss' ? ` · ${esc(SITREP[n.sitrep ?? 'standard'] ?? '')}` : ''}${fight ? ` <span class="muted">Tier ${n.act}</span>` : ''}</div><p>${esc(brief(n))}</p><div class="small">${esc(stakes)}</div><div class="small st">${state}</div>`
+      card.classList.toggle('docked', docked)
+      if (docked) {
+        // touch: the card docks at the bottom of the screen, with the action in it
+        card.innerHTML += `<div class="nc-btns">${avail.has(n.id) ? `<button class="primary" data-enter="${esc(n.id)}">Enter ▶</button>` : ''}<button data-close>Close</button></div>`
+        card.style.display = 'block'
+        card.style.left = card.style.top = ''
+        return
+      }
       const r = el.getBoundingClientRect()
       card.style.display = 'block'
       const w = card.offsetWidth, h = card.offsetHeight
@@ -424,6 +439,14 @@ export class App {
       card.style.top = `${y}px`
     }
     const hide = () => { card.style.display = 'none' }
+    card.addEventListener('click', e => {
+      const t = e.target as HTMLElement
+      const enter = t.closest<HTMLElement>('[data-enter]')
+      if (enter) { hide(); this.enterNode(run.nodes.find(n => n.id === enter.dataset.enter)!) }
+      else if (t.closest('[data-close]')) hide()
+    })
+    this.showNodeCard = el => show(el, true)
+    if (touch) return
     this.root.querySelectorAll<HTMLElement>('[data-node]').forEach(el => {
       el.addEventListener('mouseenter', () => show(el))
       el.addEventListener('focus', () => show(el))

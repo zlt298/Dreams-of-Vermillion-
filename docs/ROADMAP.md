@@ -16,6 +16,7 @@ Useful commands, all run from `game/`:
 |---|---|
 | `npm test` | 225 unit tests |
 | `npm run e2e` | browser campaign run plus a GPU-leak check |
+| `npm run e2e:mobile` | the same on an emulated phone, touch only (landscape and portrait) |
 | `npm run bench` | AI speed per turn |
 | `npm run coverage -- --list` | rules fidelity report |
 | `npm run validate-enemies` | checks the enemy team files |
@@ -430,7 +431,12 @@ Driven by `npm run coverage -- --list`.
 4. ✅ Overcharge shows its next heat cost on the button.
 5. ✅ Settings screen (title and ⚙ in battle): animation speed, graphics quality, motion, colour-blind palette.
 6. ✅ Hangar: removing a pilot offers Undo.
-7. ✅ Touch: one-finger pan, pinch zoom, tap to preview and tap again to confirm; the roster starts collapsed on narrow screens.
+7. ✅ Touch: one-finger pan, pinch zoom, tap to preview and tap again to confirm, long-press to inspect.
+   ✅ Phone layout (`html[data-phone]`):
+   - battle bottom sheet with Move / Attack / Tech / More tabs, compact header with a ☰ menu, scrolling initiative row, roster and log drawers, docked preview card
+   - menus that fit 375 px screens, campaign graphs that scroll sideways, node cards with Enter
+   - tap-to-read tooltips, safe areas, low graphics by default
+   - `npm run e2e:mobile` plays with touch on an emulated iPhone, in landscape and portrait
 8. ✅ Battle flow: ending a turn with unused actions asks first; the hover tooltip follows the cursor; full unit labels only for hovered, selected and acting units (hold **Alt** for all); short initiative names for numbered squads; collapsible roster and log (with an unread badge); keyboard shortcuts on buttons and a **?** list; Continue on the end-of-battle stamp; visible keyboard focus.
 
 ### 4. AI

@@ -56,10 +56,11 @@ export const RA_EYE_SVG = `<svg viewBox="0 0 200 200" aria-hidden="true">
  * Returns a disposer (also called automatically on completion).
  */
 export function playInterlude(root: HTMLElement, title: string, text: string, onDone: () => void): () => void {
+  const touchHint = document.documentElement.hasAttribute('data-touch')
   root.innerHTML = `<div class="screen interlude" role="dialog" aria-label="${title}">
     <div class="ra-eye">${RA_EYE_SVG}</div>
     <pre class="tx" aria-live="off"></pre>
-    <div class="ix-foot"><span class="ix-hint">HOLD ANY KEY OR MOUSE BUTTON TO SKIP</span><span class="ix-bar"><i></i></span></div>
+    <div class="ix-foot"><span class="ix-hint">${touchHint ? 'TAP AND HOLD TO SKIP' : 'HOLD ANY KEY OR MOUSE BUTTON TO SKIP'}</span><span class="ix-bar"><i></i></span></div>
   </div>`
   const screen = root.querySelector<HTMLElement>('.interlude')!
   const pre = root.querySelector<HTMLElement>('.tx')!
@@ -131,7 +132,7 @@ export function playInterlude(root: HTMLElement, title: string, text: string, on
     while (i < tokens.length) append(tokens[i++])
     finished = true
     cursor.classList.add('blink')
-    hint.textContent = 'PRESS ANY KEY TO CONTINUE'
+    hint.textContent = touchHint ? 'TAP TO CONTINUE' : 'PRESS ANY KEY TO CONTINUE'
     bar.style.width = '0'
     pre.scrollTop = pre.scrollHeight
   }

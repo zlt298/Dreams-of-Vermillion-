@@ -15,8 +15,8 @@ import type { Pos, Unit, Weapon } from '../rules/types'
 import { BattleView, type Highlight } from '../render/scene'
 import { esc } from './dom'
 import { needsBarrage } from '../rules/battle/actions'
-import { confirmDialog, promptDialog } from './modal'
-import { settingsForm, bindSettings, colourBlind, prefs } from './settings'
+import { confirmDialog, promptDialog, toast } from './modal'
+import { settingsForm, bindSettings, colourBlind, prefs, isPhone } from './settings'
 import { resolveQuality } from '../render/quality'
 
 type Mode =
@@ -93,7 +93,14 @@ export class BattleScreen {
     root.querySelector('.stamp-layer')!.addEventListener('click', e => { if ((e.target as HTMLElement).closest('[data-act="finish"]')) this.finish() })
     window.addEventListener('keyup', this.onKeyUp)
     this.view.touchConfirm = () => this.b.active?.side === 'player' && this.mode.k !== 'idle'
-    if (window.innerWidth < 900) this.rosterOpen = false
+    // long-press a unit: show it in the sheet without acting on it
+    this.view.onUnitLongPress = u => { this.selected = u; this.sheetState = 'half'; this.view.focus(u.pos); this.render() }
+    if (isPhone() && window.innerHeight > window.innerWidth) {
+      let seen = false
+      try { seen = localStorage.getItem('dov.rotateHint') === '1'; localStorage.setItem('dov.rotateHint', '1') } catch { /* storage unavailable */ }
+      if (!seen) setTimeout(() => toast('Tip: turn your phone sideways for a better view of the battlefield.', undefined, 5000), 600)
+    }
+    if (window.innerWidth < 900 || isPhone()) this.rosterOpen = false
     this.hud.addEventListener('mouseover', e => this.onHudHover(e))
     window.addEventListener('keydown', this.onKey)
     window.addEventListener('resize', this.onResize)
@@ -288,6 +295,15 @@ export class BattleScreen {
   private placeTooltip() {
     const t = this.tooltip
     if (t.style.display !== 'block') return
+    if (isPhone()) {
+      // no cursor on a phone: the preview docks just above the bottom sheet, full width
+      const sheet = this.hud.querySelector('.sheet')?.getBoundingClientRect()
+      t.classList.add('docked')
+      t.style.left = ''
+      t.style.top = `${Math.max(8, (sheet ? sheet.top : window.innerHeight) - t.offsetHeight - 6)}px`
+      return
+    }
+    t.classList.remove('docked')
     const w = t.offsetWidth, h = t.offsetHeight
     let x = this.pointer.x + 18, y = this.pointer.y + 18
     if (x + w > window.innerWidth - 8) x = this.pointer.x - w - 14
@@ -529,13 +545,15 @@ export class BattleScreen {
 
   private onHudClick(e: MouseEvent) {
     const el = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null
-    if (!el || el.classList.contains('disabled')) return
+    if (!el) return
+    // a disabled action says why (touch has no hover tooltip to show it)
+    if (el.classList.contains('disabled')) { if (el.title) this.toast(el.title); return }
     const act = el.dataset.act!
     const arg = el.dataset.arg
     const a = this.b.active
     const sel = this.selected
     switch (act) {
-      case 'select': { const u = this.b.unit(arg); if (u) this.select(u); return }
+      case 'select': { const u = this.b.unit(arg); if (u) { if (isPhone()) this.rosterOpen = false; this.select(u) } return }
       case 'activate':
         // SEKHMET Protocol: the NHP plays this mech's turn
         if (sel?.flags.sekhmet) { this.cmd(() => { runAiTurn(this.b, sel); this.mode = { k: 'idle' } }, true); this.toast('SEKHMET has control.'); return }
@@ -548,17 +566,29 @@ export class BattleScreen {
         else if (sel && sel.side === 'player' && !this.b.activeId && sel.activationsLeft > 0 && this.b.currentSide === 'player') this.cmd(() => { runAiTurn(this.b, sel); this.mode = { k: 'idle' } }, true)
         return
       case 'cancel': this.mode = a ? { k: 'move' } : { k: 'idle' }; this.render(); return
-      case 'export': void this.downloadBattle(); return
+      case 'export': this.menuOpen = false; void this.downloadBattle(); return
       case 'rotl': this.view.rotate(-1); return
       case 'rotr': this.view.rotate(1); return
       case 'gfx': this.view.setQuality(this.view.quality === 'high' ? 'low' : 'high'); this.toast(`Graphics: ${this.view.quality} quality`); this.render(); return
       case 'speed': { const order = [1, 2, 4, 0]; this.view.setSpeed(order[(order.indexOf(this.view.speed) + 1) % order.length]); this.render(); return }
       case 'finish': this.finish(); return
-      case 'settings': this.openSettings(); return
+      case 'settings': this.menuOpen = false; this.openSettings(); return
+      case 'menu': this.menuOpen = !this.menuOpen; this.render(); return
+      case 'close-drawers': this.menuOpen = this.rosterOpen = this.logOpen = false; this.render(); return
+      case 'mission': { const s = this.b.sitrep; this.toast(`${this.title} · ${s.name}: ${s.description}`); return }
+      case 'fields': this.showFields = !this.showFields; this.highlightKey = ''; this.render(); return
+      case 'sheet': this.sheetState = this.sheetState === 'peek' ? 'half' : this.sheetState === 'half' ? 'full' : 'peek'; this.render(); return
+      case 'sheet-tab': {
+        const t = arg as BattleScreen['sheetTab']
+        this.sheetState = this.sheetTab === t && this.sheetState !== 'peek' ? 'peek' : this.sheetState === 'peek' ? 'half' : this.sheetState
+        this.sheetTab = t
+        this.render()
+        return
+      }
       case 'shortcuts': this.toggleShortcuts(); return
-      case 'threat': this.toggleThreat(); return
-      case 'toggle-roster': this.rosterOpen = !this.rosterOpen; this.render(); return
-      case 'toggle-log': this.logOpen = !this.logOpen; this.render(); return
+      case 'threat': this.menuOpen = false; this.toggleThreat(); return
+      case 'toggle-roster': this.rosterOpen = !this.rosterOpen; if (this.rosterOpen) this.logOpen = false; this.menuOpen = false; this.render(); return
+      case 'toggle-log': this.logOpen = !this.logOpen; if (this.logOpen && isPhone()) this.rosterOpen = false; this.menuOpen = false; this.render(); return
       case 'policy':
         if (sel && (arg === 'brace' || arg === 'overwatch' || arg === 'reactions')) {
           const order = ['auto', 'ask', 'off'] as const
@@ -797,6 +827,16 @@ export class BattleScreen {
     const log = this.logOpen
       ? `<div class="panel log"><button class="ptoggle" data-act="toggle-log" title="Hide the log [L]">▸</button>${b.log.slice(-60).map(l => `<div class="l ${l.kind ?? ''}">${annotateTags(esc(l.text))}</div>`).join('')}</div>`
       : `<button class="tab log" data-act="toggle-log" title="Show the battle log [L]">◂ Log${unread > 0 ? ` <span class="badge">${unread}</span>` : ''}</button>`
+    if (isPhone()) {
+      // phone: compact header with a menu, drawers instead of side panels, a bottom sheet for the unit
+      const drawers = (this.rosterOpen ? left.replace('class="panel left"', 'class="panel left drawer"') : '') + (this.logOpen ? log.replace('class="panel log"', 'class="panel log drawer"') : '')
+      const scrim = this.rosterOpen || this.logOpen || this.menuOpen ? '<div class="scrim" data-act="close-drawers"></div>' : ''
+      this.hud.innerHTML = this.phoneTop(unread) + this.initiativeBar() + scrim + drawers + (this.menuOpen ? this.phoneMenu(unread) : '') + this.phoneSheet(sel)
+      this.layoutHud()
+      const lg = this.hud.querySelector('.log')
+      if (lg) lg.scrollTop = lg.scrollHeight
+      return
+    }
     const bottom = `<div class="panel bottom">${sel ? this.unitPanel(sel) : '<span class="muted">Select a unit.</span>'}</div>`
     this.hud.innerHTML = top + this.initiativeBar() + left + log + bottom
     this.layoutHud()
@@ -825,6 +865,118 @@ export class BattleScreen {
     return `<button class="${dis ? 'disabled' : ''} ${extra}" data-act="${act}" data-arg="${esc(arg)}" ${title ? `title="${esc(title)}"` : ''}>${label}</button>`
   }
 
+  // ------------------------------------------------------------------ phone layout
+  /** Bottom sheet height: peek (unit + action row), half, or full. */
+  sheetState: 'peek' | 'half' | 'full' = 'peek'
+  /** Open tab in the sheet for the acting lancer. */
+  sheetTab: 'move' | 'attack' | 'tech' | 'more' = 'attack'
+  menuOpen = false
+  private lastModeK = ''
+
+  private phoneTop(unread: number): string {
+    const b = this.b
+    const side = b.winner ? (b.winner === 'player' ? 'VICTORY' : 'DEFEAT') : b.currentSide === 'player' ? 'Your move' : 'Enemy activity'
+    return `<div class="topbar phone">
+      <button class="roundlbl" data-act="mission" title="Mission objective">R${b.round} · <span class="${b.currentSide}">${side}</span>${b.sitrep.id === 'holdout' && b.sitrep.rounds ? ` <span class="muted">${b.round}/${b.sitrep.rounds}</span>` : ''}${b.sitrep.id === 'control' ? ` <span class="muted">held ${b.sitrepScore ?? 0}/${b.sitrep.rounds}</span>` : ''}</button>
+      <div class="controls"><button data-act="rotl" aria-label="Rotate left">⟲</button><button data-act="rotr" aria-label="Rotate right">⟳</button><button data-act="menu" aria-label="Menu" class="${this.menuOpen ? 'on' : ''}">☰${unread > 0 && !this.logOpen ? '<span class="dot"></span>' : ''}</button>${b.winner && !this.ended ? '<button data-act="finish" class="primary">Continue ▶</button>' : ''}</div></div>`
+  }
+
+  private phoneMenu(unread: number): string {
+    const item = (act: string, label: string, cls = '') => `<button data-act="${act}" class="${cls}">${label}</button>`
+    return `<div class="phone-menu" role="menu">
+      ${item('toggle-roster', 'Roster', this.rosterOpen ? 'on' : '')}${item('toggle-log', `Battle log${unread > 0 ? ` <span class="badge">${unread}</span>` : ''}`, this.logOpen ? 'on' : '')}
+      ${item('threat', '◬ Enemy threat', this.threatOn ? 'on' : '')}${item('fields', '▦ Field overlays', this.showFields ? 'on' : '')}
+      ${item('speed', `Speed: ${this.view.speed === 0 ? 'skip' : '×' + this.view.speed}`)}${item('gfx', `Graphics: ${this.view.quality}`)}
+      ${item('settings', '⚙ Settings')}${item('export', '⤓ Export replay')}
+    </div>`
+  }
+
+  /** The phone's bottom sheet: the selected unit, and for the acting lancer, tabs of actions. */
+  private phoneSheet(sel: Unit | null): string {
+    const b = this.b
+    if (!sel) return `<div class="panel bottom sheet peek"><span class="muted">Tap a unit to see it.</span></div>`
+    const u = sel
+    const mine = u.side === 'player' && (u.kind === 'mech' || u.kind === 'npc')
+    const isActive = b.active === u && u.side === 'player'
+    // picking a target needs the map: collapse to the peek height
+    if (this.mode.k !== this.lastModeK) {
+      if (['attack', 'tech', 'melee', 'custom', 'barrage-pick'].includes(this.mode.k) && this.mode.k !== 'barrage-pick') this.sheetState = 'peek'
+      this.lastModeK = this.mode.k
+    }
+    const st = u.stats
+    const statuses = (u.statuses.map(s => s.id) as string[]).concat(b.has(u, 'engaged') ? ['engaged'] : [])
+    const head = `<div class="sh-head" data-act="sheet">${u.kind === 'mech' || u.kind === 'npc' ? portraitImg(u, 'portrait sm') : ''}<div class="sh-id"><b>${esc(u.name)}</b> <span class="muted">${u.frameId ? esc(Lancer.frames.get(u.frameId)?.name ?? '') : u.kind === 'npc' ? `T${u.tier} ${esc(u.role ?? '')}` : esc(u.kind)}</span>
+      <div class="sh-stats">HP <b>${Math.max(0, u.hp)}/${st.hp}</b>${u.overshield ? ` +${u.overshield}` : ''}${st.heatcap ? ` · Heat ${u.heat}/${st.heatcap}` : ''}${u.kind === 'mech' || st.structure > 1 ? ` · S ${u.structure} · R ${u.stress}` : ''} · EVA ${st.evasion} · E-DEF ${st.edef}${statuses.length ? ` · <span class="warnc">${esc(statuses.join(', '))}</span>` : ''}</div></div>
+      <span class="sh-grip" aria-label="Expand or collapse">${this.sheetState === 'full' ? '▾' : '▴'}</span></div>`
+    let row = '', body = ''
+    const wcards = () => `<div class="weapons">${u.weapons.map(w => this.weaponCard(u, w, isActive)).join('')}</div>`
+    const sys = u.systems.length ? `<div class="syslist">${u.systems.map(s => `<span class="sys ${s.destroyed ? 'destroyed' : ''}" data-tip="${esc(sysText(s))}">${esc(s.name)}${s.usesLeft != null ? ` (${s.usesLeft})` : ''}</span>`).join('')}</div>` : ''
+    if (isActive) {
+      const p = this.actionParts(u)
+      const tab = (t: typeof this.sheetTab, label: string) => `<button data-act="sheet-tab" data-arg="${t}" class="${this.sheetTab === t && this.sheetState !== 'peek' ? 'on' : ''}">${label}</button>`
+      row = `${p.hint}<div class="sh-row">${tab('move', 'Move')}${tab('attack', 'Attack')}${tab('tech', 'Tech')}${tab('more', 'More')}<span class="sh-gap"></span>${p.cancel}${p.end}</div><div class="sh-eco">${p.eco}</div>`
+      if (this.sheetState !== 'peek') {
+        const t = this.sheetTab
+        body = t === 'move' ? `<div class="sh-note muted">Tap a blue tile to preview the path, then tap it again to move.</div><div class="actions">${p.standup}${p.boost}${p.disengage}${p.undo}${p.auto}</div>`
+          : t === 'attack' ? `${wcards()}<div class="actions"><span class="eco">Melee</span>${p.melee}${p.grapple}</div>`
+          : t === 'tech' ? `<div class="actions">${p.tech}${p.fulltech}</div>`
+          : `<div class="actions"><span class="eco">Defence & heat</span>${p.overcharge}${p.stabilize}${p.hide}${p.search}${p.shutdown}</div>${p.core ? `<div class="actions"><span class="eco">CORE</span>${p.core}</div>` : ''}${p.systems ? `<div class="actions systems"><span class="eco">Systems & traits</span>${p.systems}</div>` : ''}<div class="actions">${p.undo}${p.auto}${p.selfdestruct}</div>${this.policyRow(u)}`
+      }
+    } else {
+      if (mine && b.currentSide === 'player' && !b.activeId && u.activationsLeft > 0) row = `<div class="sh-row">${this.btn('activate', '▶ Activate', true, '', 'primary')}${this.btn('auto', 'Auto (AI turn)', true)}</div>`
+      if (this.sheetState !== 'peek') body = wcards() + sys + (mine ? this.policyRow(u) : '') + (u.flags.description ? `<p class="muted small">${esc(u.flags.description)}</p>` : '')
+    }
+    return `<div class="panel bottom sheet ${this.sheetState}">${head}${row}${body ? `<div class="sh-body">${body}</div>` : ''}</div>`
+  }
+  private policyRow(u: Unit): string {
+    return `<div class="policies">${(['brace', 'overwatch', 'reactions'] as const).map(k => `<label class="${u.policies[k] ?? 'ask'}" data-act="policy" data-arg="${k}">${({ brace: 'Brace', overwatch: 'Overwatch', reactions: 'Other reactions' })[k]}: ${u.policies[k] ?? 'ask'}</label>`).join('')}</div>`
+  }
+
+  /**
+   * The acting lancer's action buttons, as named parts: the desktop panel lays them out in one bar,
+   * the phone sheet groups them into Move / Attack / Tech / More tabs.
+   */
+  private actionParts(u: Unit) {
+    const b = this.b
+    const q = b.canSpend(u, 'quick'), fu = b.canSpend(u, 'full'), pr = b.canSpend(u, 'protocol')
+    const qa = (action: string) => b.canSpend(u, 'quick', action)
+    const jam = b.has(u, 'jammed') ? 'Jammed' : true
+    const and = (x: true | string, y: true | string) => (x === true ? y : x)
+    const custom = b.customActions(u)
+    const fr = u.frameId ? Lancer.frames.get(u.frameId) : undefined
+    const actLabel = (x: string) => ({ quick: 'Q', full: 'F', protocol: 'P', free: 'free', reaction: 'R', quick_tech: 'QT', full_tech: 'FT' } as Record<string, string>)[x] ?? x
+    const oc = ['1', '1d3', '1d6', '1d6+4'][u.overchargeLevel]
+    const m = this.mode
+    const hint = m.k === 'barrage-pick' ? `<div class="hint">Barrage: choose the second weapon below.</div>`
+      : m.k === 'attack' ? `<div class="hint">${m.action === 'aux' ? 'Optional aux attack — ' : ''}Choose a target for <b>${esc(m.weapon.name)}</b>. ${this.b.isAoE(this.b.profile(m.weapon)) ? 'Click a tile to aim the area.' : ''}</div>`
+      : m.k === 'tech' ? `<div class="hint">Choose a target for ${m.tech.toUpperCase()}.</div>`
+      : m.k === 'custom' ? `<div class="hint">${esc(m.action.name)}: ${esc(m.action.text)}</div>`
+      : m.k === 'melee' ? `<div class="hint">Choose an adjacent target to ${m.what}.</div>` : ''
+    return {
+      hint,
+      eco: `<span class="eco">Move ${u.moveLeft} · Actions ${u.actionsLeft}${u.flags.bonusQuick ? `+${u.flags.bonusQuick}` : ''}${u.flags.fullTechLeft ? ` · tech ${u.flags.fullTechLeft}` : ''} · Reactions ${u.reactionsLeft}</span>`,
+      cancel: m.k !== 'move' && m.k !== 'idle' ? this.btn('cancel', '✕ Cancel <kbd>Esc</kbd>', true, '', 'warn') : '',
+      standup: b.has(u, 'prone') ? this.btn('standup', 'Stand Up', b.canStandUp(u)) : '',
+      boost: this.btn('boost', 'Boost [Q] <kbd>B</kbd>', and(qa('boost'), b.has(u, 'slowed') || b.has(u, 'immobilized') ? 'Slowed/immobilized' : b.has(u, 'prone') ? 'Prone: stand up first' : true)),
+      overcharge: this.btn('overcharge', `Overcharge: +${oc} heat <kbd>O</kbd>`, u.overchargedThisTurn ? 'Once per turn' : u.kind === 'mech' ? true : 'Mechs only', '', '', `Extra quick action for +${oc} heat (now ${u.heat}/${u.stats.heatcap}). The cost rises each use until a Full Repair.`),
+      tech: `${this.btn('tech', 'Invade [QT]', and(b.canQuickTech(u, 'invade'), jam), 'invade')}${this.btn('tech', 'Lock On [QT]', and(b.canQuickTech(u, 'lock_on'), jam), 'lockon')}${this.btn('tech', 'Bolster [QT]', and(b.canQuickTech(u, 'bolster'), jam), 'bolster')}${this.btn('tech', 'Scan [QT]', and(b.canQuickTech(u, 'scan'), jam), 'scan')}`,
+      fulltech: this.btn('fulltech', 'Full Tech [F]', and(fu, jam)),
+      stabilize: `${this.btn('stab-cool', 'Stabilize: Cool [F]', fu)}${this.btn('stab-repair', 'Stabilize: Repair [F]', and(fu, u.repairs > 0 ? true : 'No repairs'))}`,
+      disengage: this.btn('disengage', 'Disengage [F]', fu),
+      hide: this.btn('hide', 'Hide [Q]', and(qa('hide'), b.canHide(u) ? true : 'Need cover / out of sight')),
+      search: this.btn('search', 'Search [Q]', qa('search')),
+      melee: `${this.btn('melee', 'Ram [Q]', qa('ram'), 'ram')}${this.btn('melee', 'Grapple [Q]', qa('grapple'), 'grapple')}${this.btn('melee', 'Improvised [F]', b.canSpend(u, 'full', 'improvised'), 'improvised')}`,
+      grapple: `${b.grapples.some(g => g.d === u.id) ? this.btn('breakgrapple', 'Break Grapple [Q]', qa('break_grapple')) : ''}${b.grapples.some(g => g.a === u.id) ? this.btn('releasegrapple', 'Release Grapple [Free]', true) : ''}`,
+      shutdown: b.has(u, 'shutdown') ? this.btn('bootup', 'Boot Up [F]', u.actionsLeft >= 2 ? true : 'Needs full action') : this.btn('shutdown', 'Shut Down [Q]', qa('shut_down')),
+      core: fr ? this.btn('core', `CORE: ${esc(fr.core_system.active_name ?? fr.core_system.name)} [${actLabel((fr.core_system.activation ?? 'quick').toLowerCase())}]`, u.coreAvailable ? (fr.core_system.activation === 'Protocol' ? pr : fr.core_system.activation === 'Full' ? fu : q) : 'Core power spent', '', 'core') : '',
+      selfdestruct: this.btn('selfdestruct', 'Self-Destruct', qa('self_destruct'), '', 'warn'),
+      undo: this.canUndo() ? this.btn('undo', '↶ Undo <kbd>Ctrl+Z</kbd>', true) : '',
+      auto: this.btn('auto', 'Auto (AI)', true),
+      end: this.btn('end', 'End Turn <kbd>Enter</kbd>', true, '', 'primary'),
+      systems: custom.map(c => `<button class="${c.usable(b, u) === true ? '' : 'disabled'}" data-act="custom" data-arg="${esc(c.key)}" title="${esc(c.text)}${c.usable(b, u) !== true ? ' — ' + esc(c.usable(b, u) as string) : ''}">${esc(c.name)} [${actLabel(c.activation)}]${c.text.startsWith('[manual]') ? '*' : ''}</button>`).join(''),
+    }
+  }
+
   private unitPanel(u: Unit): string {
     const b = this.b
     const mine = u.side === 'player' && (u.kind === 'mech' || u.kind === 'npc')
@@ -842,36 +994,24 @@ export class BattleScreen {
     let actions = ''
     if (mine && !isActive && b.currentSide === 'player' && !b.activeId && u.activationsLeft > 0) actions = `<div class="actions">${this.btn('activate', '▶ Activate', true, '', 'primary')}${this.btn('auto', 'Auto (AI turn)', true)}</div>`
     if (isActive && u.side === 'player') {
-      const q = b.canSpend(u, 'quick'), fu = b.canSpend(u, 'full'), pr = b.canSpend(u, 'protocol')
-      const qa = (action: string) => b.canSpend(u, 'quick', action)
-      const qt = b.canQuickTech(u)
-      const jam = b.has(u, 'jammed') ? 'Jammed' : true
-      const and = (x: true | string, y: true | string) => (x === true ? y : x)
-      const custom = b.customActions(u)
-      const fr = u.frameId ? Lancer.frames.get(u.frameId) : undefined
-      const actLabel = (x: string) => ({ quick: 'Q', full: 'F', protocol: 'P', free: 'free', reaction: 'R', quick_tech: 'QT', full_tech: 'FT' } as Record<string, string>)[x] ?? x
-      const ecoTxt = `<span class="eco">Move ${u.moveLeft} · Actions ${u.actionsLeft}${u.flags.bonusQuick ? `+${u.flags.bonusQuick}` : ''}${u.flags.fullTechLeft ? ` · tech ${u.flags.fullTechLeft}` : ''} · Reactions ${u.reactionsLeft}</span>`
-      actions = `<div class="actions">${ecoTxt}
-        ${this.mode.k !== 'move' && this.mode.k !== 'idle' ? this.btn('cancel', '✕ Cancel (Esc)', true, '', 'warn') : ''}
-        ${b.has(u, 'prone') ? this.btn('standup', 'Stand Up', b.canStandUp(u)) : ''}
-        ${this.btn('boost', 'Boost [Q] <kbd>B</kbd>', and(qa('boost'), b.has(u, 'slowed') || b.has(u, 'immobilized') ? 'Slowed/immobilized' : b.has(u, 'prone') ? 'Prone: stand up first' : true))}
-        ${this.btn('overcharge', `Overcharge: +${['1', '1d3', '1d6', '1d6+4'][u.overchargeLevel]} heat <kbd>O</kbd>`, u.overchargedThisTurn ? 'Once per turn' : u.kind === 'mech' ? true : 'Mechs only', '', '', `Extra quick action for +${['1', '1d3', '1d6', '1d6+4'][u.overchargeLevel]} heat (now ${u.heat}/${u.stats.heatcap}). The cost rises each use until a Full Repair.`)}
-        ${this.btn('tech', 'Invade [QT]', and(b.canQuickTech(u, 'invade'), jam), 'invade')}${this.btn('tech', 'Lock On [QT]', and(b.canQuickTech(u, 'lock_on'), jam), 'lockon')}${this.btn('tech', 'Bolster [QT]', and(b.canQuickTech(u, 'bolster'), jam), 'bolster')}${this.btn('tech', 'Scan [QT]', and(b.canQuickTech(u, 'scan'), jam), 'scan')}${this.btn('fulltech', 'Full Tech [F]', and(fu, jam))}
-        ${this.btn('stab-cool', 'Stabilize: Cool [F]', fu)}${this.btn('stab-repair', 'Stabilize: Repair [F]', and(fu, u.repairs > 0 ? true : 'No repairs'))}
-        ${this.btn('disengage', 'Disengage [F]', fu)}${this.btn('hide', 'Hide [Q]', and(qa('hide'), b.canHide(u) ? true : 'Need cover / out of sight'))}${this.btn('search', 'Search [Q]', qa('search'))}
-        ${this.btn('melee', 'Ram [Q]', qa('ram'), 'ram')}${this.btn('melee', 'Grapple [Q]', qa('grapple'), 'grapple')}${this.btn('melee', 'Improvised [F]', b.canSpend(u, 'full', 'improvised'), 'improvised')}
-        ${b.grapples.some(g => g.d === u.id) ? this.btn('breakgrapple', 'Break Grapple [Q]', qa('break_grapple')) : ''}${b.grapples.some(g => g.a === u.id) ? this.btn('releasegrapple', 'Release Grapple [Free]', true) : ''}
-        ${b.has(u, 'shutdown') ? this.btn('bootup', 'Boot Up [F]', u.actionsLeft >= 2 ? true : 'Needs full action') : this.btn('shutdown', 'Shut Down [Q]', qa('shut_down'))}
-        ${fr ? this.btn('core', `CORE: ${esc(fr.core_system.active_name ?? fr.core_system.name)} [${actLabel((fr.core_system.activation ?? 'quick').toLowerCase())}]`, u.coreAvailable ? (fr.core_system.activation === 'Protocol' ? pr : fr.core_system.activation === 'Full' ? fu : q) : 'Core power spent', '', 'core') : ''}
-        ${this.btn('selfdestruct', 'Self-Destruct', qa('self_destruct'), '', 'warn')}
-        ${this.canUndo() ? this.btn('undo', '↶ Undo <kbd>Ctrl+Z</kbd>', true) : ''}${this.btn('auto', 'Auto (AI)', true)}${this.btn('end', 'End Turn <kbd>Enter</kbd>', true, '', 'primary')}
+      const p = this.actionParts(u)
+      actions = `<div class="actions">${p.eco}
+        ${p.cancel}
+        ${p.standup}
+        ${p.boost}
+        ${p.overcharge}
+        ${p.tech}${p.fulltech}
+        ${p.stabilize}
+        ${p.disengage}${p.hide}${p.search}
+        ${p.melee}
+        ${p.grapple}
+        ${p.shutdown}
+        ${p.core}
+        ${p.selfdestruct}
+        ${p.undo}${p.auto}${p.end}
       </div>
-      ${custom.length ? `<div class="actions systems"><span class="eco">Systems & traits</span>${custom.map(c => `<button class="${c.usable(b, u) === true ? '' : 'disabled'}" data-act="custom" data-arg="${esc(c.key)}" title="${esc(c.text)}${c.usable(b, u) !== true ? ' — ' + esc(c.usable(b, u) as string) : ''}">${esc(c.name)} [${actLabel(c.activation)}]${c.text.startsWith('[manual]') ? '*' : ''}</button>`).join('')}</div>` : ''}`
-      if (this.mode.k === 'barrage-pick') actions = `<div class="hint">Barrage: choose the second weapon below.</div>` + actions
-      if (this.mode.k === 'attack') actions = `<div class="hint">${this.mode.action === 'aux' ? 'Optional aux attack — ' : ''}Choose a target for <b>${esc(this.mode.weapon.name)}</b>. ${this.b.isAoE(this.b.profile(this.mode.weapon)) ? 'Click a tile to aim the area.' : ''}</div>` + actions
-      if (this.mode.k === 'tech') actions = `<div class="hint">Choose a target for ${this.mode.tech.toUpperCase()}.</div>` + actions
-      if (this.mode.k === 'custom') actions = `<div class="hint">${esc(this.mode.action.name)}: ${esc(this.mode.action.text)}</div>` + actions
-      if (this.mode.k === 'melee') actions = `<div class="hint">Choose an adjacent target to ${this.mode.what}.</div>` + actions
+      ${p.systems ? `<div class="actions systems"><span class="eco">Systems & traits</span>${p.systems}</div>` : ''}`
+      actions = p.hint + actions
     }
     const sysList = u.systems.length ? `<div class="syslist">${u.systems.map(s => `<span class="sys ${s.destroyed ? 'destroyed' : ''}" data-tip="${esc(sysText(s))}">${esc(s.name)}${s.usesLeft != null ? ` (${s.usesLeft})` : ''}${!s.charged ? ' ⌛' : ''}</span>`).join('')}</div>` : ''
     return head + actions + `<div class="weapons">${wcards}</div>` + sysList

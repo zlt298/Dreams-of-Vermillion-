@@ -542,3 +542,155 @@ html[data-motion="reduce"] .battle .float-text { animation: rm-hold 1.3s linear 
 html[data-motion="reduce"] .battle .banner.show { animation: rm-hold 1.7s linear forwards !important; }
 html[data-motion="reduce"] .title-eye { animation: none !important; opacity: 0.05; }
 @keyframes rm-hold { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ================================================================ mobile: safe areas (notches, home bars) */
+.screen { padding-left: max(32px, env(safe-area-inset-left)); padding-right: max(32px, env(safe-area-inset-right)); padding-top: max(24px, env(safe-area-inset-top)); padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+.battle .topbar { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); padding-top: max(6px, env(safe-area-inset-top)); }
+.battle .panel.bottom { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); }
+.app-toast { bottom: max(24px, calc(env(safe-area-inset-bottom) + 12px)); }
+
+/* ================================================================ mobile: menus and screens */
+/* grids never ask for more than the screen is wide */
+.pilots { grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); }
+.squad { grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+.teams { grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
+.reward { width: min(280px, 100%); }
+.title h1 { font-size: clamp(30px, min(10vw, 11vh), 64px); text-align: center; }
+.title .menu { min-width: min(320px, 100%); }
+/* campaign map: each act's route graph scrolls sideways instead of wrapping its columns */
+.runmap .layers { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; padding: 6px 4px 10px; scrollbar-width: thin; }
+
+/* touch: comfortable targets, no keyboard hints */
+html[data-touch] .screen button, html[data-touch] .screen .filebtn, html[data-touch] .screen select { min-height: 44px; }
+html[data-touch] kbd { display: none; }
+html[data-touch] .runmap .node { width: 48px; height: 48px; }
+html[data-touch] .runmap .node.boss { width: 58px; height: 58px; }
+
+/* phones */
+html[data-phone] .screen { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+/* centred screens never cut off their top when they are taller than the screen (landscape) */
+html[data-phone] .screen.center, html[data-phone] .screen.title { justify-content: flex-start; }
+html[data-phone] .screen.center > :first-child, html[data-phone] .screen.title > :first-child:not(.title-eye), html[data-phone] .screen.title > .title-eye + * { margin-top: auto; }
+html[data-phone] .screen.center > :last-child, html[data-phone] .screen.title > :last-child { margin-bottom: auto; }
+html[data-phone] h2 { font-size: 20px; }
+html[data-phone] .title .menu { margin: 14px 0; width: min(420px, 100%); }
+html[data-phone]:not([data-portrait]) .title .menu { display: grid; grid-template-columns: 1fr 1fr; width: min(640px, 100%); }
+html[data-phone]:not([data-portrait]) .title .sub, html[data-phone]:not([data-portrait]) .title .band { margin: 0; }
+html[data-phone] .title .menu button { padding: 6px; }
+html[data-phone] .hhead > div:last-child { display: flex; flex-wrap: wrap; gap: 4px; }
+html[data-phone] .hhead button, html[data-phone] .hhead .filebtn { margin: 0; }
+html[data-phone] .hhead select { max-width: 100%; }
+html[data-phone] .drop { display: none; } /* no drag-and-drop on phones: the Import button opens the file picker */
+html[data-phone] .pilot > .portrait { width: 72px; height: 72px; }
+html[data-phone] .pilot .ph { flex-wrap: wrap; gap: 4px; }
+html[data-phone] .runmap h2 .loc { display: block; margin: 2px 0 0; }
+html[data-phone] .opsboard { flex-direction: column; }
+html[data-phone] .telemetry { position: static; width: 100%; display: grid; grid-template-columns: 1fr 1fr; column-gap: 14px; line-height: 1.5; }
+html[data-phone] .telemetry .thead { grid-column: 1 / -1; }
+html[data-phone] .dossier > .portrait.sm { width: 52px; height: 52px; }
+html[data-phone] .event .evtext, html[data-phone] .event .eveffect { max-width: 100%; }
+html[data-phone] .menu.row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+html[data-phone] .builder .budget { display: flex; flex-wrap: wrap; gap: 2px 10px; top: -12px; }
+html[data-phone] .builder .meter { margin-right: 0; }
+html[data-phone] .builder .bgrid { grid-template-columns: 1fr; }
+html[data-phone] .builder input, html[data-phone] .builder select { min-height: 40px; }
+html[data-phone] .settings { margin: 8px 0; }
+html[data-phone] .help ol, html[data-phone] .help ul { padding-left: 18px; }
+html[data-phone] .hhead > div:last-child { flex: 1 1 100%; min-width: 0; }
+html[data-phone] .hhead select { width: 100%; }
+html[data-phone] .opsboard, html[data-phone] .opsmain, html[data-phone] .runmap .act { width: 100%; max-width: 100%; min-width: 0; }
+html[data-phone] .opsmain { flex: none; }
+
+/* ================================================================ mobile: touch versions of hover information */
+.nodecard.docked {
+  pointer-events: auto; left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); top: auto;
+  bottom: max(8px, env(safe-area-inset-bottom)); width: auto; max-width: 560px; margin: 0 auto; z-index: 70; font-size: 13px;
+}
+.nodecard .nc-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.nodecard .nc-btns button { min-height: 44px; margin: 0; padding: 6px 16px; }
+html[data-touch] .tagtip-pop { max-width: min(360px, calc(100vw - 16px)); font-size: 13px; }
+
+/* ================================================================ mobile: phone battle HUD */
+html[data-phone] .battle .topbar.phone { padding-top: max(4px, env(safe-area-inset-top)); padding-bottom: 4px; gap: 6px; }
+html[data-phone] .battle .topbar.phone .roundlbl { margin: 0; min-height: 40px; background: #000a; border-color: var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55vw; }
+html[data-phone] .battle .topbar.phone .controls { display: flex; gap: 4px; }
+html[data-phone] .battle .topbar.phone .controls button { margin: 0; min-width: 40px; min-height: 40px; font-size: 16px; position: relative; }
+html[data-phone] .battle .topbar.phone .dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+/* initiative: one scrolling row under the header */
+html[data-phone] .battle .initiative { top: calc(max(4px, env(safe-area-inset-top)) + 46px); left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); transform: none; max-width: none; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 6px; }
+html[data-phone] .battle .initiative::-webkit-scrollbar { display: none; }
+html[data-phone] .battle .initiative .side { flex-wrap: nowrap; }
+html[data-phone] .battle .initiative .turnmark { min-width: 56px; font-size: 9px; }
+html[data-phone] .battle .initiative .chip { padding: 5px 9px; }
+html[data-phone] .battle .tab { display: none; }
+/* menu, scrim and drawers */
+html[data-phone] .battle .scrim { position: fixed; inset: 0; background: #0007; z-index: 35; }
+html[data-phone] .battle .phone-menu {
+  position: fixed; z-index: 40; top: calc(max(4px, env(safe-area-inset-top)) + 46px); right: max(8px, env(safe-area-inset-right));
+  display: flex; flex-direction: column; gap: 4px; padding: 6px; background: #0d0f14f5; border: 1px solid var(--accent2); min-width: 200px; max-height: 80vh; overflow: auto;
+}
+html[data-phone] .battle .phone-menu button { margin: 0; min-height: 44px; text-align: left; }
+html[data-phone] .battle .phone-menu button.on { border-color: var(--accent2); color: var(--accent2); }
+html[data-phone] .battle .panel.drawer {
+  position: fixed; z-index: 36; top: 0; bottom: 0; height: auto; width: min(340px, 86vw); max-height: none;
+  padding: max(8px, env(safe-area-inset-top)) 10px max(8px, env(safe-area-inset-bottom)); font-size: 12px;
+}
+html[data-phone] .battle .panel.left.drawer { left: 0; right: auto; padding-left: max(10px, env(safe-area-inset-left)); }
+html[data-phone] .battle .panel.log.drawer { right: 0; left: auto; padding-right: max(10px, env(safe-area-inset-right)); }
+html[data-phone] .battle .panel.drawer .ptoggle { min-width: 40px; min-height: 36px; }
+html[data-phone] .battle .card { padding: 8px; }
+/* bottom sheet */
+html[data-phone] .battle .panel.bottom.sheet {
+  max-height: none; padding: 6px 8px max(6px, env(safe-area-inset-bottom)); bottom: 0; border-bottom: none;
+  display: flex; flex-direction: column; overflow: hidden; z-index: 9;
+}
+html[data-phone] .battle .sheet.half { height: 58%; }
+html[data-phone] .battle .sheet.full { height: calc(100% - max(4px, env(safe-area-inset-top)) - 48px); }
+html[data-phone] .battle .sh-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-top: 4px; }
+html[data-phone] .battle .sh-head { display: flex; align-items: center; gap: 8px; cursor: pointer; min-height: 44px; }
+html[data-phone] .battle .sh-head .portrait.sm { width: 42px; height: 42px; }
+html[data-phone] .battle .sh-id { flex: 1; min-width: 0; line-height: 1.3; }
+html[data-phone] .battle .sh-id > b { font-size: 14px; }
+html[data-phone] .battle .sh-stats { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-phone] .battle .sh-stats b { color: var(--text); }
+html[data-phone] .battle .sh-grip { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: var(--muted); border: 1px solid var(--line); }
+html[data-phone] .battle .sh-row { display: flex; align-items: center; gap: 4px; margin-top: 4px; overflow-x: auto; scrollbar-width: none; }
+html[data-phone] .battle .sh-row button { margin: 0; min-height: 44px; padding: 4px 12px; font-size: 13px; flex: none; }
+html[data-phone] .battle .sh-row button.on { background: #3a2a10; border-color: var(--accent2); color: #fff; }
+html[data-phone] .battle .sh-gap { flex: 1; min-width: 4px; }
+html[data-phone] .battle .sh-eco .eco { font-size: 11px; }
+html[data-phone] .battle .sh-note { font-size: 12px; margin: 4px 0; }
+html[data-phone] .battle .sheet .hint { margin: 2px 0; font-size: 12px; }
+html[data-phone] .battle .sheet .actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 6px 0; }
+html[data-phone] .battle .sheet .actions .eco { flex: 1 1 100%; margin: 2px 0 0; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+html[data-phone] .battle .sheet .actions button { margin: 0; min-height: 44px; padding: 4px 12px; font-size: 13px; }
+html[data-phone] .battle .sheet .weapons { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 6px; }
+html[data-phone] .battle .sheet .wcard { min-width: 0; padding: 8px; font-size: 12px; }
+html[data-phone] .battle .sheet .wcard .wbtns { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+html[data-phone] .battle .sheet .wcard button { flex: 1 1 auto; margin: 0; min-height: 44px; font-size: 13px; }
+html[data-phone] .battle .sheet .policies label { display: inline-block; min-height: 36px; line-height: 30px; margin: 4px 4px 0 0; }
+html[data-phone] .battle .sheet .syslist .sys { padding: 4px 8px; margin: 2px; }
+/* preview card docks above the sheet */
+html[data-phone] .battle .tooltip.docked { left: max(8px, env(safe-area-inset-left)) !important; right: max(8px, env(safe-area-inset-right)); max-width: none; font-size: 12px; }
+/* decisions and dialogs */
+html[data-phone] .picker-box { width: calc(100vw - 24px); max-width: 560px; max-height: calc(100vh - 24px); overflow: auto; }
+html[data-phone] .picker-opts button, html[data-phone] .modal-btns button { min-height: 48px; }
+html[data-phone] .battle .banner .r { font-size: 22px; }
+html[data-phone] .battle .banner .t { font-size: 12px; }
+html[data-phone] .battle .stamp .big { font-size: 28px; }
+html[data-phone] .battle .stamp { padding: 10px 18px; }
+html[data-phone] .unit-label { font-size: 9px; }
+/* landscape phones: unit and action row share one line, so the map keeps its height */
+html[data-phone]:not([data-portrait]) .battle .panel.bottom.sheet {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: center;
+  grid-template-areas: "hint hint" "head row" "eco eco" "body body"; grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+html[data-phone]:not([data-portrait]) .battle .sheet > .hint { grid-area: hint; }
+html[data-phone]:not([data-portrait]) .battle .sheet > .sh-head { grid-area: head; min-width: 0; }
+html[data-phone]:not([data-portrait]) .battle .sheet > .sh-row { grid-area: row; margin-top: 0; }
+html[data-phone]:not([data-portrait]) .battle .sheet > .sh-eco { grid-area: eco; }
+html[data-phone]:not([data-portrait]) .battle .sheet > .sh-body { grid-area: body; align-self: stretch; min-height: 0; }
+html[data-phone] .app-toast { bottom: auto; top: calc(max(4px, env(safe-area-inset-top)) + 92px); max-width: calc(100vw - 24px); }
+@media (max-width: 700px) {
+  html[data-phone]:not([data-portrait]) .battle .sheet .sh-head .portrait, html[data-phone]:not([data-portrait]) .battle .sheet .sh-grip { display: none; }
+}

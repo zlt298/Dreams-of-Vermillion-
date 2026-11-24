@@ -7,7 +7,7 @@ import type { Pos, Unit } from '../rules/types'
 import { buildUnitModel, MODEL_GEOMETRIES } from './models'
 import { Atmosphere, radialTexture } from './atmosphere'
 import { PostFX, type GradeLook } from './post'
-import { resolveQuality, saveQuality, reducedMotion, type Quality } from './quality'
+import { resolveQuality, saveQuality, reducedMotion, coarsePointer, type Quality } from './quality'
 import { FX, attackStyle } from './fx'
 
 export const LEVEL = 0.55 // world units per elevation level
@@ -91,6 +91,8 @@ export class BattleView {
   onTileClick?: (p: Pos, e: MouseEvent) => void
   onTileHover?: (p: Pos | null) => void
   onUnitClick?: (u: Unit, e: MouseEvent) => void
+  /** touch: press and hold on a unit (about 450 ms) */
+  onUnitLongPress?: (u: Unit) => void
   /** touch: when true, the first tap on a tile previews it (hover) and a second tap on it confirms */
   touchConfirm?: () => boolean
   /** units whose labels are shown in full (selected, acting, hovered); others show a compact bar */
@@ -133,7 +135,8 @@ export class BattleView {
     this.battle = battle
     this.map = battle.map
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio))
+    // phones: a lower pixel ratio and shadow map keep frame times and heat down
+    this.renderer.setPixelRatio(Math.min(coarsePointer() ? 1.5 : 2, window.devicePixelRatio))
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -153,7 +156,8 @@ export class BattleView {
     const sun = new THREE.DirectionalLight(look.sun, look.sunIntensity)
     sun.position.set(-20, 40, 15)
     sun.castShadow = true
-    sun.shadow.mapSize.set(this.map.h > 24 || this.map.w > 24 ? 4096 : 2048, this.map.h > 24 || this.map.w > 24 ? 4096 : 2048)
+    const shadow = (this.map.h > 24 || this.map.w > 24) && !coarsePointer() ? 4096 : 2048
+    sun.shadow.mapSize.set(shadow, shadow)
     const s = Math.max(this.map.w, this.map.h)
     Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 1, far: 120 })
     sun.target.position.set(this.map.w / 2, 0, this.map.h / 2)
@@ -338,10 +342,12 @@ export class BattleView {
     const aspect = w / h
     // fit the map's width (long maps are panned, not shrunk to fit)
     const span = (Math.min(this.map.w, this.map.h) * 0.75) / this.zoom
-    this.camera.left = -span * aspect
-    this.camera.right = span * aspect
-    this.camera.top = span
-    this.camera.bottom = -span
+    // portrait screens fit the same width horizontally, and show more of the map's length
+    const sx = aspect >= 1 ? span * aspect : span, sy = aspect >= 1 ? span : span / aspect
+    this.camera.left = -sx
+    this.camera.right = sx
+    this.camera.top = sy
+    this.camera.bottom = -sy
     this.camera.updateProjectionMatrix()
     this.placeCamera()
   }
@@ -725,6 +731,7 @@ export class BattleView {
   private lastPointerType = 'mouse'
   private touchMoved = false
   private lastTap = ''
+  private pressTimer: ReturnType<typeof setTimeout> | undefined
   private onKey = (e: KeyboardEvent) => {
     if ((e.target as HTMLElement)?.tagName === 'INPUT') return
     const k = e.key.toLowerCase()
@@ -752,13 +759,21 @@ export class BattleView {
       this.lastPointerType = e.pointerType
       if (e.pointerType === 'touch') {
         touches.set(e.pointerId, { x: e.clientX, y: e.clientY })
-        if (touches.size === 1) { drag = { x: e.clientX, y: e.clientY, moved: false }; this.touchMoved = false }
+        if (touches.size === 1) {
+          drag = { x: e.clientX, y: e.clientY, moved: false }; this.touchMoved = false
+          clearTimeout(this.pressTimer)
+          this.pressTimer = setTimeout(() => {
+            if (this.touchMoved || touches.size !== 1) return
+            const hit = this.pick(e)
+            if (hit?.unit && this.onUnitLongPress) { this.touchMoved = true; this.onUnitLongPress(hit.unit) } // swallow the click that follows
+          }, 450)
+        } else clearTimeout(this.pressTimer)
         if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); drag = null }
         return
       }
       if (e.button === 2 || e.button === 1) drag = { x: e.clientX, y: e.clientY, moved: false }
     })
-    this.onPointerUp = () => { drag = null; touches.clear(); pinch = 0 }
+    this.onPointerUp = () => { drag = null; touches.clear(); pinch = 0; clearTimeout(this.pressTimer) }
     window.addEventListener('pointerup', this.onPointerUp)
     el.addEventListener('pointercancel', () => { touches.clear(); drag = null; pinch = 0 })
     el.addEventListener('pointermove', e => {
