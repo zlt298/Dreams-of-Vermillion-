@@ -195,7 +195,7 @@ const SQUADS: SquadSpec[] = [
     ],
   },
   {
-    id: 'longguns', name: 'Long Guns', theme: 'long', difficulty: { 2: 'Medium', 5: 'Easy', 8: 'Medium' }, blurb: 'Hold the back line: rifles, cannons and missiles at long range.',
+    id: 'longguns', name: 'Long Guns', theme: 'long', difficulty: { 2: 'Medium', 5: 'Medium', 8: 'Hard' }, blurb: 'Hold the back line: rifles, cannons and missiles at long range.',
     pilots: [
       { callsign: 'Plumb', prefer: ['mw_anti_materiel_rifle', 'mw_assault_rifle', 'ms_manipulators'], name: 'Aster Vey', frame: 'mf_metalmark', extra: ['mf_monarch', 'mf_deaths_head', 'mf_swallowtail'], talents: ['t_crack_shot', 't_spotter', 't_ace', 't_gunslinger', 't_tactician'],
         hase: { 2: H(0, 2, 2, 0), 5: H(1, 3, 2, 1), 8: H(2, 4, 3, 1) }, cbs: { 5: ['cb_neurolink_targeting'], 8: ['cb_neurolink_targeting', 'cb_all_theater_movement_suite'] } },
@@ -208,7 +208,7 @@ const SQUADS: SquadSpec[] = [
     ],
   },
   {
-    id: 'dronewing', name: 'Drone Wing', theme: 'drone', difficulty: { 2: 'Hard', 5: 'Medium', 8: 'Hard' }, blurb: 'Fight by proxy: drones, turrets, nexuses and deployables.',
+    id: 'dronewing', name: 'Drone Wing', theme: 'drone', difficulty: { 2: 'Hard', 5: 'Easy', 8: 'Medium' }, blurb: 'Fight by proxy: drones, turrets, nexuses and deployables.',
     pilots: [
       { callsign: 'Hive', prefer: ['ms_turret_drones', 'mw_nexus_hunter_killer', 'mw_nexus_light'], name: 'Ada Kestrel', frame: 'mf_hydra', extra: ['mf_goblin', 'mf_pegasus', 'mf_manticore'], talents: ['t_drone_commander', 't_technophile', 't_tactician', 't_engineer', 't_leader'],
         hase: { 2: H(0, 0, 2, 2), 5: H(1, 1, 3, 2), 8: H(2, 1, 4, 3) }, cbs: { 5: ['cb_the_lesson_of_shaping'], 8: ['cb_the_lesson_of_shaping', 'cb_the_lesson_of_thinking_tomorrows_thought'] } },

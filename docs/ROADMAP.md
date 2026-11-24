@@ -182,6 +182,14 @@ Targets, mechs lost per fight averaged over the sample squad and the three theme
 - Broad sweep: every team is in band or easier (several act-1 and standard teams cost almost nothing, by design).
 - Squad labels per act, mechs lost per fight across that act's teams: act 1 Brawlers 0.11 (Easy), Long Guns 0.12, Drone Wing 0.57; act 2 Long Guns 0.40 (Easy), Drone Wing 0.49, Brawlers 0.52; act 3 Brawlers 0.26 (Easy), Long Guns 0.61, Drone Wing 0.89. Act 1 Easy/Medium and all of act 2 are within noise of each other.
 
+### Balance pass 5 (after audit 2)
+Audit 2 strengthened enemies (NPCs Invade and Lock On, Grunts keep Armor, Ultras and Commanders refresh reactions each turn, Elites get an extra optional feature) and set a floor of 1 budget per player on standard teams. A rough sweep found nine teams out of band (all three bosses among them); three agents tuned them per act with ablations (20 fights per squad to confirm); then a broad sweep (20 teams × 4 squads × 20 fights) put **every team in band**.
+- Act 1: Red Warden's Choir Bulwark is a Grunt and Quake Stomp does 1d6 (1.74 → 0.99); Hymn-Blade's Chain Glaive is Threat 1 (0.30 → 0.21).
+- Act 2: Furnace Saint back to one Ash Cantor (stacked heat; 2.00 → 1.51); Warden Strike's Detachment Hexer is no longer a Veteran (its Hacker trait added heat to every NPC Invade; 1.19 → 0.47).
+- Act 3: Voice of the Eye's Cantor is a Grunt (keeps its heal, ward and carbine; 2.40 → 1.70, round-cap fights 5 → 2); Cleanroom Wardens' Sterile Field has Recharge 5+ and Scrub Cycle heals 1d6 (0.41 → 0.28, round-cap fights 12 → 0; Aseptic Drones 1 → 4 to meet the floor); Burning Eye's Hunker Down overshield is 3 (0.73).
+- Final sweep, mechs lost per fight averaged over the four squads: act 1 standard 0.10–0.21, elite 0.15, boss 0.99; act 2 standard 0.14–0.19, elite 0.47–0.57, boss 1.51; act 3 standard 0.09–0.38, elite 0.74–0.93, boss 1.70.
+- Squad labels per act: act 1 Brawlers 0.28 (Easy), Long Guns 0.33, Drone Wing 0.37 (a near tie); act 2 Drone Wing 0.21 (Easy), Long Guns 0.56, Brawlers 0.67; act 3 Brawlers 0.46 (Easy), Drone Wing 0.60, Long Guns 1.00.
+
 ### Presentation and map
 - Procedural low-poly unit models, shaped by manufacturer or role, carrying their actual weapons, with marks for templates; creatures for biological enemies.
 - The battlefield is 18 wide × 36 long, with terrain features scaled by area.
@@ -442,8 +450,9 @@ Driven by `npm run coverage -- --list`.
 6. Model polish, effects, terrain, audio (M). ✅ Graphics pass done (see `docs/DESIGN.md` → Graphics): tone mapping, bloom and grade, per-act atmosphere, event-driven combat effects, HUD polish, mech portraits. Audio is still to do.
 
 ### 6. Balance (after content)
-Four passes are done (see Done → Balance pass 1–4). Remaining:
-- Drone Wing still loses about 3 of 4 mechs to the Voice of the Eye (other squads 0.55–1.6). Nothing targets drones; the squad does little damage, so the fight drags. Removing the Ochre Censer's pull only took it to 2.85 and made more fights hit the round cap.
+Five passes are done (see Done → Balance pass 1–5). Remaining:
+- The hardest single matchups: Voice of the Eye vs Drone Wing (2.75 mechs lost, 9 of 20 fights lost; its Hive and Swarm have 16 HP and fall to one or two boss hits) and vs Long Guns (2.25); Furnace Saint vs Brawlers (2.45, 7 of 20 lost). Lowering Searing Litany heat to 3 would bring Brawlers down but takes the Saint's average to ~1.1.
+- Black Tithe (0.93) sits near the top of the act-3 elite band.
 - Stand-ins don't help much from act 2 on (an LL0 Everest among LL5/LL8 mechs); a stand-in at the act's level is an option.
 - Official NPC encounters scale with the new budget rates but haven't been re-checked (needs an LCP).
 - The AI rates a drone deploy (2.5) below Invade (3.9), so drone builds deploy fewer drones once mechs reach Invade range.
