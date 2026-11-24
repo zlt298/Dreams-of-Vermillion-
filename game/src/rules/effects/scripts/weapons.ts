@@ -524,8 +524,7 @@ registerScripts([
     afterAnyAttack: (b, self) => ghostReactCheck(b, self),
   },
   {
-    id: 'cb_the_lesson_of_the_open_door', note: '+2 Save Target; 1/round, when a character fails a save against you, it takes 2 heat',
-    init: u => { u.stats.save += 2 },
+    id: 'cb_the_lesson_of_the_open_door', note: '+2 Save Target (its lancer-data bonus, added once by stats.ts); 1/round, when a character fails a save against you, it takes 2 heat',
     onSaveFailed(b, self, target) {
       if (self.flags['round:opendoor'] || target.destroyed) return
       self.flags['round:opendoor'] = true

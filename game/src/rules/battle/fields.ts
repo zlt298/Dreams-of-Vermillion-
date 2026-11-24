@@ -251,6 +251,7 @@ export function useCustom(bt: Battle, u: Unit, a: CustomAction, target?: Unit | 
   const valid = customTargetValid(bt, u, a, target)
   if (valid !== true) throw new Error(valid)
   const cost = a.activation === 'quick_tech' ? null : a.activation === 'full_tech' ? 'full' : a.activation
+  if (a.activation === 'full_tech' && u.flags.hackSlash) throw new Error('Hack/Slash: no tech actions until you reboot or Shut Down') // Hacker 2 (talents.ts)
   if (a.activation === 'quick_tech') {
     const option = a.techOption ?? `qt:${a.sourceUid ?? a.key}`
     const c = bt.canQuickTech(u, option)
