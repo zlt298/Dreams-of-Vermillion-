@@ -38,6 +38,8 @@ export interface MechCondition {
   proto?: Record<string, { type: string; damage: string }>
   /** Bonded: the Bondmate's pilot id */
   bondmate?: string
+  /** OSIRIS: the next Gate of Hurl Into the Duat (persists between scenes, resets at a rest or Full Repair) */
+  duatGate?: number
 }
 
 export interface Reward { id: string; name: string; text: string }
@@ -183,6 +185,7 @@ export function squadUnits(run: RunState): Unit[] {
     }
     u.flags.pilotId = p.id
     if (c.bondmate) u.flags.bondmatePilot = c.bondmate
+    if (c.duatGate) u.flags.duatGate = c.duatGate
     for (const w of u.weapons) if (w.dataId && c.proto?.[w.dataId]) applyPrototypeConfig(w, c.proto[w.dataId].type, c.proto[w.dataId].damage, true)
     for (const b of run.boons.filter(b => !b.pilotId || b.pilotId === p.id)) applyBoon(u, b.reward)
     out.push(u)
@@ -248,6 +251,7 @@ export function recordBattle(run: RunState, node: RunNode, units: Unit[], won: b
     for (const w of u.weapons) if (w.dataId && w.usesLeft != null) c.limited[w.dataId] = w.usesLeft
     for (const w of u.weapons) if (w.dataId && w.flags?.protoLocked) (c.proto ??= {})[w.dataId] = { type: w.flags.protoType, damage: w.flags.protoDamage }
     if (u.flags.bondmatePilot) c.bondmate = u.flags.bondmatePilot
+    if (u.flags.duatGate != null) c.duatGate = u.flags.duatGate
     for (const s of u.systems) if (s.usesLeft != null) c.limited[s.dataId] = s.usesLeft
   }
   // one-battle boons are consumed
@@ -426,6 +430,7 @@ export function refitPilot(run: RunState, build: PilotBuild): boolean {
     // the Prototype Weapon set-up lasts until the next Full Repair (only applied to matching weapons)
     ...(c.proto ? { proto: structuredClone(c.proto) } : {}),
     ...(c.bondmate ? { bondmate: c.bondmate } : {}),
+    ...(c.duatGate ? { duatGate: c.duatGate } : {}),
   }
   return true
 }

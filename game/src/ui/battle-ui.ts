@@ -883,9 +883,10 @@ export class BattleScreen {
     if (active && u.side === 'player') {
       if (this.mode.k === 'barrage-pick') btns = this.btn('barrage', `Barrage #2${kb('')}`, usable, w.uid, 'primary')
       else {
-        btns = (w.size !== 'Superheavy' ? this.btn('skirmish', `Skirmish [Q]${kb('')}`, all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable), w.uid) : '') + this.btn('barrage', `Barrage [F]${kb('⇧')}`, all(fu, usable), w.uid)
+        btns = (w.size !== 'Superheavy' || pr.skirmish ? this.btn('skirmish', `Skirmish [Q]${kb('')}`, all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable), w.uid) : '') + this.btn('barrage', `Barrage [F]${kb('⇧')}`, all(fu, usable), w.uid)
         if (!w.loaded && !w.destroyed) btns += '<span class="muted small" title="Stabilize (full action) reloads all Loading weapons">Unloaded — Stabilize to reload</span>'
-        if (w.profiles.length > 1) btns += w.profiles.map((p, i) => (i === w.profileIndex ? '' : `<button data-act="profile" data-arg="${w.uid}" data-i="${i}" title="Switch profile">${esc(p.name)}</button>`)).join('')
+        // profiles switched by an action (spin-up weapons) use that action instead (quick, Slowed): no free switch button
+        if (w.profiles.length > 1 && !(w.dataId && Lancer.weapons.get(w.dataId)?.profiles?.some(p => p.actions?.length))) btns += w.profiles.map((p, i) => (i === w.profileIndex ? '' : `<button data-act="profile" data-arg="${w.uid}" data-i="${i}" title="Switch profile">${esc(p.name)}</button>`)).join('')
         if (pr.range.some(r => r.type === 'Line') && pr.range.some(r => r.type === 'Cone')) btns += `<button data-act="shape" data-arg="${w.uid}" title="Fire as a Cone or a Line">${w.flags?.shape === 'line' ? 'Line' : 'Cone'} (switch)</button>`
         if (w.modId === 'wm_throughbolt_rounds') btns += `<button data-act="throughbolt" data-arg="${w.uid}" class="${w.flags?.throughbolt ? 'on' : ''}" title="Throughbolt round: punch a Line 3 path through terrain (2 AP kinetic to everything on it), then attack from its end">Throughbolt: ${w.flags?.throughbolt ? 'ON' : 'off'}</button>`
       }

@@ -43,7 +43,7 @@ describe('Heat (Self) costs', () => {
     it(`Heat (Self) is charged when activating ${id} (Heat ${heat})`, () => {
       const { a, e, b } = setup9([id])
       const x = custom(b, a, re)
-      b.useCustom(a, x, x.target === 'enemy' ? e : undefined)
+      b.useCustom(a, x, x.target === 'enemy' || x.target === 'unit' ? e : undefined)
       expect(a.heat).toBe(heat)
     })
   }

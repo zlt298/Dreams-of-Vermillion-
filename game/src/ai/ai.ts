@@ -296,7 +296,7 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
       if (v > 0 && (!best || v > best.value)) best = { value: v, aim: { targetId: t.id } }
     }
     if (!best) continue
-    if (w.size === 'Superheavy' || w.activation === 'full') opts.push({ kind: 'barrage', a: { weapon: w, aim: best.aim }, value: best.value, cost: 'full' })
+    if ((w.size === 'Superheavy' && !pr.skirmish) || w.activation === 'full') opts.push({ kind: 'barrage', a: { weapon: w, aim: best.aim }, value: best.value, cost: 'full' })
     else opts.push({ kind: 'skirmish', weapon: w, aim: best.aim, value: best.value, cost: 'quick' })
   }
   // barrage: best two skirmish-capable weapons

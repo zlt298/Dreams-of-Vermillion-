@@ -15,7 +15,7 @@ import { genericActionsFor } from '../effects/generic'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
 
 export function skirmish(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, aux?: { weapon: Weapon; aim: AttackAim }): AttackSummary {
-  if (w.size === 'Superheavy') return { ctxs: [], ok: false, reason: 'Superheavy weapons require Barrage' }
+  if (w.size === 'Superheavy' && !bt.profile(w).skirmish) return { ctxs: [], ok: false, reason: 'Superheavy weapons require Barrage' }
   const c = bt.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish')
   if (c !== true) return { ctxs: [], ok: false, reason: c }
   const pre = bt.weaponUsable(u, w)

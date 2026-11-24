@@ -202,6 +202,12 @@ export interface ItemScript {
   onStatusRemoved?(b: Battle, self: Unit, status: string): void
   /** this unit took the Stabilize action */
   onStabilize?(b: Battle, self: Unit): void
+  /** this unit just cleared all of its heat (Stabilize, Shut Down, AGNI, Auto-Cooler…) */
+  onClearHeat?(b: Battle, self: Unit): void
+  /** any character finished a save (`ok`: it succeeded); `source` is whoever forced it */
+  onAnySave?(b: Battle, self: Unit, u: Unit, stat: string, ok: boolean, source?: Unit): void
+  /** the attacker's own rule refuses this area-attack aim point (Siege Stabilizers: no blasts centred within range 5) */
+  forbidsAim?(b: Battle, self: Unit, w: Weapon, aim: Pos): string | undefined
 }
 
 const registry = new Map<string, ItemScript>()

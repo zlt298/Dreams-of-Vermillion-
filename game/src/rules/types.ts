@@ -26,6 +26,8 @@ export interface StatusInstance {
   atStart?: boolean
   source?: string
   data?: any
+  /** inflicted by a tech action (ICEOUT suppresses these inside its field) */
+  tech?: boolean
 }
 
 // ---------- Effect DSL (shared by NPC features, lancer-data on_hit/on_crit and scripts) ----------
@@ -56,6 +58,8 @@ export interface Profile {
   onHit: Effect[]
   onCrit: Effect[]
   text?: string
+  /** a Superheavy weapon's profile that may Skirmish (Leviathan Standard) */
+  skirmish?: boolean
 }
 
 export type WeaponSize = 'Auxiliary' | 'Main' | 'Heavy' | 'Superheavy'

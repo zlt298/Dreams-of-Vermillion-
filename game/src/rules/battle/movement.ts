@@ -295,6 +295,9 @@ export function forceMove(bt: Battle, target: Unit, source: Unit | Pos, spaces: 
   while (path.length > 1 && bt.endBlocked(target, path[path.length - 1])) { path.pop(); target.pos = path[path.length - 1] }
   if (path.length > 1) {
     bt.say(`${target.name} is ${dir === 1 ? 'knocked back' : 'pulled'} ${path.length - 1}.`)
-    bt.followPath(target, path)
+    // onMove hooks can tell an involuntary move (Viral Logic Banish counts voluntary spaces only)
+    const was = target.flags.movingInvoluntarily
+    target.flags.movingInvoluntarily = true
+    try { bt.followPath(target, path) } finally { target.flags.movingInvoluntarily = was }
   }
 }

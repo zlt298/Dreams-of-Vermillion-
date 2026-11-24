@@ -245,5 +245,9 @@ export function useCustom(bt: Battle, u: Unit, a: CustomAction, target?: Unit | 
   const heat = a.heat ?? heatSelfOf(bt, u, a)
   if (heat) bt.addHeat(u, heat)
   bt.say(`${u.name} uses ${a.name}.`, 'attack')
-  a.run(bt, u, target)
+  // a tech action in progress (//SCORPION and ICEOUT tell what came from a tech action)
+  const tech = a.activation === 'quick_tech' || a.activation === 'full_tech'
+  const was = u.flags.techActing
+  if (tech) u.flags.techActing = true
+  try { a.run(bt, u, target) } finally { if (tech) u.flags.techActing = was }
 }

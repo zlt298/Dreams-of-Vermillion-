@@ -55,6 +55,7 @@ export function profileFromData(base: WeaponData, p: WeaponProfile, extraTags: T
     onHit: effectsFromData(p.on_hit ?? base.on_hit),
     onCrit: effectsFromData(p.on_crit ?? base.on_crit),
     text: p.effect ?? base.effect,
+    ...(p.skirmish ? { skirmish: true } : {}),
   }
 }
 

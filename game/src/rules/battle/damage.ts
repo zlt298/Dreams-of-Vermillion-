@@ -296,6 +296,8 @@ export function loseHp(bt: Battle, t: Unit, amount: number, _source?: Unit) {
     bt.say(`${t.name} takes STRUCTURE damage (${t.structure} left).`, 'damage')
     t.hp = t.stats.hp - excess
     for (const s of scriptsFor(t)) s.onStructureDamage?.(bt, t)
+    // the hit was ignored (Custom Paint Job): no structure check, no loss of control
+    if (t.flags.structureIgnored) { delete t.flags.structureIgnored; continue }
     if (t.flying && !t.destroyed && !bt.save(t, 'agi', 10)) bt.land(t, 'loses control')
     bt.structureCheck(t)
   }
