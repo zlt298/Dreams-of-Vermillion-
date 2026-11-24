@@ -268,6 +268,7 @@ export function grapple(bt: Battle, u: Unit, t: Unit) {
   bt.say(`${u.name} attempts to GRAPPLE ${t.name}.`, 'attack')
   bt.rollToHit(ctx)
   if (ctx.hit) bt.startGrapple(u, t)
+  for (const s of scriptsFor(u)) s.afterAttack?.(bt, u, ctx, 'attacker') // Brawler die, Titanomachy Mesh
 }
 
 /** Begin a grapple (also used by systems such as Impale). */

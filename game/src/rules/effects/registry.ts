@@ -142,6 +142,10 @@ export interface ItemScript {
   onStatusAdded?(b: Battle, self: Unit, status: StatusId, duration: Duration, source?: Unit): void
   /** a character failed a save against you */
   onSaveFailed?(b: Battle, self: Unit, target: Unit, stat: string): void
+  /** you failed a mech skill check or save: return true to reroll it once (the new result stands) */
+  rerollFailed?(b: Battle, self: Unit, kind: 'check' | 'save', stat: string): boolean
+  /** you forced a character to make a save (pass or fail) */
+  onSaveForced?(b: Battle, self: Unit, target: Unit, stat: string): void
   /** another unit gained a status */
   onAnyStatusAdded?(b: Battle, self: Unit, target: Unit, status: StatusId, duration: Duration, source?: Unit): void
   /** another unit took heat */

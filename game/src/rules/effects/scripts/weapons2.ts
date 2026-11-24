@@ -4,7 +4,7 @@
 import type { Battle } from '../../battle'
 import { footprint, key, lineTiles, unitsOnTiles } from '../../grid'
 import { rollDice } from '../../rng'
-import type { Pos, Unit, Weapon } from '../../types'
+import type { Pos, Profile, Unit, Weapon } from '../../types'
 import { registerScripts, type CustomAction } from '../registry'
 
 const action = (a: Omit<CustomAction, 'usable'> & { usable?: CustomAction['usable'] }): CustomAction => ({ usable: () => true, ...a })
@@ -31,18 +31,44 @@ function mimicRoll(b: Battle, u: Unit, w: Weapon) {
 // ---------------------------------------------------------------- Prototype weapons
 const PROTO_TYPES = ['Melee', 'CQB', 'Rifle', 'Cannon', 'Launcher', 'Nexus'] as const
 const PROTO_DAMAGE = ['Kinetic', 'Energy', 'Explosive'] as const
+/** Engineer 2 Revision: the three tweaks; a Full Repair picks two. */
+export const PROTO_REVISIONS = ['optics', 'computer', 'stripped'] as const
+const REVISION_PAIRS: { label: string; hint: string; revs: string[] }[] = [
+  { label: 'Optics + Computer', hint: '+1 Accuracy; Smart', revs: ['optics', 'computer'] },
+  { label: 'Optics + Stripped shielding', hint: '+1 Accuracy; area profiles for 2 heat', revs: ['optics', 'stripped'] },
+  { label: 'Computer + Stripped shielding', hint: 'Smart; area profiles for 2 heat', revs: ['computer', 'stripped'] },
+]
 /** Apply a saved Prototype Weapon set-up (from the run, until the next Full Repair). */
-export function applyPrototypeConfig(w: Weapon, type: string, damage: string, locked = false) {
+export function applyPrototypeConfig(w: Weapon, type: string, damage: string, locked = false, revision?: string[]) {
+  if (revision) flags(w).protoRevision = [...revision]
   protoConfigure(w, type, damage)
   if (locked) flags(w).protoLocked = true
 }
 function protoConfigure(w: Weapon, type: string, damage: string) {
-  const pr = w.profiles[w.profileIndex]
+  const pr = w.profiles[0]
   w.type = type
   pr.range = type === 'Melee' ? [{ type: 'Threat', val: 1 }] : [{ type: 'Range', val: 10 }]
   pr.damage = pr.damage.map(d => ({ ...d, type: damage as any }))
   flags(w).protoType = type
   flags(w).protoDamage = damage
+  protoRevise(w)
+}
+/**
+ * Engineer 2 Revision. Tweaked Computer makes the weapon Smart; Stripped reactor shielding adds area profiles
+ * (Cone 3, Line 5 or Blast 1 Range 10; Burst 1 for a melee prototype) that cost 2 heat (picked with the profile
+ * buttons, like any other firing mode). Tweaked Optics (+1 Accuracy) is applied when it attacks.
+ */
+function protoRevise(w: Weapon) {
+  const revs: string[] = w.flags?.protoRevision ?? []
+  const base = w.profiles[0]
+  base.tags = base.tags.filter(t => !(t.id === 'tg_smart' && (t as any).revision))
+  if (revs.includes('computer')) base.tags.push({ id: 'tg_smart', revision: true } as any)
+  const area = (name: string, range: Profile['range']) => ({ ...base, name: `${w.name} (stripped: ${name})`, range, tags: [...base.tags, { id: 'tg_heat_self', val: 2, revision: true } as any] })
+  const stripped = !revs.includes('stripped') ? []
+    : w.type === 'Melee' ? [area('Burst 1', [{ type: 'Burst', val: 1 }])]
+    : [area('Cone 3', [{ type: 'Cone', val: 3 }]), area('Line 5', [{ type: 'Line', val: 5 }]), area('Blast 1', [{ type: 'Range', val: 10 }, { type: 'Blast', val: 1 }])]
+  w.profiles = [base, ...stripped]
+  if (w.profileIndex >= w.profiles.length) w.profileIndex = 0
 }
 
 // ---------------------------------------------------------------- Throughbolt
@@ -127,7 +153,10 @@ registerScripts([
     id,
     note: 'Prototype Weapon: Limited uses (1d6+2, or 2d6) rerolled after each Full Repair; set its weapon type and damage type before it first attacks after a Full Repair (kept for the run until then)',
     init(u: Unit) {
+      const rank = u.talents.find(t => t.id === 't_engineer')?.rank ?? 0
       for (const w of weaponsOf(u, id)) {
+        // Engineer 2 Revision: until the pilot picks, the prototype has Tweaked Optics and Tweaked Computer
+        if (rank >= 2 && !w.flags?.protoRevision) flags(w).protoRevision = ['optics', 'computer']
         protoConfigure(w, w.flags?.protoType ?? 'Rifle', w.flags?.protoDamage ?? 'Kinetic')
         w.usesLeft = -1 // rolled at the first battle after a Full Repair (a run restores the uses it has left)
       }
@@ -148,11 +177,19 @@ registerScripts([
       run: (bt: Battle, self: Unit) => {
         const t = bt.choose({ kind: 'proto_type', unit: self, title: `${w.name}: weapon type`, options: PROTO_TYPES.map(x => ({ label: x, hint: x === 'Melee' ? 'Threat 1' : 'Range 10' })), defaultIndex: Math.max(0, PROTO_TYPES.indexOf(w.type as any)) })
         const d = bt.choose({ kind: 'proto_damage', unit: self, title: `${w.name}: damage type`, options: PROTO_DAMAGE.map(x => ({ label: x })), defaultIndex: Math.max(0, PROTO_DAMAGE.indexOf(w.profiles[w.profileIndex].damage[0]?.type as any)) })
+        if ((self.talents.find(x => x.id === 't_engineer')?.rank ?? 0) >= 2) {
+          const cur = (w.flags?.protoRevision ?? []).join()
+          const r = bt.choose({ kind: 'proto_revision', unit: self, title: `${w.name}: Revision (choose two)`, options: REVISION_PAIRS.map(x => ({ label: x.label, hint: x.hint })), defaultIndex: Math.max(0, REVISION_PAIRS.findIndex(x => x.revs.join() === cur)) })
+          flags(w).protoRevision = [...REVISION_PAIRS[r].revs]
+        }
         protoConfigure(w, PROTO_TYPES[t], PROTO_DAMAGE[d])
-        bt.say(`${self.name} configures ${w.name}: ${PROTO_TYPES[t]}, ${PROTO_DAMAGE[d]}.`)
+        bt.say(`${self.name} configures ${w.name}: ${PROTO_TYPES[t]}, ${PROTO_DAMAGE[d]}${w.flags?.protoRevision ? ` (${w.flags.protoRevision.join(', ')})` : ''}.`)
       },
       aiScore: () => -1,
     })),
+    beforeAttack(_b: Battle, _self: Unit, ctx: any, role: string) {
+      if (role === 'attacker' && ctx.weapon?.dataId === id && ctx.weapon.flags?.protoRevision?.includes('optics')) { ctx.accuracy++; ctx.reasons.push('Tweaked Optics +1') }
+    },
     afterAttack(_b: Battle, self: Unit, ctx: any, role: string) {
       if (role === 'attacker' && ctx.weapon?.dataId === id) flags(ctx.weapon).protoLocked = true
     },

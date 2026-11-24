@@ -39,6 +39,7 @@ export function spendTech(bt: Battle, u: Unit, option: string) {
 }
 
 export function canQuickTech(bt: Battle, u: Unit, option?: string): true | string {
+  if (u.flags.hackSlash) return 'Hack/Slash: no tech actions until you reboot or Shut Down' // Hacker 2 (talents.ts)
   if (bt.inIceout(u)) return 'Inside an ICEOUT field: no tech actions'
   if (u.flags.freeTech) return true
   if ((u.flags.fullTechLeft ?? 0) > 0) return true
@@ -88,6 +89,7 @@ export function withFreeTech<T>(bt: Battle, u: Unit, fn: () => T): T {
 
 /** Full Tech: two quick tech actions. */
 export function fullTech(bt: Battle, u: Unit) {
+  if (u.flags.hackSlash) throw new Error('Hack/Slash: no tech actions until you reboot or Shut Down') // Hacker 2 (talents.ts)
   const c = bt.canSpend(u, 'full')
   if (c !== true) throw new Error(c)
   bt.spend(u, 'full')
