@@ -12,6 +12,7 @@ import { hasTag, tagVal, nextUid, isWeaponType } from '../stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
 import { type FieldOverlay, type AttackCtx, type BonusDamage, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
+import { useLockOn } from './tech'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
 import { needsBarrage } from './actions'
 
@@ -424,11 +425,7 @@ export function buildWeaponCtx(bt: Battle, attacker: Unit, w: Weapon, target: Un
   if (bt.has(target, 'prone')) { ctx.accuracy++; ctx.reasons.push('Prone target +1') }
   if (bt.has(target, 'braced')) { ctx.difficulty++; ctx.reasons.push('Braced target -1') }
   if (!melee && bt.isEngaged(attacker) && !ctx.tech) { ctx.difficulty++; ctx.reasons.push('Engaged -1') }
-  if (bt.has(target, 'lockon') && bt.hostile(attacker, target)) {
-    ctx.accuracy++
-    ctx.reasons.push('Lock On +1')
-    if (consume) { bt.removeStatus(target, 'lockon'); ctx.lockOnConsumed = true }
-  }
+  useLockOn(bt, attacker, target, ctx, consume)
   for (const b of [...attacker.bonuses, ...w.bonuses]) {
     if (b.id === 'attack' && typeof b.val === 'number' && !b.accuracy && bt.bonusApplies(b, w)) { ctx.attackBonus += b.val; ctx.reasons.push(`+${b.val} attack`) }
   }
@@ -589,8 +586,8 @@ export function weaponAttack(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, mod
   }
   // costs
   const heatSelf = tagVal(pr.tags, 'tg_heat_self')
-  if (heatSelf && !w.flags?.delayedImpact) bt.addHeat(u, heatSelf)
-  if (overkillHeat) { bt.say(`  Overkill: +${overkillHeat} heat.`); bt.addHeat(u, overkillHeat) }
+  if (heatSelf && !w.flags?.delayedImpact) bt.addHeat(u, heatSelf, u)
+  if (overkillHeat) { bt.say(`  Overkill: +${overkillHeat} heat.`); bt.addHeat(u, overkillHeat, u) }
   if (hasTag(pr.tags, 'tg_loading')) w.loaded = false
   if (w.usesLeft != null) w.usesLeft--
   if (w.recharge != null) w.charged = false

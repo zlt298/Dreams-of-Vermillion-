@@ -262,10 +262,10 @@ export function spend(bt: Battle, u: Unit, cost: 'quick' | 'full' | 'protocol' |
     return
   }
   if (cost === 'quick') {
-    // a repeated action must be paid from the free-action pool
-    if ((action && bt.quickUsed(u, action)) || (u.flags.payWithBonus && (u.flags.bonusQuick ?? 0) > 0)) u.flags.bonusQuick--
-    else if (u.actionsLeft >= 1) u.actionsLeft--
-    else u.flags.bonusQuick--
+    // the extra quick actions (Overcharge, ASURA...) pay first, so the turn's two actions stay whole for a full action
+    // (Overcharge → Boost → Barrage works); a repeated action must be paid from that pool anyway
+    if ((u.flags.bonusQuick ?? 0) > 0) u.flags.bonusQuick--
+    else u.actionsLeft--
     delete u.flags.payWithBonus
     if (action) u.flags['turn:quickUsed'] = [...(u.flags['turn:quickUsed'] ?? []), action]
   } else if (cost === 'full') u.actionsLeft = Math.max(0, u.actionsLeft - 2)

@@ -4,6 +4,7 @@ import { Lancer } from '../data/lancer'
 import { pickNextUnit, runAiTurn } from '../ai/ai'
 import { annotateTags, rangeChip, tagChip, tagInfo } from './tags'
 import { type Battle, type ChoiceQuestion, stripHtml } from '../rules/battle'
+import { barrageOnly } from '../rules/battle/actions'
 import { exportBattle, isAction, type BattleExport } from '../replay/replay'
 export { isAction }
 import { portraitImg } from '../render/portrait'

@@ -74,6 +74,7 @@ function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: 
     run: (bt, self, target) => {
       spendUse(sys)
       let victims: Unit[] = []
+      const aim = (target && 'x' in target ? target : (target as Unit | undefined)?.pos) ?? self.pos
       if (area) {
         let tiles: Pos[] = []
         const aim = (target && 'x' in target ? target : (target as Unit | undefined)?.pos) ?? self.pos
@@ -106,6 +107,10 @@ function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: 
         victims = bt.areaVictims(self, tiles, shape, (burst ?? blast ?? line ?? cone)!, { centre: blast || (thrown && burst) ? aim : undefined, origin: from })
       } else if (target && 'id' in target) victims = [target]
       const parts = (a.damage ?? []).map(d => ({ type: d.type, amount: rollDice(bt.rng, d.val).total, save: statOf(d.save), half: d.save_half }))
+      // a critical hit rolls the damage dice twice, keeping the highest (core p.77); rolled once for the whole attack
+      let critParts: { type: string; amount: number }[] | undefined
+      const critRoll = () => (critParts ??= (a.damage ?? []).map(d => ({ type: d.type, amount: rollDice(bt.rng, d.val, { crit: true }).total })))
+      const melee = !area && rangeVal(a, 'Threat') != null && rangeVal(a, 'Range') == null
       for (const v of victims) {
         const save = parts.find(p => p.save)?.save
         if (save) {
@@ -114,15 +119,18 @@ function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: 
           bt.applyDamage(v, parts.map(p => ({ type: p.type, amount: ok ? bt.halfOnSave(v, p.amount) : p.amount })), { source: self })
         } else {
           const ctx = isTech ? bt.techAttackRoll(self, v, a.name) : (() => {
-            const c = bt.newAttackCtx(self, v, { mode: 'free', multiTarget: victims.length > 1 })
-            if (bt.has(self, 'impaired')) c.difficulty++
-            const cov = bt.cover(self, v)
+            // the modifiers every attack gets (core p.64-78): Impaired, Prone, Braced, Lock On, Engaged (ranged), cover
+            const c = bt.newAttackCtx(self, v, { mode: 'free', multiTarget: victims.length > 1, melee, ranged: !melee })
+            bt.meleeAttackMods(self, v, c)
+            if (!melee && bt.isEngaged(self)) { c.difficulty++; c.reasons.push('Engaged -1') }
+            // a Blast's cover is measured from its centre
+            const cov = melee ? 'none' : bt.cover(self, v, blast ? aim : undefined)
             if (cov === 'hard') c.difficulty += 2
             else if (cov === 'soft') c.difficulty++
             bt.rollToHit(c)
             return c
           })()
-          if (ctx.hit) bt.applyDamage(v, parts.map(p => ({ type: p.type, amount: p.amount })), { source: self, attack: ctx })
+          if (ctx.hit) bt.applyDamage(v, (ctx.crit ? critRoll() : parts).map(p => ({ type: p.type, amount: p.amount })), { source: self, attack: ctx })
         }
       }
       if (a.detail && !a.damage?.length) bt.say(`  ${stripHtml(a.detail)}`)
