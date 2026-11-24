@@ -219,7 +219,7 @@ const scripts: ItemScript[] = [
       if (u === host) { const from = self.pos; self.pos = { ...host.pos }; if (from.x !== host.pos.x || from.y !== host.pos.y) b.emit({ type: 'move', unitId: self.id, path: [from, self.pos] }) }
       if (!self.flags.symbiosisTurns || u.id !== self.flags.host || self.destroyed) return
       self.flags.hostTurnActed = false
-      for (const k of Object.keys(self.flags)) if (k.startsWith('turn:') || k.startsWith('react:')) delete self.flags[k]
+      for (const k of Object.keys(self.flags)) if (k.startsWith('turn:')) delete self.flags[k] // reactions refresh at round start (owner ruling), not at a sub-turn
       b.tickStatuses(self, true)
       for (const sc of scriptsFor(self)) sc.onTurnStart?.(b, self)
     },

@@ -78,6 +78,10 @@ export interface TemplateRule {
   budget: number            // encounter budget cost multiplier relative to a standard unit (1.0)
   featureSlots: number      // additional feature slots
   apply(s: NpcStats): void
+  /** the template's spent reactions come back at each of its turns (Ultra); otherwise once per round, at round start */
+  reactionsEachTurn?: boolean
+  /** templates it can't be combined with */
+  excludes?: Template[]
   notes: string
 }
 
@@ -86,27 +90,33 @@ export interface TemplateRule {
 export const TEMPLATE_RULES: Record<Template, TemplateRule> = {
   Grunt: {
     budget: 0.25, featureSlots: -1,
-    apply: s => { s.hp = 1; s.structure = 1; s.stress = 1; s.armor = 0 },
-    notes: 'Chaff/Weak: 1 HP; destroyed by any damage (hits, Reliable on a miss, enemy heat); unharmed on a successful save (no half damage). One fewer feature.',
+    // applied after every other template and stat change (see finalizeStats): a Grunt never has more than 1 HP,
+    // 1 Structure and 1 Stress. It keeps its Armor (core book p.327: it otherwise takes damage normally).
+    apply: s => { s.hp = 1; s.structure = 1; s.stress = 1 },
+    excludes: ['Veteran', 'Elite', 'Ultra'],
+    notes: 'Chaff/Weak: 1 HP; destroyed by any damage (hits, Reliable on a miss, enemy heat); unharmed on a successful save (no half damage). Rank and File: no Veteran, Elite or Ultra. One fewer feature.',
   },
   Veteran: {
     budget: 1.5, featureSlots: 0,
     apply: s => { s.structure += 1; s.stress += 1 },
-    notes: 'Reinforced (+1 structure, +1 stress); Veterancy (+1 accuracy on checks/saves with one skill, `veterancy`); one Veteran trait (`veteranTrait`). Can score critical hits.',
+    notes: 'Reinforced (+1 structure, +1 stress); Veterancy (+1 accuracy on checks/saves with one skill, `veterancy`); one Veteran trait per tier (`veteranTraits`). Can score critical hits.',
   },
   Elite: {
-    budget: 2, featureSlots: 0,
+    budget: 2, featureSlots: 1,
     apply: s => { s.structure += 1; s.stress += 1; s.activations = 2 },
-    notes: 'Reinforced (+1 structure, +1 stress); Ready and Waiting (two separate turns each round).',
+    excludes: ['Grunt', 'Ultra'],
+    notes: 'Reinforced (+1 structure, +1 stress); Ready and Waiting (two separate turns each round; reactions still refresh once per round); Specialist Kit (one extra optional feature).',
   },
   Commander: {
     budget: 1.75, featureSlots: 0,
     apply: s => { s.structure += 1; s.stress += 1 },
-    notes: 'Reinforced (+1/+1); Voice of Authority (1/round reaction: an ally rerolls a missed attack); Military Discipline (adjacent allies +1 accuracy on attacks, checks and saves).',
+    notes: 'Reinforced (+1/+1); Voice of Authority (1/round reaction: an ally rerolls a failed attack, check or save); Military Discipline (adjacent allies +1 accuracy on attacks, checks and saves).',
   },
   Ultra: {
     budget: 4, featureSlots: 3,
     apply: s => { s.structure += 3; s.stress += 3; s.activations = 2; s.hp += 5 },
+    reactionsEachTurn: true,
+    excludes: ['Grunt', 'Elite'],
     notes: 'Reinforced (+3/+3), Resilient (+5 HP), Shock and Awe (two turns, a third vs 5+ hostiles; reactions refresh every turn), Deadly (+1d6 on crits), Juggernaut (clear a condition at turn start, repair a weapon/system at turn end), Legendary (structure/overheat rolled twice, keep the better), Reflex (unlimited Overwatch). +3 optional features. One per encounter.',
   },
   Mercenary: {
@@ -116,16 +126,20 @@ export const TEMPLATE_RULES: Record<Template, TemplateRule> = {
   },
 }
 
-/** Veteran traits the engine supports (pick one per Veteran, in addition to Veterancy). */
+/** Veteran traits the engine supports (a Veteran picks one per tier, in addition to Veterancy). */
 export const VETERAN_TRAITS = ['deadly', 'feign_death', 'hacker', 'hardened_target', 'insulated', 'legendary', 'lightning_reflexes', 'shock_armor', 'steel_jaw'] as const
 export type VeteranTrait = (typeof VETERAN_TRAITS)[number]
 export type SkillStat = 'hull' | 'agi' | 'sys' | 'eng'
 
 export const BASE_FEATURE_SLOTS: Record<Tier, number> = { 1: 3, 2: 4, 3: 5 }
 
-/** Encounter budget per player mech, by act (run depth). Elite nodes x1.5, boss nodes x2. */
-/** Per-player budget rate by tier (tuned on attrition: mechs and Structure lost per fight, not win rate). */
-export const BUDGET_PER_PC: Record<Tier, number> = { 1: 0.8, 2: 1.2, 3: 1.0 }
+/**
+ * Per-player budget rate by tier (tuned on attrition: mechs and Structure lost per fight, not win rate).
+ * Never below 1: the core book's standard fight has at least one NPC (or its Grunt equivalent) per player.
+ */
+export const BUDGET_PER_PC: Record<Tier, number> = { 1: 1.0, 2: 1.2, 3: 1.0 }
+/** A standard encounter's minimum budget per player: one standard NPC (core book p.283: 1-2 per player). */
+export const MIN_STANDARD_PER_PC = 1
 /** Budget multiplier by encounter kind. */
 export const KIND_MULT = { standard: 1, elite: 1.5, boss: 1.75 } as const
 
@@ -229,8 +243,10 @@ export interface EnemyUnitDef {
   baseStats?: NpcStats
   /** official NPC class id this unit was built from */
   officialClass?: string
-  /** Veteran only: skill for Veterancy (default: the role's best skill) and the chosen Veteran trait */
+  /** Veteran only: skill for Veterancy (default: the role's best skill) and its Veteran traits, one per tier */
   veterancy?: SkillStat
+  veteranTraits?: VeteranTrait[]
+  /** @deprecated single Veteran trait (older files); counts as one entry of `veteranTraits` */
   veteranTrait?: VeteranTrait
   /** Mercenary only: lancer-data weapon ids */
   mechWeapons?: string[]
@@ -253,9 +269,23 @@ export interface EnemyTeam {
   units: EnemyUnitDef[]
 }
 
+/** Template order: Grunt goes last, so its 1 HP / 1 Structure / 1 Stress caps can't be raised by another template. */
+const templateOrder = (templates: Template[]) => [...templates.filter(t => t !== 'Grunt'), ...templates.filter(t => t === 'Grunt')]
+
 export function applyTemplates(s: NpcStats, templates: Template[] = []): NpcStats {
-  for (const tp of templates) TEMPLATE_RULES[tp].apply(s)
+  for (const tp of templateOrder(templates)) TEMPLATE_RULES[tp].apply(s)
   return s
+}
+
+/** Re-apply the Grunt caps after trait stats and overrides (Chaff: 1 HP and can't gain more; Weak: 1 Structure/Stress). */
+export function finalizeStats(s: NpcStats, templates: Template[] = []): NpcStats {
+  if (templates.includes('Grunt')) TEMPLATE_RULES.Grunt.apply(s)
+  return s
+}
+
+/** A unit's Veteran traits (`veteranTraits`, plus the older single `veteranTrait`). */
+export function veteranTraitsOf(u: EnemyUnitDef): VeteranTrait[] {
+  return [...new Set([...(u.veteranTraits ?? []), ...(u.veteranTrait ? [u.veteranTrait] : [])])]
 }
 
 export function baselineStats(role: Role, tier: Tier, templates: Template[] = []): NpcStats {
@@ -279,8 +309,7 @@ export function baselineStats(role: Role, tier: Tier, templates: Template[] = []
     attackBonus: t.attackBonus,
     techAttack: t.attackBonus + Math.max(0, b.sys),
   }
-  for (const tp of templates) TEMPLATE_RULES[tp].apply(s)
-  return s
+  return applyTemplates(s, templates)
 }
 
 export function unitBudget(u: EnemyUnitDef): number {

@@ -187,8 +187,9 @@ export function halfOnSave(bt: Battle, t: Unit, amount: number): number {
 
 export function destroy(bt: Battle, u: Unit, why: string) {
   if (u.destroyed) return
-  // Veteran trait Feign Death (core p.332): the first time it is destroyed, however, it survives on 1 HP, apparently dead (Hidden)
-  if (u.traits?.includes('feign_death') && !u.flags.feignUsed) {
+  // Veteran trait Feign Death: the first time it would be destroyed it survives on 1 HP, apparently dead (Hidden)
+  // (a crushing hit destroys it too, so it can feign that; a reactor meltdown or self-destruct leaves nothing to feign with)
+  if (u.traits?.includes('feign_death') && !u.flags.feignUsed && !/meltdown|self-destruct/.test(why)) {
     u.flags.feignUsed = true
     u.hp = 1
     u.structure = Math.max(1, u.structure)

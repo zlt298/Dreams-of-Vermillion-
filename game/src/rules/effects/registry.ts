@@ -159,8 +159,6 @@ export interface ItemScript {
   onStatusAdded?(b: Battle, self: Unit, status: StatusId, duration: Duration, source?: Unit): void
   /** a character failed a save against you */
   onSaveFailed?(b: Battle, self: Unit, target: Unit, stat: string): void
-  /** you failed a mech skill check or save: return true to reroll it once (the new result stands) */
-  rerollFailed?(b: Battle, self: Unit, kind: 'check' | 'save', stat: string): boolean
   /** you forced a character to make a save (pass or fail) */
   onSaveForced?(b: Battle, self: Unit, target: Unit, stat: string): void
   /** another unit gained a status */
@@ -197,6 +195,8 @@ export interface ItemScript {
   afterAnyRoll?(b: Battle, self: Unit, ctx: AttackCtx): void
   /** extra accuracy (or difficulty, if negative) this unit grants `u` on a check or save */
   checkAccuracy?(b: Battle, self: Unit, u: Unit, kind: 'check' | 'save', stat?: string): number
+  /** `u` failed a check or save: return true to let it reroll once (the script pays any cost, e.g. a reaction) */
+  rerollFailed?(b: Battle, self: Unit, u: Unit, kind: 'check' | 'save', stat: string): boolean
   /** persistent zones this unit's systems project (drawn as map overlays, listed in tooltips) */
   fields?(b: Battle, self: Unit): FieldOverlay[]
   /** actions this unit's systems make available to another unit (`other`) */
@@ -247,6 +247,7 @@ export function allScriptIds(): string[] {
 /** Script ids that apply to a unit right now. */
 export function scriptIdsFor(u: Unit): string[] {
   const ids: string[] = []
+  if (u.kind === 'npc') ids.push('npc:base')
   if (u.frameId) {
     ids.push(`frame:${u.frameId}`)
     ids.push(`core:${u.frameId}`)

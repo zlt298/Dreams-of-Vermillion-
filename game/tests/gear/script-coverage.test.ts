@@ -20,7 +20,6 @@ const NARRATIVE_ONLY: Record<string, string> = {
 const OFFICIAL_SMOKE = 'official NPC feature: only the official-scripts smoke battle runs it'
 const WEAPON = 'weapon script: only the scripts.test.ts stress battle runs it'
 const NOT_YET_TESTED: Record<string, string> = {
-  ms_walking_armory_3: 'Walking Armory rank 3 Ammo Case tier (ranks 1-2 are tested)',
   'npc:npcf_defense_net_aegis': OFFICIAL_SMOKE,
   'npc:npcf_suppress_archer': OFFICIAL_SMOKE,
   'npc:npcf_assassins_mark_assassin': OFFICIAL_SMOKE,

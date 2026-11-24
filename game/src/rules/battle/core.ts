@@ -427,13 +427,20 @@ export class Battle {
   check(u: Unit, stat: Stat, extraAcc = 0): boolean {
     if ((stat === 'hull' || stat === 'agi') && this.has(u, 'stunned')) { this.say(`${u.name} automatically fails the ${stat.toUpperCase()} check (stunned).`); return false }
     const acc = this.accuracyFromStatuses(u, 'check', stat) + extraAcc
-    let d = this.rollD20(u, 'check'), a = rollAccuracy(this.rng, acc)
-    let total = d + u.stats[stat] + a.bonus
-    // a failed check may be rerolled once by a script (Technophile 2 NHP Assistance); the new result stands
-    if (total < 10 && scriptsFor(u).some(sc => sc.rerollFailed?.(this, u, 'check', stat))) { this.say(`${u.name} rerolls the ${stat.toUpperCase()} check (${total}).`); d = this.rollD20(u, 'check'); a = rollAccuracy(this.rng, acc); total = d + u.stats[stat] + a.bonus }
-    const ok = total >= 10
-    this.say(`${u.name} ${stat.toUpperCase()} check: ${total} (${d}${fmtAcc(a.bonus)}+${u.stats[stat]}) ${ok ? 'success' : 'failure'}.`)
-    return ok
+    const roll = () => {
+      const d = this.rollD20(u, 'check'), a = rollAccuracy(this.rng, acc)
+      const total = d + u.stats[stat] + a.bonus
+      const ok = total >= 10
+      this.say(`${u.name} ${stat.toUpperCase()} check: ${total} (${d}${fmtAcc(a.bonus)}+${u.stats[stat]}) ${ok ? 'success' : 'failure'}.`)
+      return ok
+    }
+    const ok = roll()
+    return ok || (this.offerReroll(u, 'check', stat) && roll())
+  }
+  /** A failed check or save: a script (e.g. a Commander's Voice of Authority) may let it be rerolled once. */
+  offerReroll(u: Unit, kind: 'check' | 'save', stat: Stat): boolean {
+    for (const o of this.alive()) for (const s of scriptsFor(o)) if (s.rerollFailed?.(this, o, u, kind, stat)) return true
+    return false
   }
   /** Save vs a source's save target. */
   save(u: Unit, stat: Stat, target: number, extraAcc = 0, source?: Unit): boolean {
@@ -441,11 +448,15 @@ export class Battle {
     if ((stat === 'hull' || stat === 'agi') && this.has(u, 'stunned')) { this.say(`${u.name} automatically fails the ${stat.toUpperCase()} save (stunned).`); return false }
     if ((stat === 'hull' || stat === 'agi') && u.flags.autoSaveUntil != null && this.round <= u.flags.autoSaveUntil) { this.say(`${u.name} automatically passes the ${stat.toUpperCase()} save.`); return true }
     const acc = this.accuracyFromStatuses(u, 'save', stat) + extraAcc
-    let d = this.rollD20(u, 'save'), a = rollAccuracy(this.rng, acc)
-    let total = d + u.stats[stat] + a.bonus
-    if (total < target && scriptsFor(u).some(sc => sc.rerollFailed?.(this, u, 'save', stat))) { this.say(`${u.name} rerolls the ${stat.toUpperCase()} save (${total}).`); d = this.rollD20(u, 'save'); a = rollAccuracy(this.rng, acc); total = d + u.stats[stat] + a.bonus }
-    const ok = total >= target
-    this.say(`${u.name} ${stat.toUpperCase()} save vs ${target}: ${total} — ${ok ? 'success' : 'failure'}.`)
+    const roll = () => {
+      const d = this.rollD20(u, 'save'), a = rollAccuracy(this.rng, acc)
+      const total = d + u.stats[stat] + a.bonus
+      const ok = total >= target
+      this.say(`${u.name} ${stat.toUpperCase()} save vs ${target}: ${total} — ${ok ? 'success' : 'failure'}.`)
+      return ok
+    }
+    let ok = roll()
+    if (!ok && this.offerReroll(u, 'save', stat)) ok = roll()
     if (!ok && source && source !== u && !source.destroyed) for (const sc of scriptsFor(source)) sc.onSaveFailed?.(this, source, u, stat)
     return ok
   }

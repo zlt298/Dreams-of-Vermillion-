@@ -179,8 +179,8 @@ registerScripts([
   narrative('t_technophile:1', 'custom Servant-class NHP (personality only)'),
   {
     id: 't_technophile:2', note: 'Student-Class NHP (Enlightenment-Class at rank 3) — NHP Assistance: 1/round, reroll a mech skill check or save (the new result stands; offered when it fails)',
-    rerollFailed(b, self, kind, stat) {
-      if (self.flags['round:nhpAssist'] || self.destroyed) return false
+    rerollFailed(b, self, u, kind, stat) {
+      if (u !== self || self.flags['round:nhpAssist'] || self.destroyed) return false
       if (b.choose({ kind: 'nhp_assistance', unit: self, title: 'NHP Assistance?', text: `Your ${stat.toUpperCase()} ${kind} failed. Reroll it (1/round; the new result stands)?`, options: [{ label: 'Reroll' }, { label: 'Keep it' }], defaultIndex: 0 }) !== 0) return false
       self.flags['round:nhpAssist'] = true
       return true

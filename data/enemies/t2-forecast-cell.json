@@ -161,7 +161,7 @@
           ]
         }
       ],
-      "veteranTrait": "deadly"
+      "veteranTraits": ["deadly", "lightning_reflexes"]
     },
     {
       "name": "Forecast Archer",
@@ -169,7 +169,7 @@
       "templates": [
         "Veteran"
       ],
-      "veteranTrait": "deadly",
+      "veteranTraits": ["deadly", "hardened_target"],
       "count": 1,
       "color": "#e08e2b",
       "description": "Fires at where you will be in three seconds.",
