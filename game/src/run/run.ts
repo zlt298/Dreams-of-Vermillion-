@@ -42,6 +42,10 @@ export interface MechCondition {
   supplyDropUsed?: boolean
   /** OSIRIS: the next Gate of Hurl Into the Duat (persists between scenes, resets at a rest or Full Repair) */
   duatGate?: number
+  /** unit flags named 'keep:…' that last between scenes until a Full Repair (Sherman ZF4 charges) */
+  keep?: Record<string, unknown>
+  /** Manticore Castigation State (set at a rest or Full Repair) */
+  castigation?: boolean
 }
 
 export interface Reward { id: string; name: string; text: string }
@@ -127,7 +131,15 @@ export function resetCondition(run: RunState, p: PilotBuild): MechCondition {
   const c = freshCondition(p)
   const mate = run.condition[p.id]?.bondmate
   if (mate) c.bondmate = mate
+  if (run.condition[p.id]?.castigation) c.castigation = true
   return c
+}
+
+/** Manticore: push it into the Castigation State or bring it out of one (at a rest or Full Repair). */
+export function setCastigation(run: RunState, pilotId: string, on: boolean) {
+  const c = run.condition[pilotId]
+  if (on) c.castigation = true
+  else delete c.castigation
 }
 
 /**
@@ -188,6 +200,8 @@ export function squadUnits(run: RunState): Unit[] {
     u.flags.pilotId = p.id
     if (c.bondmate) u.flags.bondmatePilot = c.bondmate
     if (c.duatGate) u.flags.duatGate = c.duatGate
+    if (c.keep) Object.assign(u.flags, structuredClone(c.keep))
+    if (c.castigation) u.flags.castigation = true
     for (const w of u.weapons) if (w.dataId && c.proto?.[w.dataId]) applyPrototypeConfig(w, c.proto[w.dataId].type, c.proto[w.dataId].damage, true, c.proto[w.dataId].revision)
     for (const b of run.boons.filter(b => !b.pilotId || b.pilotId === p.id)) applyBoon(u, b.reward)
     out.push(u)
@@ -246,7 +260,12 @@ export function recordBattle(run: RunState, node: RunNode, units: Unit[], won: b
     c.stress = gone ? 0 : v ? v.stress : u.stress
     c.repairs = u.repairs
     c.overchargeLevel = u.overchargeLevel
-    c.coreAvailable = u.coreAvailable
+    // a CORE whose text refunds it when unused this scene (Barbarossa Charge Rail never fired)
+    c.coreAvailable = u.coreAvailable || !!u.flags.refundCore
+    const keep = Object.fromEntries(Object.entries(u.flags).filter(([k]) => k.startsWith('keep:')))
+    if (Object.keys(keep).length) c.keep = keep
+    // Balor Self-Perpetuating: the rest after the fight restores its HP without repairs
+    if (!gone && !v && u.frameId === 'mf_balor') c.hp = u.stats.hp - permHpBonus(run, pid)
     // gear taken off in a refit keeps its destroyed mark (refitting it back is not a free repair)
     c.destroyedWeapons = [...u.weapons.filter(w => w.destroyed && w.dataId).map(w => w.dataId!), ...c.destroyedWeapons.filter(id => !u.weapons.some(w => w.dataId === id))]
     c.destroyedSystems = [...u.systems.filter(s => s.destroyed).map(s => s.dataId), ...c.destroyedSystems.filter(id => !u.systems.some(s => s.dataId === id))]

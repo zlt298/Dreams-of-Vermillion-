@@ -91,7 +91,9 @@ export function boost(bt: Battle, u: Unit) {
   if (c !== true) throw new Error(c)
   if (bt.has(u, 'slowed') || bt.has(u, 'immobilized')) throw new Error('Cannot boost while slowed/immobilized')
   if (bt.has(u, 'prone')) throw new Error('Cannot boost while prone (stand up first)') // Prone characters are Slowed
-  if (bt.has(u, 'grappled')) throw new Error('Cannot boost while grappling or grappled')
+  // Blackbeard Lock/Kill Subsystem: a grappler (not one being held) can still Boost
+  const lockKill = u.flags.lockKill && bt.grapples.some(g => g.a === u.id) && !bt.grapples.some(g => g.d === u.id)
+  if (bt.has(u, 'grappled') && !lockKill) throw new Error('Cannot boost while grappling or grappled')
   bt.spend(u, 'quick', 'boost')
   const extra = u.bonuses.filter(b => b.id === 'boost').reduce((a, b) => a + Number(b.val), 0)
   u.moveLeft += u.stats.speed + extra
@@ -474,11 +476,11 @@ export function dragSpot(bt: Battle, p: Unit, want: Pos, holder: Unit): Pos | nu
 }
 
 export function improvisedAttack(bt: Battle, u: Unit, t: Unit) {
-  const c = bt.canSpend(u, 'full')
+  const c = bt.canSpend(u, 'full', 'improvised')
   if (c !== true) throw new Error(c)
   if (!bt.adjacent(u, t)) throw new Error('Must be adjacent')
   const refund = bt.checkpoint()
-  bt.spend(u, 'full')
+  bt.spend(u, 'full', 'improvised')
   const w: Weapon = {
     uid: 'improvised', name: 'Improvised Attack', mountIndex: -1, size: 'Main', type: 'Improvised', profileIndex: 0,
     profiles: [{ name: 'Improvised Attack', damage: [{ type: 'Kinetic', val: '1d6' }], range: [{ type: 'Threat', val: 1 }], tags: [], onAttack: [], onHit: [], onCrit: [] }],

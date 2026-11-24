@@ -272,11 +272,11 @@ describe('flight (core p.63)', () => {
     expect(() => b.move(a, { x: 3, y: 8 })).toThrow()
   })
 
-  it('a hovering flyer (Dusk Wing) may bend its path', () => {
-    const a = mech({ frame: 'mf_dusk_wing' })
+  it('a hovering flyer may bend its path', () => {
+    const a = mech({})
     const e = mech({}, 'enemy')
     const b = arena([[a, { x: 1, y: 5 }], [e, { x: 11, y: 11 }]])
-    expect(a.flying).toBe(true)
+    a.flying = true; a.flags.hover = true // (the Dusk Wing only hovers during its own moves: see frames-audit2)
     b.beginTurn(a)
     expect(b.reachable(a, a.moveLeft).has('3,8')).toBe(true)
   })
@@ -286,9 +286,10 @@ describe('flight (core p.63)', () => {
     a.flying = true
     b.beginTurn(a); b.endTurn(a)
     expect(a.flying).toBe(false)
-    const h = mech({ frame: 'mf_dusk_wing' })
+    const h = mech({})
     const e = mech({}, 'enemy')
     const b2 = arena([[h, { x: 1, y: 5 }], [e, { x: 11, y: 11 }]])
+    h.flying = true; h.flags.hover = true
     b2.beginTurn(h); b2.endTurn(h)
     expect(h.flying).toBe(true)
   })

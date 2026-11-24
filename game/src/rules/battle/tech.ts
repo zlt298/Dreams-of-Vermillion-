@@ -27,6 +27,7 @@ export function techTargetValid(bt: Battle, u: Unit, t: Unit, option?: string): 
   if (t.role === 'Biological' && option !== 'scan' && option !== 'lock_on') return 'Biological characters are immune to tech actions (except Scan and Lock On)'
   if (t.destroyed) return 'Destroyed'
   if (bt.has(t, 'shutdown')) return 'Target is shut down (immune to tech)'
+  if (t.flags.techImmune && t !== u) return 'Immune to tech actions'
   if (bt.hostile(u, t) && bt.has(t, 'hidden') && !seesHidden(bt, u, t)) return 'Hidden'
   // Jammed characters can't benefit from tech actions (core p.78): no Bolster or friendly Invade for them
   if (!bt.hostile(u, t) && bt.has(t, 'jammed') && option !== 'scan' && option !== 'lock_on') return 'Target is Jammed'

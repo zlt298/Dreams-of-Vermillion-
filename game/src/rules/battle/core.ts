@@ -456,6 +456,8 @@ export class Battle {
       this.say(`${u.name} ${stat.toUpperCase()} save vs ${target}: ${total} — ${ok ? 'success' : 'failure'}.`)
       return ok
     }
+    // a save forced during the source's own turn (Raleigh Full Metal Jacket)
+    if (source && source !== u && source.activeTurn) source.flags['turn:forcedSave'] = true
     let ok = roll()
     if (!ok && this.offerReroll(u, 'save', stat)) ok = roll()
     for (const o of this.alive()) for (const sc of scriptsFor(o)) sc.onAnySave?.(this, o, u, stat, ok, source)

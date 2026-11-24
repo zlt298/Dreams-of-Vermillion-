@@ -10,7 +10,7 @@ import { catalog, teamsFor, validTeams } from '../enemies/catalog'
 import { generateMap, placeUnits, themeForAct } from '../run/mapgen'
 import {
   type RunState, type RunNode, newRun, availableNodes, nodeTier, sitrepFor, squadUnits, recordBattle, fullRepair,
-  repairOptions, applyRepair, permHpBonus, rollRewards, applyReward, levelUp, replacePilots, refitPilot, chooseTeam, saveRun, loadRun, ACTS, actLevel, lastLoadProblem,
+  repairOptions, applyRepair, setCastigation, permHpBonus, rollRewards, applyReward, levelUp, replacePilots, refitPilot, chooseTeam, saveRun, loadRun, ACTS, actLevel, lastLoadProblem,
 } from '../run/run'
 // the battle screen (and Three.js) load on demand: the title, hangar and campaign map don't need them
 import type { BattleScreen, UndoEntry } from './battle-ui'
@@ -580,10 +580,13 @@ export class App {
     const rows = run.squad.map(p => {
       const c = run.condition[p.id]
       const opts = repairOptions(p, c)
-      return `<div class="sq ${c.destroyed ? 'dead' : ''}"><b>${esc(p.callsign)}</b> — Repairs left: <b>${c.repairs}</b><br>${c.destroyed ? '<span class="bad">Destroyed: flies a stock Everest stand-in until the next rest reprints it.</span>' : opts.length ? opts.map(o => `<button data-p="${p.id}" data-o="${esc(o.id)}" ${c.repairs < o.cost ? 'disabled' : ''}>${esc(o.label)} (${o.cost})</button>`).join('') : '<span class="muted">Fully operational.</span>'}</div>`
+      // Manticore: the Castigation State is chosen at a rest
+      const cast = p.mech.frameId === 'mf_manticore' && !c.destroyed ? `<br><button data-cast="${p.id}" title="Castigate the Enemies of the Godhead: when destroyed, the Manticore explodes at once (Burst 2, Agility save or 8d6 explosive) instead of at the end of its next turn.">${c.castigation ? 'Leave the Castigation State' : 'Enter the Castigation State'}</button>` : ''
+      return `<div class="sq ${c.destroyed ? 'dead' : ''}"><b>${esc(p.callsign)}</b> — Repairs left: <b>${c.repairs}</b><br>${c.destroyed ? '<span class="bad">Destroyed: flies a stock Everest stand-in until the next rest reprints it.</span>' : opts.length ? opts.map(o => `<button data-p="${p.id}" data-o="${esc(o.id)}" ${c.repairs < o.cost ? 'disabled' : ''}>${esc(o.label)} (${o.cost})</button>`).join('') : '<span class="muted">Fully operational.</span>'}${cast}</div>`
     }).join('')
     this.root.innerHTML = `<div class="screen"><h2>Field repairs</h2><p class="muted">Spend Repairs between engagements (LANCER costs: 1 for full HP, 2 per structure or stress, 1 per destroyed weapon/system). Heat and statuses have cleared.</p>${rows}<button data-go="map" class="primary">Continue</button></div>`
     this.on('[data-o]', el => { try { applyRepair(run, el.dataset.p!, el.dataset.o!); saveRun(run) } catch (e) { void alertDialog('Repair not possible', (e as Error).message) } this.repairs() })
+    this.on('[data-cast]', el => { const id = el.dataset.cast!; setCastigation(run, id, !run.condition[id].castigation); saveRun(run); this.repairs() })
     this.on('[data-go]', () => this.maybeEvent(() => this.runMap()))
   }
 

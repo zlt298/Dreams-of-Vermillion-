@@ -222,7 +222,7 @@ registerScripts([
     actions: (b, u) => {
       const s = sys(u, 'ms_pattern_a_smoke_charges')
       return [action({
-        key: 'smoke-grenade', name: 'Smoke Grenade', activation: 'quick', target: 'tile', range: u.flags.assaultLauncher ? 15 : 5, area: { shape: 'blast', size: 2 },
+        key: 'smoke-grenade', name: 'Smoke Grenade', activation: 'quick', target: 'tile', range: 5, area: { shape: 'blast', size: 2 },
         text: 'Blast 2 within range 5: soft cover until the end of your next turn.', usable: () => usesOk(s),
         run: (bt, self, t) => { spend(s); bt.addArea({ kind: 'soft_cover', tiles: blastTiles(bt.map, t as Pos, 2), expiresRound: bt.round + 1, ownerId: self.id }) },
         aiScore: (bt, self) => (bt.round <= 2 ? 2 : 0.5),

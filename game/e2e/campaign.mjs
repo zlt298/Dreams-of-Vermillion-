@@ -62,6 +62,9 @@ try {
       const click = el => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
       const s = window.__dov.battle
       if (!s || s.b.winner) return
+      // a decision for the player (System Trauma, Ram knockback, Stabilize option...): take the default answer
+      const pick = document.querySelector('.picker .picker-opts button.default') ?? document.querySelector('.picker .picker-opts button')
+      if (pick) return click(pick)
       const auto = document.querySelector('.panel.bottom button[data-act="auto"]:not(.disabled)')
       if (auto) return click(auto)
       const ready = document.querySelector('.card .ready')
