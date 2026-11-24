@@ -104,6 +104,8 @@ const scripts: ItemScript[] = [
       if (role !== 'attacker' || !self.flags.thunderGod || ctx.weapon?.dataId !== 'mw_raleigh_integrated') return
       const n = self.flags.chambers ?? 0
       self.flags['turn:firedM35'] = true
+      // 4 kinetic per chambered round: with none chambered the shot deals no damage
+      if (n === 0) { ctx.cancelDamage = true; ctx.reasons.push('Thunder God: no rounds chambered') }
       if (n > 1) ctx.bonusDamage.push({ type: 'Kinetic', val: 4 * (n - 1) } as any)
       if (n >= 4 && ctx.profile && !ctx.profile.tags.some(t => t.id === 'tg_ap')) { ctx.profile.tags.push({ id: 'tg_ap', thunder: true } as any); ctx.reasons.push(`Thunder God ×${n} (AP)`) }
       else if (n) ctx.reasons.push(`Thunder God ×${n}`)

@@ -14,8 +14,15 @@ import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, s
 import { genericActionsFor } from '../effects/generic'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
 
+/** Superheavy weapons need a Barrage, unless the current profile's data says it can Skirmish (Leviathan, Standard profile). */
+export function needsBarrage(w: Weapon): boolean {
+  if (w.size !== 'Superheavy') return false
+  const p = w.dataId ? (Lancer.weapons.get(w.dataId)?.profiles?.[w.profileIndex] as { skirmish?: boolean } | undefined) : undefined
+  return !p?.skirmish
+}
+
 export function skirmish(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, aux?: { weapon: Weapon; aim: AttackAim }): AttackSummary {
-  if (w.size === 'Superheavy') return { ctxs: [], ok: false, reason: 'Superheavy weapons require Barrage' }
+  if (needsBarrage(w)) return { ctxs: [], ok: false, reason: 'Superheavy weapons require Barrage' }
   const c = bt.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish')
   if (c !== true) return { ctxs: [], ok: false, reason: c }
   const pre = bt.weaponUsable(u, w)

@@ -14,6 +14,7 @@ import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, s
 import { genericActionsFor } from '../effects/generic'
 import * as attacks from './attacks'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
+import { needsBarrage } from './actions'
 
 /** Damage a terrain block. Every 10 damage knocks one level off; a block with no levels left becomes rubble. */
 export function damageTerrain(bt: Battle, p: Pos, amount: number, opts: { source?: Unit; quiet?: boolean } = {}): boolean {
@@ -58,7 +59,7 @@ export function raiseCover(bt: Battle, p: Pos, opts: { indestructible?: boolean;
 export function attackTerrain(bt: Battle, u: Unit, w: Weapon, p: Pos): AttackSummary {
   const t = tileAt(bt.map, p)
   if (!t || t.kind !== 'block') return { ctxs: [], ok: false, reason: 'Not a piece of terrain' }
-  if (w.size === 'Superheavy') return { ctxs: [], ok: false, reason: 'Superheavy weapons require Barrage' }
+  if (needsBarrage(w)) return { ctxs: [], ok: false, reason: 'Superheavy weapons require Barrage' }
   const c = bt.canSpend(u, 'quick', 'skirmish')
   if (c !== true) return { ctxs: [], ok: false, reason: c }
   const pre = bt.weaponUsable(u, w)
@@ -72,7 +73,8 @@ export function attackTerrain(bt: Battle, u: Unit, w: Weapon, p: Pos): AttackSum
   if (hasTag(pr.tags, 'tg_loading')) w.loaded = false
   if (w.usesLeft != null) w.usesLeft--
   if (roll >= 5) {
-    const dmg = pr.damage.filter(d => d.type !== 'Heat' && d.type !== 'Burn').reduce((n, d) => n + rollDice(bt.rng, d.val).total, 0)
+    // weapons with a fixed damage against objects and terrain (Cutter MkII: 10 AP) set flags.objectDamage
+    const dmg = w.flags?.objectDamage ?? pr.damage.filter(d => d.type !== 'Heat' && d.type !== 'Burn').reduce((n, d) => n + rollDice(bt.rng, d.val).total, 0)
     bt.damageTerrain(p, dmg, { source: u })
   } else bt.say('  Miss.')
   return { ctxs: [], ok: true }

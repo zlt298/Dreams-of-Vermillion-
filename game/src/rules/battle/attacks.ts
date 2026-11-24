@@ -13,6 +13,7 @@ import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, St
 import { type FieldOverlay, type AttackCtx, type BonusDamage, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
+import { needsBarrage } from './actions'
 
 export function triggerOverwatch(bt: Battle, mover: Unit) {
   if (bt.reactionDepth > 0) return
@@ -37,6 +38,7 @@ export function bestThreatWeapon(bt: Battle, o: Unit, target: Unit): Weapon | nu
     if (!bt.weaponReady(o, w)) continue
     const pr = w.profiles[w.profileIndex]
     if (bt.isAoE(pr) || hasTag(pr.tags, 'tg_ordnance')) continue // Ordnance can't be used for Overwatch
+    if (needsBarrage(w)) continue // Overwatch is a Skirmish: Superheavy weapons can't (the Leviathan's Standard profile can)
     const threat = bt.weaponThreat(o, w)
     if (threat <= 0 || bt.distance(o, target) > threat) continue
     // a target the attack would refuse (Hidden, intangible, no line of sight) doesn't provoke the reaction
@@ -155,7 +157,8 @@ export function validTarget(bt: Battle, u: Unit, w: Weapon, t: Unit, from: Pos =
   const minR = u.bonuses.find(b => b.id === 'min_range')
   void minR
   const magRound = u.flags.ammo === 'mag' && w.size === 'Main' && !bt.isMelee(w) && !u.flags['turn:ammoUsed']
-  if (!hasTag(tags, 'tg_seeking') && !hasTag(tags, 'tg_arcing') && !magRound && !bt.los(u, t, from)) return 'No line of sight'
+  // flags.noLos: the weapon needs no line of sight (Phase-Ready Mod)
+  if (!hasTag(tags, 'tg_seeking') && !hasTag(tags, 'tg_arcing') && !magRound && !w.flags?.noLos && !bt.los(u, t, from)) return 'No line of sight'
   return true
 }
 
@@ -176,7 +179,7 @@ export function aoeTiles(bt: Battle, u: Unit, w: Weapon, aim: Pos): Pos[] | stri
     const range = rs.find(r => r.type === 'Range')
     const reach = range ? Number(range.val) : 1
     if (distanceToTile(bt.map, u, aim) > reach) return 'Out of range'
-    if (!hasTag(bt.profile(w).tags, 'tg_arcing') && !hasTag(bt.profile(w).tags, 'tg_seeking') && !hasLineOfSightToTile(bt.effectiveMap(), u, aim)) return 'No line of sight to blast centre'
+    if (!hasTag(bt.profile(w).tags, 'tg_arcing') && !hasTag(bt.profile(w).tags, 'tg_seeking') && !w.flags?.noLos && !hasLineOfSightToTile(bt.effectiveMap(), u, aim)) return 'No line of sight to blast centre'
     return blastTiles(bt.map, aim, Number(blast.val))
   }
   return 'Not an area weapon'
