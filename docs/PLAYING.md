@@ -26,9 +26,9 @@ During a run, each pilot on the campaign map has an **Edit build** button. Build
 
 | squad | act 1 (LL2) | act 2 (LL5) | act 3 (LL8) |
 |---|---|---|---|
-| **Brawlers:** melee and armour | Medium | Medium | Easy |
-| **Long Guns:** rifles, cannons and missiles | Easy | Hard | Hard |
-| **Drone Wing:** drones and deployables | Hard | Easy | Medium |
+| **Brawlers:** melee and armour | Easy | Hard | Easy |
+| **Long Guns:** rifles, cannons and missiles | Medium | Easy | Medium |
+| **Drone Wing:** drones and deployables | Hard | Medium | Hard |
 
 The picker also has the LL2/LL5/LL8 sample squad (Drake, Monarch, Saladin, Blackbeard; a new roster starts with the LL2 one) and, in act 1, the LL0 COMP/CON pregens, which are fitted up to LL2 when the run starts. The themed squads are generated and checked by `npx tsx scripts/make-squads.ts`, the sample squads by `npx tsx scripts/make-samples.ts`.
 

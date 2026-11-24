@@ -6,6 +6,7 @@ import { buildTeam } from '../../src/enemies/build'
 import { planFor } from '../../src/ai/ai'
 import type { Pos, Unit } from '../../src/rules/types'
 import { battle, flatMap, pregenUnit, teamFile } from '../helpers'
+import cleanroomPreTrim from '../fixtures/cleanroom-wardens-pre-trim.json'
 
 const npc = (team: string, name: string) => {
   const u = buildTeam(teamFile(team), 4).find(x => x.name.replace(/ [A-Z]$/, '') === name)
@@ -77,7 +78,8 @@ describe('AI: no idling at the back', () => {
     const players = squad()
     const builder = players.find(u => u.systems.some(s => s.dataId === 'ms_pattern_a_jericho_deployable_cover'))!
     players.forEach((u, i) => (u.pos = { x: 4 + 3 * i, y: 34 }))
-    const sniper = npc('t3-cleanroom-wardens', 'Laminar Sniper')
+    // the Laminar Sniper as shipped when this was found (the act-3 retune later removed it from the team)
+    const sniper = buildTeam(cleanroomPreTrim as any, 4).find(x => x.name.replace(/ [A-Z]$/, '') === 'Laminar Sniper')!
     sniper.pos = { x: builder.pos.x, y: 15 }
     const b = battle([...players, sniper], flatMap(18, 36))
     b.beginTurn(builder)

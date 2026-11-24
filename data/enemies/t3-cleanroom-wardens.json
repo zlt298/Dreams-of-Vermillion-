@@ -6,7 +6,7 @@
   "tier": 3,
   "designedFor": 4,
   "kind": "standard",
-  "description": "Identity: hold the lanes. Bastions anchor, laminar snipers fire down the aisles, breachers clear partitions, the decon unit scrubs statuses.",
+  "description": "Identity: hold the lanes. Bastions anchor, breachers clear partitions, the decon unit scrubs statuses.",
   "units": [
     {
       "name": "Sterile Bastion",
@@ -92,89 +92,6 @@
             }
           ],
           "recharge": 5
-        }
-      ]
-    },
-    {
-      "name": "Laminar Sniper",
-      "role": "Artillery",
-      "count": 1,
-      "color": "#e08e2b",
-      "description": "Fires along the airflow lines. The rounds do not wobble.",
-      "features": [
-        {
-          "type": "weapon",
-          "name": "Laminar Rifle",
-          "weaponType": "Rifle",
-          "range": [
-            {
-              "type": "Range",
-              "val": 18
-            }
-          ],
-          "damage": [
-            {
-              "type": "Kinetic",
-              "val": "1d6+5"
-            }
-          ],
-          "tags": [
-            {
-              "id": "tg_loading"
-            },
-            {
-              "id": "tg_ap"
-            }
-          ]
-        },
-        {
-          "type": "weapon",
-          "name": "Flechette Pistol",
-          "weaponType": "CQB",
-          "range": [
-            {
-              "type": "Range",
-              "val": 6
-            }
-          ],
-          "damage": [
-            {
-              "type": "Kinetic",
-              "val": "1d6+2"
-            }
-          ]
-        },
-        {
-          "type": "trait",
-          "name": "Clean Optics",
-          "stats": {
-            "sensors": 3
-          }
-        },
-        {
-          "type": "reaction",
-          "name": "Reposition",
-          "trigger": "enemy_moves_adjacent",
-          "frequency": "1/round",
-          "effects": [
-            {
-              "do": "push",
-              "val": 2,
-              "save": "hull"
-            }
-          ]
-        },
-        {
-          "type": "tech",
-          "name": "Target Lock",
-          "kind": "quick",
-          "onHit": [
-            {
-              "do": "status",
-              "status": "lockon",
-              "duration": "until_cleared"
-            }
-          ]
         }
       ]
     },

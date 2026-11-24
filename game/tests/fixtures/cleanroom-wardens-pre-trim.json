@@ -1,0 +1,360 @@
+{
+  "id": "t3-cleanroom-wardens",
+  "name": "Cleanroom Wardens",
+  "faction": "Cinnabar Annex print anomalies",
+  "theme": "Sterile white frames printed in the cleanroom labs, still wearing their packing film. They keep the clean areas clean.",
+  "tier": 3,
+  "designedFor": 4,
+  "kind": "standard",
+  "description": "Identity: hold the lanes. Bastions anchor, laminar snipers fire down the aisles, breachers clear partitions, the decon unit scrubs statuses.",
+  "units": [
+    {
+      "name": "Sterile Bastion",
+      "role": "Defender",
+      "count": 1,
+      "color": "#bdc3c7",
+      "description": "Its hull is so white it hurts to look at.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Containment Lance",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+5"
+            }
+          ]
+        },
+        {
+          "type": "reaction",
+          "name": "Seal the Breach",
+          "trigger": "ally_attacked_adjacent",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "status",
+              "status": "impaired",
+              "save": "sys"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Cleanroom Plating",
+          "stats": {
+            "armor": 1
+          }
+        },
+        {
+          "type": "weapon",
+          "name": "Riot Gun",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 6
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+3"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_knockback",
+              "val": 1
+            }
+          ]
+        },
+        {
+          "type": "system",
+          "name": "Decon Foam",
+          "activation": "quick",
+          "target": "tile_blast",
+          "range": 8,
+          "radius": 1,
+          "save": "agi",
+          "effects": [
+            {
+              "do": "status",
+              "status": "slowed",
+              "duration": "next_turn_end_target",
+              "save": "agi"
+            }
+          ],
+          "recharge": 5
+        }
+      ]
+    },
+    {
+      "name": "Laminar Sniper",
+      "role": "Artillery",
+      "count": 1,
+      "color": "#e08e2b",
+      "description": "Fires along the airflow lines. The rounds do not wobble.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Laminar Rifle",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 18
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+5"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_loading"
+            },
+            {
+              "id": "tg_ap"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Flechette Pistol",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 6
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+2"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Clean Optics",
+          "stats": {
+            "sensors": 3
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Reposition",
+          "trigger": "enemy_moves_adjacent",
+          "frequency": "1/round",
+          "effects": [
+            {
+              "do": "push",
+              "val": 2,
+              "save": "hull"
+            }
+          ]
+        },
+        {
+          "type": "tech",
+          "name": "Target Lock",
+          "kind": "quick",
+          "onHit": [
+            {
+              "do": "status",
+              "status": "lockon",
+              "duration": "until_cleared"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Partition Breacher",
+      "role": "Striker",
+      "count": 1,
+      "color": "#d9534f",
+      "description": "Built to cut through glass walls. And whoever is behind them.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Breaching Saw",
+          "weaponType": "Melee",
+          "range": [
+            {
+              "type": "Threat",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "2d6+3"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tg_ap"
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Scatter Gun",
+          "weaponType": "CQB",
+          "range": [
+            {
+              "type": "Range",
+              "val": 4
+            },
+            {
+              "type": "Threat",
+              "val": 2
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+4"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Servo Overdrive",
+          "stats": {
+            "speed": 1
+          }
+        },
+        {
+          "type": "reaction",
+          "name": "Cut Through",
+          "trigger": "hit_by_melee",
+          "frequency": "1/round",
+          "attackWith": "Breaching Saw"
+        },
+        {
+          "type": "trait",
+          "name": "Sealed Joints",
+          "immune": [
+            "slowed"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Decon Unit",
+      "role": "Support",
+      "count": 1,
+      "color": "#27ae60",
+      "description": "Sprays everything. Friends get clean. Enemies get foam.",
+      "features": [
+        {
+          "type": "system",
+          "name": "Scrub Cycle",
+          "activation": "quick",
+          "target": "ally",
+          "range": 8,
+          "effects": [
+            {
+              "do": "clear_status",
+              "status": "any_negative"
+            },
+            {
+              "do": "heal",
+              "val": "1d6+2"
+            }
+          ],
+          "recharge": 4
+        },
+        {
+          "type": "system",
+          "name": "Sterile Field",
+          "activation": "quick",
+          "target": "ally",
+          "range": 8,
+          "effects": [
+            {
+              "do": "overshield",
+              "val": 4
+            }
+          ]
+        },
+        {
+          "type": "weapon",
+          "name": "Foam Cannon",
+          "weaponType": "Launcher",
+          "range": [
+            {
+              "type": "Range",
+              "val": 10
+            },
+            {
+              "type": "Blast",
+              "val": 1
+            }
+          ],
+          "damage": [
+            {
+              "type": "Kinetic",
+              "val": "1d6+1"
+            }
+          ],
+          "onHit": [
+            {
+              "do": "status",
+              "status": "slowed",
+              "duration": "next_turn_end_target",
+              "save": "agi"
+            }
+          ]
+        },
+        {
+          "type": "trait",
+          "name": "Decon Plating",
+          "stats": {
+            "armor": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aseptic Drone",
+      "role": "Striker",
+      "templates": [
+        "Grunt"
+      ],
+      "count": 1,
+      "color": "#ecf0f1",
+      "description": "Cleaning drones with the safeties removed.",
+      "features": [
+        {
+          "type": "weapon",
+          "name": "Sterilising Beam",
+          "weaponType": "Rifle",
+          "range": [
+            {
+              "type": "Range",
+              "val": 8
+            }
+          ],
+          "damage": [
+            {
+              "type": "Energy",
+              "val": "1d6+3"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

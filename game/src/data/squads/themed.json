@@ -3,7 +3,7 @@
   "id": "brawlers-ll2",
   "name": "Brawlers",
   "theme": "brawlers",
-  "difficulty": "Medium",
+  "difficulty": "Easy",
   "blurb": "Close the distance and hit hard: melee and shotguns, heavy armour.",
   "level": 2,
   "pilots": [
@@ -338,7 +338,7 @@
   "id": "brawlers-ll5",
   "name": "Brawlers",
   "theme": "brawlers",
-  "difficulty": "Medium",
+  "difficulty": "Hard",
   "blurb": "Close the distance and hit hard: melee and shotguns, heavy armour.",
   "level": 5,
   "pilots": [
@@ -1116,7 +1116,7 @@
   "id": "longguns-ll2",
   "name": "Long Guns",
   "theme": "longguns",
-  "difficulty": "Easy",
+  "difficulty": "Medium",
   "blurb": "Hold the back line: rifles, cannons and missiles at long range.",
   "level": 2,
   "pilots": [
@@ -1452,7 +1452,7 @@
   "id": "longguns-ll5",
   "name": "Long Guns",
   "theme": "longguns",
-  "difficulty": "Hard",
+  "difficulty": "Easy",
   "blurb": "Hold the back line: rifles, cannons and missiles at long range.",
   "level": 5,
   "pilots": [
@@ -1833,7 +1833,7 @@
   "id": "longguns-ll8",
   "name": "Long Guns",
   "theme": "longguns",
-  "difficulty": "Hard",
+  "difficulty": "Medium",
   "blurb": "Hold the back line: rifles, cannons and missiles at long range.",
   "level": 8,
   "pilots": [
@@ -2551,7 +2551,7 @@
   "id": "dronewing-ll5",
   "name": "Drone Wing",
   "theme": "dronewing",
-  "difficulty": "Easy",
+  "difficulty": "Medium",
   "blurb": "Fight by proxy: drones, turrets, nexuses and deployables.",
   "level": 5,
   "pilots": [
@@ -2911,7 +2911,7 @@
   "id": "dronewing-ll8",
   "name": "Drone Wing",
   "theme": "dronewing",
-  "difficulty": "Medium",
+  "difficulty": "Hard",
   "blurb": "Fight by proxy: drones, turrets, nexuses and deployables.",
   "level": 8,
   "pilots": [

@@ -167,7 +167,20 @@ Playtesting found act 1 punishing even with the Easy squad. The sim agreed once 
 - Acts are now fought at LL2, LL5 and LL8 (were LL0, LL5 and LL10); enemies stay at tiers 1, 2 and 3. LL2 gives two license ranks, so pilots field a licensed frame from the first fight instead of a GMS Everest, and +3 per act (instead of +5) keeps a pilot recognizable after a level-up.
 - The themed squads are regenerated at LL2/LL5/LL8 by carrying each pilot's build forward (`scripts/make-squads.ts`): same frame from act 1 on, weapons, systems and talents kept, and only the new points spent, with at most one weapon and one system swapped for newly licensed gear per level-up.
 - The sample squad (Drake, Monarch, Saladin, Blackbeard) is generated at LL2/LL5/LL8 by `scripts/make-samples.ts`; LL5 is unchanged, LL2 is cut back from it and LL8 built on it. The balance sim and golden battles use it for all three tiers (tier 1 used the LL0 pregens). A new roster starts with the LL2 sample squad; the LL0 pregens are fitted up to LL2 when a run starts.
-- Not yet done: enemy rebalancing for the new levels, and re-simulating the per-act squad difficulty labels (the old act 1 and act 3 labels are kept as provisional).
+
+### AI overhaul: enemies no longer idle at the back
+- Measured with a squad that holds its deployment zone: idle enemy turns (no attack, no action, under 2 tiles moved) fell from 13.1% to 0.2%; Artillery from 38.8% to 1.2%, Controllers from 24.2% to 0%.
+- Causes fixed in `ai/ai.ts`: each unit counted the whole enemy team's fire as aimed at itself (danger is now shared among the units in a hostile's threat range); one-turn planning made every step toward the enemy cost danger and earn nothing (danger at a tile with a useful action is partly discounted, and an approach mode heads for firing range once allies are fighting or the fight stalls); Supports anchored to an ally at the back (now to allies in the fight); Loading weapons were reloaded only once every weapon was empty.
+- Also: shots at drones and cover are valued by progress toward destroying them; focus fire on damaged targets; the advance pull uses weapons ready to fire. Regression tests in `tests/ai/idle.test.ts`. About 1.13× the time per AI turn, but shorter fights.
+
+### Balance pass 4 (LL2/LL5/LL8 and the new AI)
+Targets, mechs lost per fight averaged over the sample squad and the three themed squads: standard ~0.2 (act 3 ~0.25), elite ~0.5 (act 1 easier, act 3 ~0.7). Bosses can run higher because the squad is fully repaired after an act boss: act 1 ~1.0, act 2 ~1.5, act 3 ~1.8.
+- Method: a rough sweep (6 fights per team and squad) found the outliers; two agents tuned the act-2 and act-3 outliers in parallel with ablations (20 fights per squad to confirm); then a broad sweep (20 fights per team and squad, 1,600 fights).
+- Act 1: the Red Warden got its Choir Signaller and Bulwark back (0.38 → 0.85).
+- Act 2: Furnace Saint resists Burn only (not Energy) and Immolate burns 1 (was 3), with a second Ash Cantor (1.56); Forecast Cell lost the Forecast Engineer and gained a Choir Skirmisher (1.01 → 0.54); Ash Choir has one Ember Zealot (0.41 → 0.11).
+- Act 3: Tessellate's Matriarch lost +1 armor and her tail is 2d6+2 (0.54 → 0.25); Black Tithe's Eye Paladin is Elite only (no Commander; 1.21 → 0.70); Burning Eye's Assault Cantor and Frenzy Blade lost their +1 armor traits and Hunker Down's overshield is 2 (1.12 → 0.59); the Voice of the Eye's Cantor heals 1d6 and wards 2 (1.90 → 1.56, round-cap fights 5 → 1); Cleanroom Wardens lost the Laminar Sniper (0.41 → 0.20, 10-fight check).
+- Broad sweep: every team is in band or easier (several act-1 and standard teams cost almost nothing, by design).
+- Squad labels per act, mechs lost per fight across that act's teams: act 1 Brawlers 0.11 (Easy), Long Guns 0.12, Drone Wing 0.57; act 2 Long Guns 0.40 (Easy), Drone Wing 0.49, Brawlers 0.52; act 3 Brawlers 0.26 (Easy), Long Guns 0.61, Drone Wing 0.89. Act 1 Easy/Medium and all of act 2 are within noise of each other.
 
 ### Presentation and map
 - Procedural low-poly unit models, shaped by manufacturer or role, carrying their actual weapons, with marks for templates; creatures for biological enemies.
@@ -393,12 +406,11 @@ Driven by `npm run coverage -- --list`.
 6. Model polish, effects, terrain, audio (M). ✅ Graphics pass done (see `docs/DESIGN.md` → Graphics): tone mapping, bloom and grade, per-act atmosphere, event-driven combat effects, HUD polish, mech portraits. Audio is still to do.
 
 ### 6. Balance (after content)
-Three passes are done (see Done → Balance pass 1–3). Remaining:
-- Act 3 bosses with Drone Wing (2.9 mechs lost vs the Voice of the Eye) and Long Guns (1.7) are well above the 1-mech target; Brawlers lose 0.1.
+Four passes are done (see Done → Balance pass 1–4). Remaining:
+- Drone Wing still loses about 3 of 4 mechs to the Voice of the Eye (other squads 0.55–1.6). Nothing targets drones; the squad does little damage, so the fight drags. Removing the Ochre Censer's pull only took it to 2.85 and made more fights hit the round cap.
 - Stand-ins don't help much from act 2 on (an LL0 Everest among LL5/LL8 mechs); a stand-in at the act's level is an option.
 - Official NPC encounters scale with the new budget rates but haven't been re-checked (needs an LCP).
-- Tier-3 fight length: Burning Eye Cantors (22 rounds), Voice of the Eye (19) and Cleanroom Wardens (18, 3/30 at the round cap) are still long; target 8–14. Ablation finds no single cause in Cleanroom Wardens (giving Sterile Field a recharge changed nothing), so this looks like T3 durability vs LL10 damage on the long map.
-- The Lance (LL5/LL10) is lost far more often than its squadmates (17–29 of 30 fights against bosses); check whether the AI over-commits it.
+- The AI rates a drone deploy (2.5) below Invade (3.9), so drone builds deploy fewer drones once mechs reach Invade range.
 - Hymn of Blades' Hymn of Warding is the only at-will (no recharge) overshield left in the roster.
 - tier-1 openers
 - Between-battle event values
