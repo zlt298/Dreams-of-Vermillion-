@@ -26,6 +26,8 @@ export interface StatusInstance {
   atStart?: boolean
   source?: string
   data?: any
+  /** inflicted by a tech action (ICEOUT suppresses these inside its field) */
+  tech?: boolean
 }
 
 // ---------- Effect DSL (shared by NPC features, lancer-data on_hit/on_crit and scripts) ----------
@@ -56,6 +58,8 @@ export interface Profile {
   onHit: Effect[]
   onCrit: Effect[]
   text?: string
+  /** a Superheavy weapon's profile that may Skirmish (Leviathan Standard) */
+  skirmish?: boolean
 }
 
 export type WeaponSize = 'Auxiliary' | 'Main' | 'Heavy' | 'Superheavy'
@@ -89,6 +93,8 @@ export interface Weapon {
   noBonusDamage?: boolean
   bonuses: BonusData[]    // core bonus / mount bonuses that apply to this weapon
   flags?: Record<string, any>
+  /** an integrated weapon (frame, talent or the Integrated Weapon core bonus mount): System Trauma can't destroy it and it takes no mods */
+  integrated?: boolean
 }
 
 export interface SystemInst {
@@ -134,6 +140,8 @@ export interface UnitPolicies {
   overwatch: ReactionPolicy
   /** scripted reactions from systems, weapons and talents (Vorpal Gun, Intercede...); unset = ask */
   reactions?: ReactionPolicy
+  /** spending a target's Lock On on an attack (core p.70: optional): unset = 'auto' (always use), 'off' = never, 'ask' */
+  lockOn?: ReactionPolicy
 }
 
 export type UnitKind = 'mech' | 'npc' | 'deployable' | 'drone'

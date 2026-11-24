@@ -88,19 +88,42 @@ function systemAction(b: Battle, self: Unit, s: SystemInst): CustomAction {
   }
 }
 
+/**
+ * Recharge (core book, NPC rules): at the start of its turn an NPC with any spent Recharge item rolls ONE d6, and
+ * every spent item whose Recharge target the roll meets is ready again. Scripted features that track their own
+ * Recharge (e.g. an official Barrel Roll) put their target in `flags['recharge:<key>']` while spent.
+ */
+export function rollRecharge(b: Battle, self: Unit) {
+  const weapons = self.weapons.filter(w => w.recharge && !w.charged && !w.destroyed)
+  const systems = self.systems.filter(s => s.feature?.recharge && !s.charged && !s.destroyed)
+  const scripted = Object.keys(self.flags).filter(k => k.startsWith('recharge:') && self.flags[k])
+  if (!weapons.length && !systems.length && !scripted.length) return
+  const r = b.rng.d(6)
+  const ready: string[] = []
+  for (const w of weapons) if (r >= w.recharge!) { w.charged = true; ready.push(w.name) }
+  for (const s of systems) if (r >= s.feature.recharge) { s.charged = true; ready.push(s.name) }
+  for (const k of scripted) if (r >= Number(self.flags[k])) { delete self.flags[k]; ready.push(k.slice('recharge:'.length).replace(/_/g, ' ')) }
+  b.say(`${self.name} rolls Recharge: ${r}${ready.length ? ` (${ready.join(', ')} ready)` : ''}.`)
+}
+
 registerScripts([
+  {
+    // every NPC: Recharge and template rules that don't depend on which features survive
+    id: 'npc:base',
+    note: 'NPC turn start: one Recharge roll for all spent Recharge items; Ultras regain spent reactions each turn',
+    onTurnStart(b, self) {
+      rollRecharge(b, self)
+      // Ultra (Shock and Awe): reactions refresh at each of its turns; other NPCs (Elites included) once per round
+      if (self.flags.reactionsEachTurn) {
+        for (const k of Object.keys(self.flags)) if (k.startsWith('round:react:') || k.startsWith('react:')) delete self.flags[k]
+        for (const s of features(self)) if (s.feature.type === 'reaction') delete self.flags[`round:${s.uid}`]
+      }
+    },
+  },
   {
     id: 'npc:npc_feature',
     note: 'Enemy ruleset features (systems, traits, reactions)',
     onTurnStart(b, self) {
-      for (const w of self.weapons) if (w.recharge && !w.charged) {
-        const r = b.rng.d(6)
-        if (r >= w.recharge) { w.charged = true; b.say(`${self.name}'s ${w.name} recharges (${r}).`) }
-      }
-      for (const s of features(self)) if ((s.feature as SystemFeature).recharge && !s.charged) {
-        const r = b.rng.d(6)
-        if (r >= (s.feature as SystemFeature).recharge!) { s.charged = true; b.say(`${self.name}'s ${s.name} recharges (${r}).`) }
-      }
       runHooks(b, self, 'turn_start')
     },
     onTurnEnd(b, self) { runHooks(b, self, 'turn_end') },

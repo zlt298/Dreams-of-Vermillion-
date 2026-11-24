@@ -13,9 +13,12 @@ import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, St
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
+import { seesHidden } from './attacks'
 
 export function techTargetValid(bt: Battle, u: Unit, t: Unit, option?: string): true | string {
   if (bt.has(u, 'jammed')) return 'Jammed'
+  // characters can't target themselves unless an item says so (core p.65)
+  if (t === u) return 'Cannot target self'
   if (bt.inIceout(u)) return 'Inside an ICEOUT field: no tech actions'
   if (bt.inIceout(t)) return 'Target is protected by an ICEOUT field'
   if (t.flags.intangible || u.flags.intangible) return 'Intangible'
@@ -24,9 +27,42 @@ export function techTargetValid(bt: Battle, u: Unit, t: Unit, option?: string): 
   if (t.role === 'Biological' && option !== 'scan' && option !== 'lock_on') return 'Biological characters are immune to tech actions (except Scan and Lock On)'
   if (t.destroyed) return 'Destroyed'
   if (bt.has(t, 'shutdown')) return 'Target is shut down (immune to tech)'
-  if (bt.hostile(u, t) && bt.has(t, 'hidden')) return 'Hidden'
+  if (t.flags.techImmune && t !== u) return 'Immune to tech actions'
+  if (bt.hostile(u, t) && bt.has(t, 'hidden') && !seesHidden(bt, u, t)) return 'Hidden'
+  // Jammed characters can't benefit from tech actions (core p.78): no Bolster or friendly Invade for them
+  if (!bt.hostile(u, t) && bt.has(t, 'jammed') && option !== 'scan' && option !== 'lock_on') return 'Target is Jammed'
   if (bt.distance(u, t) > u.stats.sensors && !bt.viaMetahook(u, t)) return 'Out of sensor range'
-  if (!bt.los(u, t)) return 'No line of sight'
+  // Bolster only needs the target within Sensors; Scan, Lock On and Invade need line of sight (core p.69-70)
+  if (option !== 'bolster' && !bt.los(u, t)) return 'No line of sight'
+  return true
+}
+
+/**
+ * Run a tech action: every status it puts on anyone is marked as caused by a tech action (`data.tech`), so Shut Down
+ * can end exactly those (core p.72). A status merged into one already there keeps that one's origin.
+ */
+export function withTechScope<T>(bt: Battle, fn: () => T): T {
+  const before = new Set<StatusInstance>()
+  for (const x of bt.units) for (const s of x.statuses) before.add(s)
+  try { return fn() } finally {
+    // grapple holds are rebuilt on every sync: they aren't tech effects
+    for (const x of bt.units) for (const s of x.statuses) if (!before.has(s) && s.id !== 'grappled' && !s.data?.grapple) s.data = { ...(s.data ?? {}), tech: true }
+  }
+}
+
+/**
+ * Lock On (core p.70): an attacker hostile to a Locked On target MAY take +1 Accuracy and clear it. Policy
+ * `lockOn` on the attacker: unset/'auto' always uses it, 'off' never does, 'ask' asks each time.
+ * `consume` false (previews) applies the bonus without clearing or asking.
+ */
+export function useLockOn(bt: Battle, u: Unit, t: Unit, ctx: AttackCtx, consume = true): boolean {
+  if (!bt.has(t, 'lockon') || !bt.hostile(u, t)) return false
+  const pol = u.policies?.lockOn ?? 'auto'
+  if (pol === 'off') return false
+  if (pol === 'ask' && consume && bt.choose({ kind: 'lock_on', unit: u, other: t, title: 'Lock On', text: `Use the Lock On on ${t.name} (+1 Accuracy, clears it)?`, options: [{ label: 'Use it' }, { label: 'Keep it' }], defaultIndex: 0 }) !== 0) return false
+  ctx.accuracy++
+  ctx.reasons.push('Lock On +1')
+  if (consume) { bt.removeStatus(t, 'lockon'); ctx.lockOnConsumed = true }
   return true
 }
 
@@ -39,6 +75,7 @@ export function spendTech(bt: Battle, u: Unit, option: string) {
 }
 
 export function canQuickTech(bt: Battle, u: Unit, option?: string): true | string {
+  if (u.flags.hackSlash) return 'Hack/Slash: no tech actions until you reboot or Shut Down' // Hacker 2 (talents.ts)
   if (bt.inIceout(u)) return 'Inside an ICEOUT field: no tech actions'
   if (u.flags.freeTech) return true
   if ((u.flags.fullTechLeft ?? 0) > 0) return true
@@ -88,6 +125,7 @@ export function withFreeTech<T>(bt: Battle, u: Unit, fn: () => T): T {
 
 /** Full Tech: two quick tech actions. */
 export function fullTech(bt: Battle, u: Unit) {
+  if (u.flags.hackSlash) throw new Error('Hack/Slash: no tech actions until you reboot or Shut Down') // Hacker 2 (talents.ts)
   const c = bt.canSpend(u, 'full')
   if (c !== true) throw new Error(c)
   bt.spend(u, 'full')
@@ -117,12 +155,7 @@ export function techAttackRoll(bt: Battle, u: Unit, t: Unit, label: string): Att
   // Prone, Braced and Lock On apply to every attack, tech included (after scripts, so Hacker's SNOW-CRASH can consume Lock On itself)
   if (bt.has(t, 'prone')) { ctx.accuracy++; ctx.reasons.push('Prone target +1') }
   if (bt.has(t, 'braced')) { ctx.difficulty++; ctx.reasons.push('Braced target -1') }
-  if (bt.has(t, 'lockon') && bt.hostile(u, t)) {
-    ctx.accuracy++
-    ctx.reasons.push('Lock On +1')
-    bt.removeStatus(t, 'lockon')
-    ctx.lockOnConsumed = true
-  }
+  useLockOn(bt, u, t, ctx)
   bt.say(`${u.name} — ${label} → ${t.name}.`, 'attack')
   if (bt.has(u, 'hidden')) bt.removeStatus(u, 'hidden')
   bt.rollToHit(ctx)
@@ -140,19 +173,24 @@ export function techAttackRoll(bt: Battle, u: Unit, t: Unit, label: string): Att
 export function invade(bt: Battle, u: Unit, t: Unit, option: 'fragment' | { name: string; effects: Effect[]; heat?: number } = 'fragment') {
   const c = bt.canQuickTech(u, 'invade')
   if (c !== true) throw new Error(c)
+  if (t === u) throw new Error('Cannot invade yourself')
   const v = bt.techTargetValid(u, t)
   if (v !== true) throw new Error(v)
-  if (t === u) throw new Error('Cannot invade yourself')
   bt.spendTech(u, 'invade')
-  const ctx = bt.invadeRoll(u, t, option === 'fragment' ? 'INVADE: Fragment Signal' : `INVADE: ${option.name}`)
-  if (ctx.hit) {
-    if (bt.hostile(u, t)) bt.applyDamage(t, [{ type: 'Heat', amount: 2 }], { source: u, attack: ctx })
-    if (option === 'fragment') {
-      bt.addStatus(t, 'impaired', 'next_turn_end_target', u)
-      bt.addStatus(t, 'slowed', 'next_turn_end_target', u)
-    } else bt.runEffects(u, t, option.effects, ctx)
-  }
-  return ctx
+  const wasActing = u.flags.techActing
+  u.flags.techActing = true // a tech action in progress (//SCORPION, ICEOUT)
+  try { return withTechScope(bt, () => {
+    const ctx = bt.invadeRoll(u, t, option === 'fragment' ? 'INVADE: Fragment Signal' : `INVADE: ${option.name}`)
+    if (ctx.hit) {
+      if (bt.hostile(u, t)) bt.applyDamage(t, [{ type: 'Heat', amount: 2 }], { source: u, attack: ctx })
+      if (option === 'fragment') {
+        bt.addStatus(t, 'impaired', 'next_turn_end_target', u)
+        // an NPC's Invade (core book p.280) deals 2 heat and Impairs; it doesn't Slow
+        if (u.kind !== 'npc') bt.addStatus(t, 'slowed', 'next_turn_end_target', u)
+      } else bt.runEffects(u, t, option.effects, ctx)
+    }
+    return ctx
+  }) } finally { u.flags.techActing = wasActing }
 }
 
 export function lockOn(bt: Battle, u: Unit, t: Unit) {
@@ -174,7 +212,7 @@ export function bolster(bt: Battle, u: Unit, t: Unit) {
   if (v !== true) throw new Error(v)
   bt.spendTech(u, 'bolster')
   bt.say(`${u.name} BOLSTERS ${t.name}.`)
-  bt.addStatus(t, 'bolstered', 'next_turn_end_target', u)
+  withTechScope(bt, () => bt.addStatus(t, 'bolstered', 'next_turn_end_target', u))
 }
 
 export function scan(bt: Battle, u: Unit, t: Unit): string {

@@ -250,7 +250,7 @@
       "templates": [
         "Grunt"
       ],
-      "count": 1,
+      "count": 4,
       "color": "#ecf0f1",
       "description": "Cleaning drones with the safeties removed.",
       "features": [

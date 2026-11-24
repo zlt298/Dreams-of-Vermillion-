@@ -14,7 +14,7 @@ registerScripts([
   // ---------------------------------------------------------------- templates
   {
     id: 'template:Commander',
-    note: 'Voice of Authority (1/round reaction: an ally may reroll a missed attack) and Military Discipline (adjacent allies +1 accuracy)',
+    note: 'Voice of Authority (1/round reaction: an ally may reroll a failed attack, check or save) and Military Discipline (adjacent allies +1 accuracy)',
     partial: true,
     beforeAnyAttack(b, self, ctx) {
       if (self.destroyed || ctx.attacker === self || b.hostile(self, ctx.attacker)) return
@@ -30,6 +30,14 @@ registerScripts([
     },
     checkAccuracy(b, self, u) {
       return adjacentAllyCommander(b, self, u) ? 1 : 0
+    },
+    // Voice of Authority also covers failed checks and saves (core book p.326)
+    rerollFailed(b, self, u, kind) {
+      if (u === self || self.destroyed || b.hostile(self, u) || (u.kind !== 'mech' && u.kind !== 'npc') || b.has(self, 'jammed')) return false
+      if (b.canSpend(self, 'reaction', 'voice_of_authority') !== true) return false
+      b.spend(self, 'reaction', 'voice_of_authority')
+      b.say(`${self.name} (Voice of Authority): ${u.name} may reroll the ${kind}!`)
+      return true
     },
   },
   {

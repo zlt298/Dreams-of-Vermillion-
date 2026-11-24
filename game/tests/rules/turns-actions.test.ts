@@ -379,7 +379,8 @@ describe('Brace', () => {
 
   it("an 'ask' brace pauses an enemy attack until the player answers", () => {
     const { a, e, b } = choiceDuel()
-    b.chooser = () => undefined
+    // only the brace question waits for the player (the hit may also ask which system System Trauma takes)
+    b.chooser = q => (q.kind === 'brace' ? undefined : q.defaultIndex)
     a.policies.brace = 'ask'
     a.hp = 2
     b.endTurn(a)

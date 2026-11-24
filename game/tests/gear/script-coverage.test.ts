@@ -14,13 +14,11 @@ const NARRATIVE_ONLY: Record<string, string> = {
   ms_eva_module: 'zero-g / underwater flight; no such environments',
   ms_technophile_1: 'custom NHP personality',
   ms_technophile_2: 'custom NHP personality',
-  ms_external_ammo_feed: 'note-only script: its reload is the plain Reload quick action',
 }
 /** Scripts that still have no behaviour test. Keep this short: write the test, then delete the line. */
 const OFFICIAL_SMOKE = 'official NPC feature: only the official-scripts smoke battle runs it'
 const WEAPON = 'weapon script: only the scripts.test.ts stress battle runs it'
 const NOT_YET_TESTED: Record<string, string> = {
-  ms_walking_armory_3: 'Walking Armory rank 3 Ammo Case tier (ranks 1-2 are tested)',
   'npc:npcf_defense_net_aegis': OFFICIAL_SMOKE,
   'npc:npcf_suppress_archer': OFFICIAL_SMOKE,
   'npc:npcf_assassins_mark_assassin': OFFICIAL_SMOKE,
@@ -35,23 +33,12 @@ const NOT_YET_TESTED: Record<string, string> = {
   'npc:npcf_focus_down_scourer': OFFICIAL_SMOKE,
   'npc:npcf_rebound_scan_scout': OFFICIAL_SMOKE,
   'npc:npcf_prowl_specter': OFFICIAL_SMOKE,
-  mw_bristlecrown_flechette_launcher: WEAPON,
-  mw_cutter_mkii_plasma_torch: WEAPON,
   mw_daisy_cutter: WEAPON,
-  mw_impact_lance: WEAPON,
   mw_magnetic_cannon: WEAPON,
-  mw_veil_rifle: WEAPON,
-  mw_sharanga_missiles: WEAPON,
   mw_nanobot_whip: WEAPON,
   mw_ghoul_nexus: WEAPON,
-  mw_arc_projector: WEAPON,
-  mw_autogun: WEAPON,
   mw_shatterhead_colony_missiles: WEAPON,
-  mw_tachyon_lance: WEAPON,
-  mw_annihilator: WEAPON,
   mw_fuel_rod_gun: WEAPON,
-  mw_lancaster_integrated: 'Lancaster integrated weapon (Latch Drone): only the stress battle runs it',
-  wm_phase_ready_mod: 'weapon mod: only the stress battle runs it',
   cb_all_theater_movement_suite: 'core bonus: only the stress battle runs it',
   cb_the_lesson_of_the_held_image: 'core bonus: only the stress battle runs it',
   cb_the_lesson_of_transubstantiation: 'core bonus: only the stress battle runs it',

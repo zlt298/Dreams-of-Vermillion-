@@ -11,4 +11,5 @@ import './drones'
 import './cores'
 import './talents2'
 import './systems2'
+import './corebonuses'
 export {}

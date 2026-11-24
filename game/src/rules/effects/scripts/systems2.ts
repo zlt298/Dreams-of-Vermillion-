@@ -18,6 +18,12 @@ const onTiles = (u: Unit, tiles: Pos[]) => footprint(u).some(p => tiles.some(t =
 const fully = (u: Unit, tiles: Pos[]) => footprint(u).every(p => tiles.some(t => t.x === p.x && t.y === p.y))
 const free = (b: Battle, p: Pos, except?: Unit) => !!tileAt(b.map, p) && !b.alive().some(o => o !== except && !o.flags.flat && footprint(o).some(q => q.x === p.x && q.y === p.y))
 const oncePerRound = (u: Unit, key: string) => { const k = `round:${key}`; if (u.flags[k]) return false; u.flags[k] = true; return true }
+
+/** a save that avoids Prone or Knockback (Stable Structure gives +1 Accuracy on those) */
+function saveVs(b: Battle, u: Unit, stat: 'hull' | 'agi' | 'sys' | 'eng', src: Unit, avoid: 'prone' | 'knockback'): boolean {
+  u.flags.saveAvoid = avoid
+  try { return b.save(u, stat, src.stats.save, 0, src) } finally { delete u.flags.saveAvoid }
+}
 const at = (t?: Unit | Pos): Pos => (t && 'x' in t ? t : (t as Unit).pos)
 const nearest = (b: Battle, u: Unit, list: Unit[]) => [...list].sort((x, y) => b.distance(u, x) - b.distance(u, y))[0]
 const blind = (b: Battle, t: Unit) => { t.flags.blindUntil = b.round + 1; b.say(`${t.name} is blinded (line of sight to adjacent spaces only).`, 'status') }
@@ -107,7 +113,7 @@ const ammoScript = (id: string): ItemScript => ({
     const t = ctx.target
     if (ctx.hit && !t.destroyed) {
       if (f.k === 'thumper') b.forceMove(t, self, 1, 1)
-      if (f.k === 'jager') { b.forceMove(t, self, 2, 1); if (!t.destroyed && !b.save(t, 'hull', self.stats.save, 0, self)) b.addStatus(t, 'prone', 'until_cleared', self) }
+      if (f.k === 'jager') { b.forceMove(t, self, 2, 1); if (!t.destroyed && !saveVs(b, t, 'hull', self, 'prone')) b.addStatus(t, 'prone', 'until_cleared', self) }
     }
     if (f.k === 'shock') for (const o of chars(b)) if (o !== t && o !== self && b.adjacent(o, t)) b.applyDamage(o, [{ type: 'Energy', amount: 1 }], { source: self, ap: true })
     if (ctx.crit && ammoTier(self) >= 3) { const s = ammoCase(self); if (s && s.usesLeft != null) s.usesLeft += f.cost; b.say('  Efficiency: no charges spent.') }
@@ -166,6 +172,7 @@ function settleStraddler(b: Battle, owner: Unit, u: Unit, tiles: Pos[]) {
   }
 }
 const mineRange = (u: Unit) => (u.flags.assaultLauncher ? 15 : 1)
+const nextTurnEnds = (u: Unit) => (u.activeTurn ? 2 : 1)
 const scripts: ItemScript[] = [
   // ---------------- SEKHMET
   {
@@ -261,7 +268,7 @@ const scripts: ItemScript[] = [
   },
   // ---------------- Whitewash Sealant Spray
   {
-    id: 'ms_whitewash_sealant_spray', note: 'Whitewash: hostiles (Agility save) or allies are Slowed and lose all Burn; on a space, puts out fires in Blast 1',
+    id: 'ms_whitewash_sealant_spray', note: 'Whitewash: hostiles (Agility save) or allies are Slowed and lose all Burn; on a free space, puts out fires in Blast 1 and the area becomes difficult terrain for the scene',
     actions: () => [action({
       key: 'whitewash', name: 'Whitewash Sealant', activation: 'quick', target: 'tile', range: 5, text: 'Spray a character or a space within range 5.',
       run: (bt, me, t) => {
@@ -273,9 +280,11 @@ const scripts: ItemScript[] = [
           who.burn = 0
           bt.addStatus(who, 'slowed', 'next_turn_end_target', me)
         } else {
+          if (distanceToTile(bt.map, me, p) > 5) throw new Error('Out of range (5)')
           const tiles = blastTiles(bt.map, p, 1)
+          // fires (burning areas) are put out; other zones (caltrops...) stay
           bt.areas = bt.areas.filter(a => !(a.kind === 'damage' && a.tiles.some(x => tiles.some(y => x.x === y.x && x.y === y.y))))
-          bt.invalidateTerrain()
+          bt.addArea({ kind: 'difficult', tiles, ownerId: me.id, tag: 'sealant' })
         }
       },
       aiTarget: (bt, me) => {
@@ -292,7 +301,9 @@ const scripts: ItemScript[] = [
     id: 'ms_armor_lock_plating',
     note: "Armor-Lock: you can Brace while grappled (every grapple on you ends); while Braced (until the end of your next turn): +1 difficulty against you, you can't fail Hull or Agility saves or contested checks, and you are immune to Knockback, grapples, Prone and being moved by anything smaller than Size 5",
     init: u => { u.flags.braceWhileGrappled = true },
-    onStatusAdded(b, self, st) { if (st === 'braced') { self.flags.autoSaveUntil = b.round + 1; b.say(`${self.name} locks its armor.`) } },
+    // while Braced (until the end of your following turn): can't fail Hull/Agility saves or contested checks; Heat 2 (Self) when it engages
+    onStatusAdded(b, self, st) { if (st === 'braced') { self.flags.autoSaveUntil = 1e9; self.flags.winContests = true; b.say(`${self.name} locks its armor.`); b.addHeat(self, 2) } },
+    onStatusRemoved(b, self, st) { if (st === 'braced') { delete self.flags.autoSaveUntil; delete self.flags.winContests } },
     beforeAttack(b, self, ctx, role) { if (role === 'target' && b.has(self, 'braced')) { ctx.difficulty++; ctx.reasons.push('Armor-Lock -1') } },
     canBeMoved: (b, self, source) => !(b.has(self, 'braced') && (!source || source.stats.size < 5)),
     blockStatus: (b, self, st) => (st === 'prone' || st === 'grappled') && b.has(self, 'braced'),
@@ -398,15 +409,28 @@ const scripts: ItemScript[] = [
   },
   // ---------------- Javelin Rockets
   {
-    id: 'ms_javelin_rockets', note: 'Javelin Rockets: three marked spaces until your next turn; the first character to move into each takes 3 kinetic',
+    id: 'ms_javelin_rockets', note: 'Javelin Rockets: three free spaces you choose (range 15, line of sight, not adjacent to each other) until the start of your next turn; the first character to move into each takes 3 kinetic',
     actions: () => [action({
-      key: 'javelin', name: 'Javelin Rockets', activation: 'quick', target: 'tile', range: 15, text: 'Mark three spaces (the chosen space and two to either side); each hits the first character to enter it for 3 kinetic.',
+      key: 'javelin', name: 'Javelin Rockets', activation: 'quick', target: 'tile', range: 15, text: 'Choose three free spaces within range 15 and line of sight, not adjacent to each other; each hits the first character to enter it for 3 kinetic.',
       run: (bt, me, t) => {
-        const c = at(t)
-        if (!hasLineOfSightToTile(bt.effectiveMap(), me, c)) throw new Error('No line of sight')
-        const dx = Math.sign(c.x - me.pos.x), dy = Math.sign(c.y - me.pos.y)
+        const ok = (p: Pos, picked: Pos[]) => !!tileAt(bt.map, p) && free(bt, p) && distanceToTile(bt.map, me, p) <= 15 && hasLineOfSightToTile(bt.effectiveMap(), me, p) && !picked.some(q => chebyshev(q, p) <= 1)
+        const first = at(t)
+        if (!ok(first, [])) throw new Error('Choose a free space within range 15 and line of sight')
+        const picked: Pos[] = [first]
+        const dx = Math.sign(first.x - me.pos.x), dy = Math.sign(first.y - me.pos.y)
         const perp = { x: -dy || 1, y: dx }
-        me.flags.javelins = [c, { x: c.x + perp.x * 2, y: c.y + perp.y * 2 }, { x: c.x - perp.x * 2, y: c.y - perp.y * 2 }].filter(p => tileAt(bt.map, p))
+        for (let n = 0; n < 2; n++) {
+          // candidate spaces near the first one (two across the line of fire first)
+          const cands: Pos[] = []
+          const add = (p: Pos) => { if (ok(p, picked) && !cands.some(c => c.x === p.x && c.y === p.y)) cands.push(p) }
+          add({ x: first.x + perp.x * 2, y: first.y + perp.y * 2 }); add({ x: first.x - perp.x * 2, y: first.y - perp.y * 2 })
+          for (let r = 2; r <= 4 && cands.length < 12; r++) for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) if (Math.max(Math.abs(xx), Math.abs(yy)) === r) add({ x: first.x + xx, y: first.y + yy })
+          if (!cands.length) break
+          const opts = cands.slice(0, 12)
+          const i = bt.choose({ kind: 'javelin_space', unit: me, title: `Javelin Rockets: space ${n + 2} of 3`, options: opts.map(p => ({ label: `(${p.x}, ${p.y})`, hint: `${chebyshev(p, first)} from the first` })), defaultIndex: 0 })
+          picked.push(opts[i])
+        }
+        me.flags.javelins = picked
       },
       aiTarget: (bt, me) => { const h = nearest(bt, me, hostiles(bt, me).filter(h => bt.distance(me, h) <= 16)); return h ? { x: h.pos.x + Math.sign(me.pos.x - h.pos.x), y: h.pos.y + Math.sign(me.pos.y - h.pos.y) } : null },
       aiScore: (_bt, me) => (me.flags.javelins?.length ? 0 : 1.5),
@@ -474,10 +498,10 @@ const scripts: ItemScript[] = [
   },
   // ---------------- Retractable Profile
   {
-    id: 'ms_retractable_profile', note: "Retractable Profile: ranged and tech attacks against you +1 difficulty; you are Slowed and can't attack",
+    id: 'ms_retractable_profile', note: "Retractable Profile: rolls to locate you while Hidden (Search) and ranged and tech attacks against you take +1 difficulty; you are Slowed and can't attack",
     actions: (_b, u) => [u.flags.noAttacks
-      ? action({ key: 'retract_off', name: 'Deactivate Retractable Profile', activation: 'quick', target: 'none', text: 'Extend your systems again.', run: (_bt, me) => { me.flags.noAttacks = false; me.statuses = me.statuses.filter(s => !s.data?.retract) } })
-      : action({ key: 'retract', name: 'Retractable Profile', activation: 'protocol', target: 'none', text: "Retract: +1 difficulty against ranged/tech attacks on you; Slowed; can't attack.", run: (bt, me) => { me.flags.noAttacks = true; bt.addStatus(me, 'slowed', 'until_cleared', me, { retract: true }) } })],
+      ? action({ key: 'retract_off', name: 'Deactivate Retractable Profile', activation: 'quick', target: 'none', text: 'Extend your systems again.', run: (_bt, me) => { me.flags.noAttacks = false; delete me.flags.locateDifficulty; me.statuses = me.statuses.filter(s => !s.data?.retract) } })
+      : action({ key: 'retract', name: 'Retractable Profile', activation: 'protocol', target: 'none', text: "Retract: +1 difficulty against ranged/tech attacks on you; Slowed; can't attack.", run: (bt, me) => { me.flags.noAttacks = true; me.flags.locateDifficulty = 1; bt.addStatus(me, 'slowed', 'until_cleared', me, { retract: true }) } })],
     beforeAttack(_b, self, ctx, role) { if (role === 'target' && self.flags.noAttacks && (ctx.ranged || ctx.tech)) { ctx.difficulty++; ctx.reasons.push('Retracted -1') } },
   },
   // ---------------- ATHENA
@@ -522,7 +546,7 @@ const scripts: ItemScript[] = [
     id: 'ms_h0r_os_system_upgrade_ii',
     note: 'H0R_OS II: Ideal Image (a Size 2 construct next to you: hard cover, blocks line of sight, immune to damage, an obstruction that dissipates if something is pushed into it; an adjacent character can dispel it with a Systems check as a full action; a new one replaces it); False Idol (a decoy of you or an ally in a free space within Sensors — hostiles with line of sight to it save (Systems) before acting against the original, and on a failure go after the decoy instead until the end of their next turn; Evasion 10, E-Defense 10, 1 HP)',
     actions: (b, u) => [action({
-      key: 'ideal_image', name: 'Construct: Ideal Image', activation: 'quick', target: 'tile', range: 1, text: 'A Size 2 construct next to you: hard cover, blocks line of sight, immune to damage (replaces the previous one).',
+      key: 'ideal_image', name: 'Construct: Ideal Image', activation: 'quick_tech', techOption: 'ideal_image', target: 'tile', range: 1, text: 'A Size 2 construct next to you: hard cover, blocks line of sight, immune to damage (replaces the previous one).',
       run: (bt, me, t) => {
         const p = at(t)
         const d = deployableUnit(me, { name: 'Ideal Image', type: 'Deployable', size: 2, hp: 1, evasion: 5 } as any, p)
@@ -537,7 +561,7 @@ const scripts: ItemScript[] = [
       aiTarget: (bt, me) => { const h = nearest(bt, me, hostiles(bt, me)); return h ? tileNear(bt, me, h.pos, 1) : null },
       aiScore: (bt, me) => (!mineOf(bt, me, 'Ideal Image').length && hostiles(bt, me).some(h => bt.distance(me, h) <= 10) ? 1.5 : 0),
     }), action({
-      key: 'false_idol', name: 'Construct: False Idol', activation: 'quick', target: 'tile', range: u.stats.sensors, text: 'Place a decoy of yourself or an ally (within Sensors) in a free space within Sensors (replaces the previous one).',
+      key: 'false_idol', name: 'Construct: False Idol', activation: 'quick_tech', techOption: 'false_idol', target: 'tile', range: u.stats.sensors, text: 'Place a decoy of yourself or an ally (within Sensors) in a free space within Sensors (replaces the previous one).',
       run: (bt, me, t) => {
         const p = at(t)
         const subjects = [me, ...allies(bt, me).filter(a => bt.distance(me, a) <= me.stats.sensors)]
@@ -635,8 +659,10 @@ const scripts: ItemScript[] = [
       const m = self.flags.monitor
       if (!m || b.round > m.until || m.charges <= 0 || ctx.target.id !== m.ally || !b.adjacent(self, ctx.target) || ctx.attacker.destroyed) return
       if (b.canSpend(self, 'reaction') !== true) return
-      const w = self.weapons.find(x => !x.tech && b.weaponReady(self, x) && b.validTarget(self, x, ctx.attacker) === true)
+      // a Skirmish: no Superheavy weapons
+      const w = self.weapons.find(x => !x.tech && x.size !== 'Superheavy' && b.weaponReady(self, x) && b.validTarget(self, x, ctx.attacker) === true)
       if (!w) return
+      if (!b.offerReaction(self, 'monitor_module', 'Monitor Module?', `${ctx.attacker.name} attacked ${ctx.target.name}. Spend a charge (${m.charges} left) and your reaction to Skirmish it with ${w.name} for half damage?`)) return
       b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
       m.charges--
       self.flags.halfDamage = true
@@ -795,7 +821,7 @@ const scripts: ItemScript[] = [
     },
     onMineDetonate(b, self, m, v) {
       if (m.tag !== 'ground') return false
-      if (!v || v.destroyed || b.save(v, 'hull', self.stats.save, 0, self)) return true
+      if (!v || v.destroyed || saveVs(b, v, 'hull', self, 'prone')) return true
       b.forceMove(v, m.pos, chebyshev(v.pos, m.pos), -1)
       if (v.flying) { b.land(v, 'grounding mine'); v.flags.landed = false }
       b.addStatus(v, 'prone', 'until_cleared', self)
@@ -811,7 +837,12 @@ const scripts: ItemScript[] = [
       return [action({
         key: 'clamp', name: 'Clamp Bombs', activation: 'quick', target: 'enemy', range: u.stats.sensors, text: 'Engineering save or the bombs clamp on.',
         usable: () => usesOk(s),
-        run: (bt, me, t) => { spend(s); const v = t as Unit; if (!bt.save(v, 'eng', me.stats.save, 0, me)) { v.flags.clampBy = me.id; v.flags.clampMoved = 0; bt.say(`Bombs clamp onto ${v.name}!`) } },
+        run: (bt, me, t) => {
+          const v = t as Unit
+          if (!v || !('id' in v) || bt.distance(me, v) > me.stats.sensors) throw new Error('Out of Sensors')
+          spend(s)
+          if (!bt.save(v, 'eng', me.stats.save, 0, me)) { v.flags.clampBy = me.id; v.flags.clampMoved = 0; bt.say(`Bombs clamp onto ${v.name}!`) }
+        },
         aiScore: (bt, _me, t) => (t && 'id' in t && !(t as Unit).flags.clampBy ? 2.5 : 0),
       })]
     },
@@ -845,20 +876,29 @@ const scripts: ItemScript[] = [
       key: 'pinpoint', name: 'Pinpoint Focus', activation: 'quick_tech', target: 'unit', range: 10, text: 'Lift a character into the air: Immobilized and flying until the end of its next turn.',
       run: (bt, me, t) => {
         const v = t as Unit
+        if (!v || !('id' in v) || bt.distance(me, v) > me.stats.sensors) throw new Error('Out of Sensors')
         if (bt.hostile(me, v)) {
           if (v.flags[`scene:tesseract:${me.id}`]) throw new Error('Already lifted this scene')
           v.flags[`scene:tesseract:${me.id}`] = true
           if (bt.save(v, 'eng', me.stats.save, 0, me)) return
         }
-        v.flags.liftedUntil = bt.round + 1
+        // hostiles sink at the end of their next turn; willing allies choose when (at the end of any of their turns)
+        v.flags.liftedUntil = bt.hostile(me, v) ? bt.round + 1 : 1e9
         v.flags.liftWasFlying = v.flying
         v.flying = true
-        bt.addStatus(v, 'immobilized', 'next_turn_end_target', me, { lift: true })
+        v.flags.hover = true // held in place: not subject to the keep-moving flight rule
+        bt.addStatus(v, 'immobilized', bt.hostile(me, v) ? 'next_turn_end_target' : 'until_cleared', me, { lift: true })
         bt.say(`${v.name} floats into the air.`)
       },
       aiScore: (bt, me, t) => (t && 'id' in t && bt.hostile(me, t) && t.weapons.some(w => bt.isMelee(w)) ? 2 : 0),
     })],
-    onAnyTurnEnd(b, _self, u) { if (u.flags.liftedUntil != null && b.round >= u.flags.liftedUntil) { u.flying = !!u.flags.liftWasFlying; u.flags.liftedUntil = undefined } },
+    onAnyTurnEnd(b, self, u) {
+      if (u.flags.liftedUntil == null) return
+      const sink = b.round >= u.flags.liftedUntil || b.choose({ kind: 'tesseract_sink', unit: u, title: 'Pinpoint Focus: sink to the ground?', options: [{ label: 'Stay aloft' }, { label: 'Sink harmlessly' }], defaultIndex: b.hostile(self, u) ? 1 : 0 }) === 1
+      if (!sink) return
+      u.flying = !!u.flags.liftWasFlying; u.flags.liftedUntil = undefined; delete u.flags.hover
+      u.statuses = u.statuses.filter(s => !(s.id === 'immobilized' && s.data?.lift))
+    },
   },
   // ---------------- Blinkshield
   {
@@ -904,19 +944,22 @@ const scripts: ItemScript[] = [
   },
   // ---------------- Flash Anchor
   {
-    id: 'ms_flash_anchor', note: 'Flash Anchor (reaction, 2 heat): stop an ally or yourself being pushed, pulled or knocked Prone; immune until the start of their next turn',
+    id: 'ms_flash_anchor', note: 'Flash Anchor (reaction, 2 heat): stop yourself or an ally in Sensors and line of sight being pushed, pulled or knocked Prone; immune to those until the start of their next turn',
     preventAnyMove(b, self, target, src) {
       if (b.hostile(self, target) || (src && !b.hostile(self, src)) || b.distance(self, target) > self.stats.sensors || !b.los(self, target)) return false
-      if (target.flags.anchoredUntil != null && b.round <= target.flags.anchoredUntil) return true
+      if (target.flags.anchored) return true
       return anchor(b, self, target)
     },
     blockAnyStatus(b, self, target, status, src) {
-      if (status !== 'prone' || b.hostile(self, target) || (src && !b.hostile(self, src)) || b.distance(self, target) > self.stats.sensors) return false
-      if (target.flags.anchoredUntil != null && b.round <= target.flags.anchoredUntil) return true
+      if (status !== 'prone' || b.hostile(self, target) || (src && !b.hostile(self, src)) || b.distance(self, target) > self.stats.sensors || !b.los(self, target)) return false
+      if (target.flags.anchored) return true
       return anchor(b, self, target)
     },
-    canBeMoved: (b, self, src) => !(src && b.hostile(self, src) && (self.flags.anchoredUntil >= b.round || anchor(b, self, self))),
-    blockStatus: (b, self, st, src) => st === 'prone' && !!src && b.hostile(self, src) && (self.flags.anchoredUntil >= b.round || anchor(b, self, self)),
+    canBeMoved: (b, self, src) => !(src && b.hostile(self, src) && (self.flags.anchored || anchor(b, self, self))),
+    blockStatus: (b, self, st, src) => st === 'prone' && !!src && b.hostile(self, src) && (self.flags.anchored || anchor(b, self, self)),
+    // the Immunity lasts until the start of the protected character's next turn
+    onTurnStart(_b, self) { delete self.flags.anchored },
+    onAnyTurnStart(_b, _self, u) { delete u.flags.anchored },
   },
   // ---------------- Hardlight Defense System
   {
@@ -959,12 +1002,12 @@ const scripts: ItemScript[] = [
     id: 'ms_noah_class_nhp', note: "NOAH Diluvian Ark: until the end of your next turn you are Slowed; ranged attacks on you or adjacent allies: 1 heat and a d6, on 4+ another heat and it misses; attackers who miss take 4 kinetic",
     actions: () => [action({
       key: 'noah', name: 'Diluvian Ark', activation: 'quick', target: 'none', text: 'Protect yourself and adjacent allies from ranged attacks until the end of your next turn.',
-      run: (bt, me) => { me.flags.ark = bt.round + 1; bt.addStatus(me, 'slowed', 'next_turn_end_target', me) },
+      run: (bt, me) => { me.flags.ark = nextTurnEnds(me); bt.addStatus(me, 'slowed', 'next_turn_end_target', me) },
       aiTarget: (_bt, me) => ({ ...me.pos }),
       aiScore: (bt, me) => (me.heat + 3 < me.stats.heatcap && hostiles(bt, me).some(h => bt.distance(me, h) <= 15) ? 2 : 0),
     })],
     beforeAnyAttack(b, self, ctx) {
-      if (!(self.flags.ark >= b.round) || ctx.melee || ctx.tech || b.has(ctx.target, 'invisible') || b.hostile(self, ctx.target)) return
+      if (!self.flags.ark || ctx.melee || ctx.tech || b.has(ctx.target, 'invisible') || b.hostile(self, ctx.target)) return
       if (ctx.target !== self && !b.adjacent(self, ctx.target)) return
       if (b.canSpend(self, 'reaction') !== true || self.heat + 2 > self.stats.heatcap) return
       b.spend(self, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
@@ -973,10 +1016,12 @@ const scripts: ItemScript[] = [
       if (r >= 4) { b.addHeat(self, 1); ctx.cancelled = true; b.say(`  The Diluvian Ark deflects the shot (${r}).`) }
     },
     afterAnyAttack(b, self, ctx) {
-      if (!(self.flags.ark >= b.round) || ctx.melee || ctx.tech || ctx.hit || b.hostile(self, ctx.target) || ctx.attacker.destroyed) return
+      if (!self.flags.ark || ctx.melee || ctx.tech || ctx.hit || b.hostile(self, ctx.target) || ctx.attacker.destroyed) return
       if (ctx.target !== self && !b.adjacent(self, ctx.target)) return
       b.applyDamage(ctx.attacker, [{ type: 'Kinetic', amount: 4 }], { source: self })
     },
+    // until the end of your next turn
+    onTurnEnd(_b, self) { if (self.flags.ark && --self.flags.ark <= 0) delete self.flags.ark },
   },
   // ---------------- Ammo Cases
   ammoScript('ms_walking_armory_1'),
@@ -988,7 +1033,7 @@ function anchor(b: Battle, self: Unit, target: Unit): boolean {
   if (b.canSpend(self, 'reaction', 'flash_anchor') !== true || self.heat + 2 > self.stats.heatcap) return false
   b.spend(self, 'reaction', 'flash_anchor')
   b.addHeat(self, 2)
-  target.flags.anchoredUntil = b.round + 1
+  target.flags.anchored = true
   b.say(`${self.name}'s Flash Anchor holds ${target.name} in place.`)
   return true
 }
@@ -1015,7 +1060,7 @@ function invadeOpt(u: Unit, key: string, name: string, text: string, onHit: (b: 
       const v = bt.techTargetValid(me, target, 'invade')
       if (v !== true) throw new Error(v)
       const ctx = bt.invadeRoll(me, target, name)
-      if (ctx.hit) { if (bt.hostile(me, target)) bt.applyDamage(target, [{ type: 'Heat', amount: 2 }], { source: me }); if (!target.destroyed) onHit(bt, me, target) }
+      if (ctx.hit) { if (bt.hostile(me, target)) bt.applyDamage(target, [{ type: 'Heat', amount: 2 }], { source: me, attack: ctx }); if (!target.destroyed) onHit(bt, me, target) }
     },
     aiScore: () => 3,
   })

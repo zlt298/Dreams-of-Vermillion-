@@ -3,42 +3,42 @@
     "id": "t1-standard",
     "round": 4,
     "winner": "player",
-    "commands": 24,
-    "hash": "a5503b62"
+    "commands": 25,
+    "hash": "2700978e"
   },
   {
     "id": "t1-boss",
     "round": 7,
     "winner": null,
-    "commands": 51,
-    "hash": "8899fc3b"
+    "commands": 52,
+    "hash": "c1a8f4d9"
   },
   {
     "id": "t2-standard",
     "round": 6,
     "winner": "player",
-    "commands": 39,
-    "hash": "54b90db4"
+    "commands": 43,
+    "hash": "f5bf4cbf"
   },
   {
     "id": "t2-boss",
     "round": 7,
     "winner": null,
-    "commands": 47,
-    "hash": "e7f66fd9"
+    "commands": 52,
+    "hash": "8c31376f"
   },
   {
     "id": "t3-standard",
-    "round": 6,
+    "round": 4,
     "winner": "player",
-    "commands": 40,
-    "hash": "17eda783"
+    "commands": 27,
+    "hash": "a8095125"
   },
   {
     "id": "t3-boss",
     "round": 7,
     "winner": null,
-    "commands": 44,
-    "hash": "ab1a9290"
+    "commands": 41,
+    "hash": "1984fdc2"
   }
 ]

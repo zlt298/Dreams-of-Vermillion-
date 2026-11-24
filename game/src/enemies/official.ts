@@ -4,19 +4,25 @@
 // the hand-made teams.
 import { Rng } from '../rules/rng'
 import type { OfficialClass } from '../import/lcp'
-import { BUDGET_PER_PC, KIND_MULT, VETERAN_TRAITS, type EnemyTeam, type EnemyUnitDef, type Template, type Tier, unitBudget } from './ruleset'
+import { BUDGET_PER_PC, KIND_MULT, MIN_STANDARD_PER_PC, VETERAN_TRAITS, type EnemyTeam, type EnemyUnitDef, type Template, type Tier, unitBudget } from './ruleset'
 
 /** Official classes are stronger per budget point at tier 3 and weaker at tiers 1–2 than the hand-made teams
  *  (tuned with the balance sim against the squads of the old LL0/LL5/LL10 act levels; acts are now LL2/LL5/LL8,
  *  so re-check with the sim). */
 const OFFICIAL_SCALE: Record<Tier, Record<'standard' | 'elite' | 'boss', number>> = {
-  1: { standard: 1.4, elite: 1, boss: 1.2 },
+  // tier 1 values keep the per-player budgets they had when the tier-1 rate was 0.8
+  1: { standard: 1.12, elite: 0.8, boss: 0.96 },
   2: { standard: 1.4, elite: 1.0, boss: 0.8 },
-  3: { standard: 0.85, elite: 0.75, boss: 0.7 },
+  // a standard fight never drops below one NPC per player (MIN_STANDARD_PER_PC)
+  3: { standard: 1.0, elite: 0.75, boss: 0.7 },
 }
 
-/** One unit definition from an official class: all base features plus `optional` optional ones. */
+/**
+ * One unit definition from an official class: all base features plus `optional` optional ones (an Elite's
+ * Specialist Kit adds one more). A Veteran gets one Veteran trait per tier.
+ */
 export function officialUnitDef(cls: OfficialClass, tier: Tier, templates: Template[], rng: Rng, optional = 1, count = 1): EnemyUnitDef {
+  if (templates.includes('Elite')) optional++
   const opts = cls.features.filter(f => !f.base)
   // prefer fully automated optional features (weapons and stat traits), then anything else
   const ranked = [...opts.filter(f => !f.partial), ...opts.filter(f => f.partial)]
@@ -30,7 +36,11 @@ export function officialUnitDef(cls: OfficialClass, tier: Tier, templates: Templ
     name: cls.name, role: cls.role, templates, count, features, baseStats: { ...cls.stats[tier - 1] }, officialClass: cls.id,
     description: `Official ${cls.name} (tier ${tier})${chosen.length ? ` with ${chosen.map(f => f.name).join(', ')}` : ''}.`,
   }
-  if (templates.includes('Veteran')) def.veteranTrait = rng.pick([...VETERAN_TRAITS])
+  if (templates.includes('Veteran')) {
+    const pool: string[] = [...VETERAN_TRAITS]
+    def.veteranTraits = []
+    for (let i = 0; i < tier; i++) def.veteranTraits.push(pool.splice(rng.int(0, pool.length - 1), 1)[0] as any)
+  }
   return def
 }
 
@@ -39,7 +49,8 @@ export function generateOfficialTeam(classes: OfficialClass[], tier: Tier, kind:
   // pilots on foot and squads of infantry make poor mech opponents
   const pool = classes.filter(c => !/^(human|squad)$/i.test(c.name))
   const usable = pool.length ? pool : classes
-  const budget = squadSize * BUDGET_PER_PC[tier] * KIND_MULT[kind] * OFFICIAL_SCALE[tier][kind]
+  const floor = kind === 'standard' ? squadSize * MIN_STANDARD_PER_PC : 0
+  const budget = Math.max(floor, squadSize * BUDGET_PER_PC[tier] * KIND_MULT[kind] * OFFICIAL_SCALE[tier][kind])
   const units: EnemyUnitDef[] = []
   const spent = () => units.reduce((a, u) => a + unitBudget(u), 0)
   const used = new Map<string, number>()
@@ -73,6 +84,11 @@ export function generateOfficialTeam(classes: OfficialClass[], tier: Tier, kind:
     } else {
       units.push(officialUnitDef(pickClass(['Striker', 'Artillery']), tier, ['Grunt'], rng, 0, Math.floor(left / 0.25)))
     }
+  }
+  // fill what's left of a standard fight's floor (one NPC per player) with Grunts
+  while (spent() < floor && guard++ < 60) {
+    const n = Math.min(4, Math.ceil((floor - spent()) / 0.25))
+    units.push(officialUnitDef(pickClass(['Striker', 'Artillery']), tier, ['Grunt'], rng, 0, n))
   }
   // two picks of the same class get distinct names
   const seen = new Map<string, number>()

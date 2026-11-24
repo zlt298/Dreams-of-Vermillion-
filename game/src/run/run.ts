@@ -35,9 +35,17 @@ export interface MechCondition {
   destroyedSystems: string[]
   limited: Record<string, number> // uses left per item dataId
   /** Prototype Weapon set-up (weapon type, damage type) until the next Full Repair */
-  proto?: Record<string, { type: string; damage: string }>
+  proto?: Record<string, { type: string; damage: string; revision?: string[] }>
   /** Bonded: the Bondmate's pilot id */
   bondmate?: string
+  /** Grease Monkey 3: the supply drop was called since the last Full Repair */
+  supplyDropUsed?: boolean
+  /** OSIRIS: the next Gate of Hurl Into the Duat (persists between scenes, resets at a rest or Full Repair) */
+  duatGate?: number
+  /** unit flags named 'keep:…' that last between scenes until a Full Repair (Sherman ZF4 charges) */
+  keep?: Record<string, unknown>
+  /** Manticore Castigation State (set at a rest or Full Repair) */
+  castigation?: boolean
 }
 
 export interface Reward { id: string; name: string; text: string }
@@ -123,7 +131,15 @@ export function resetCondition(run: RunState, p: PilotBuild): MechCondition {
   const c = freshCondition(p)
   const mate = run.condition[p.id]?.bondmate
   if (mate) c.bondmate = mate
+  if (run.condition[p.id]?.castigation) c.castigation = true
   return c
+}
+
+/** Manticore: push it into the Castigation State or bring it out of one (at a rest or Full Repair). */
+export function setCastigation(run: RunState, pilotId: string, on: boolean) {
+  const c = run.condition[pilotId]
+  if (on) c.castigation = true
+  else delete c.castigation
 }
 
 /**
@@ -183,7 +199,10 @@ export function squadUnits(run: RunState): Unit[] {
     }
     u.flags.pilotId = p.id
     if (c.bondmate) u.flags.bondmatePilot = c.bondmate
-    for (const w of u.weapons) if (w.dataId && c.proto?.[w.dataId]) applyPrototypeConfig(w, c.proto[w.dataId].type, c.proto[w.dataId].damage, true)
+    if (c.duatGate) u.flags.duatGate = c.duatGate
+    if (c.keep) Object.assign(u.flags, structuredClone(c.keep))
+    if (c.castigation) u.flags.castigation = true
+    for (const w of u.weapons) if (w.dataId && c.proto?.[w.dataId]) applyPrototypeConfig(w, c.proto[w.dataId].type, c.proto[w.dataId].damage, true, c.proto[w.dataId].revision)
     for (const b of run.boons.filter(b => !b.pilotId || b.pilotId === p.id)) applyBoon(u, b.reward)
     out.push(u)
   }
@@ -241,13 +260,19 @@ export function recordBattle(run: RunState, node: RunNode, units: Unit[], won: b
     c.stress = gone ? 0 : v ? v.stress : u.stress
     c.repairs = u.repairs
     c.overchargeLevel = u.overchargeLevel
-    c.coreAvailable = u.coreAvailable
+    // a CORE whose text refunds it when unused this scene (Barbarossa Charge Rail never fired)
+    c.coreAvailable = u.coreAvailable || !!u.flags.refundCore
+    const keep = Object.fromEntries(Object.entries(u.flags).filter(([k]) => k.startsWith('keep:')))
+    if (Object.keys(keep).length) c.keep = keep
+    // Balor Self-Perpetuating: the rest after the fight restores its HP without repairs
+    if (!gone && !v && u.frameId === 'mf_balor') c.hp = u.stats.hp - permHpBonus(run, pid)
     // gear taken off in a refit keeps its destroyed mark (refitting it back is not a free repair)
     c.destroyedWeapons = [...u.weapons.filter(w => w.destroyed && w.dataId).map(w => w.dataId!), ...c.destroyedWeapons.filter(id => !u.weapons.some(w => w.dataId === id))]
     c.destroyedSystems = [...u.systems.filter(s => s.destroyed).map(s => s.dataId), ...c.destroyedSystems.filter(id => !u.systems.some(s => s.dataId === id))]
     for (const w of u.weapons) if (w.dataId && w.usesLeft != null) c.limited[w.dataId] = w.usesLeft
-    for (const w of u.weapons) if (w.dataId && w.flags?.protoLocked) (c.proto ??= {})[w.dataId] = { type: w.flags.protoType, damage: w.flags.protoDamage }
+    for (const w of u.weapons) if (w.dataId && w.flags?.protoLocked) (c.proto ??= {})[w.dataId] = { type: w.flags.protoType, damage: w.flags.protoDamage, ...(w.flags.protoRevision ? { revision: [...w.flags.protoRevision] } : {}) }
     if (u.flags.bondmatePilot) c.bondmate = u.flags.bondmatePilot
+    if (u.flags.duatGate != null) c.duatGate = u.flags.duatGate
     for (const s of u.systems) if (s.usesLeft != null) c.limited[s.dataId] = s.usesLeft
   }
   // one-battle boons are consumed
@@ -291,7 +316,26 @@ export function repairOptions(p: PilotBuild, c: MechCondition): RepairOption[] {
   // only gear that is fitted can be repaired (entries for gear taken off in a refit wait until it is fitted again)
   for (const w of new Set(c.destroyedWeapons)) { const x = u.weapons.find(y => y.dataId === w); if (x) out.push({ id: `w:${w}`, label: `Repair ${x.name}`, cost: 1 }) }
   for (const s of new Set(c.destroyedSystems)) { const x = u.systems.find(y => y.dataId === s); if (x) out.push({ id: `s:${s}`, label: `Repair ${x.name}`, cost: 1 }) }
+  // Grease Monkey (talent): replenish Limited uses while resting
+  const gm = p.talents.find(t => t.id === 't_grease_monkey')?.rank ?? 0
+  if (gm >= 1 && limitedSpent(u, c).length) out.push({ id: 'gm_limited', label: 'Unsanctioned Capacity Upgrade: +1 use of every Limited item', cost: 2 })
+  if (gm >= 3 && !c.supplyDropUsed) out.push({ id: 'gm_supply', label: 'Friends in High Places: supply drop (every mech +1 Limited use, +1 Structure)', cost: 0 })
   return out
+}
+
+/** Limited weapons and systems of this mech with uses spent (data id and full uses). Prototype weapons reroll theirs. */
+function limitedSpent(u: Unit, c: MechCondition): { id: string; max: number }[] {
+  const out: { id: string; max: number }[] = []
+  for (const x of [...u.weapons, ...u.systems]) {
+    if (!x.dataId || x.usesLeft == null || x.usesLeft < 0) continue
+    const left = c.limited[x.dataId]
+    if (left != null && left < x.usesLeft && !out.some(o => o.id === x.dataId)) out.push({ id: x.dataId, max: x.usesLeft })
+  }
+  return out
+}
+/** +1 use of every spent Limited item (Grease Monkey). */
+function refillOne(p: PilotBuild, c: MechCondition) {
+  for (const l of limitedSpent(buildMechUnit(p), c)) c.limited[l.id] = Math.min(l.max, c.limited[l.id] + 1)
 }
 
 export function applyRepair(run: RunState, pilotId: string, optId: string) {
@@ -302,10 +346,22 @@ export function applyRepair(run: RunState, pilotId: string, optId: string) {
   const u = buildMechUnit(p)
   c.repairs -= opt.cost
   if (optId === 'hp') c.hp = u.stats.hp
-  else if (optId === 'structure') { c.structure++; c.hp = u.stats.hp }
+  // core p.82: 2 Repairs restore 1 Structure; full HP is a separate repair
+  else if (optId === 'structure') c.structure++
   else if (optId === 'stress') c.stress++
   else if (optId.startsWith('w:')) c.destroyedWeapons = c.destroyedWeapons.filter(x => x !== optId.slice(2))
   else if (optId.startsWith('s:')) c.destroyedSystems = c.destroyedSystems.filter(x => x !== optId.slice(2))
+  else if (optId === 'gm_limited') refillOne(p, c)
+  else if (optId === 'gm_supply') {
+    // you and your allies: +1 use of every Limited item and 1 Structure, free (above the Repair Cap too)
+    c.supplyDropUsed = true
+    for (const q of run.squad) {
+      const qc = run.condition[q.id]
+      if (!qc || qc.destroyed) continue
+      refillOne(q, qc)
+      qc.structure = Math.min(buildMechUnit(q).stats.structure, qc.structure + 1)
+    }
+  }
 }
 
 export const REWARDS: Reward[] = [
@@ -430,6 +486,7 @@ export function refitPilot(run: RunState, build: PilotBuild): boolean {
     // the Prototype Weapon set-up lasts until the next Full Repair (only applied to matching weapons)
     ...(c.proto ? { proto: structuredClone(c.proto) } : {}),
     ...(c.bondmate ? { bondmate: c.bondmate } : {}),
+    ...(c.duatGate ? { duatGate: c.duatGate } : {}),
   }
   return true
 }

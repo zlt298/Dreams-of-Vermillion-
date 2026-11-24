@@ -2,12 +2,13 @@
 // best plan through the normal Battle API, so the AI obeys exactly the same rules as players.
 import { PendingChoice, type Battle } from '../rules/battle'
 import { Lancer } from '../data/lancer'
-import { blastTiles, lineTiles, coneTiles, burstTiles, key, unitsOnTiles, footprint, tileAt } from '../rules/grid'
+import { blastTiles, lineTiles, coneTiles, burstTiles, key, unitsOnTiles, footprint, tileAt, distanceToTile } from '../rules/grid'
 import type { Effect, Pos, Unit, Weapon } from '../rules/types'
 import type { CustomAction } from '../rules/effects/registry'
 import { averageDice } from '../rules/rng'
 import { hasTag, tagVal } from '../rules/stats'
 import { sekhmetTurn } from '../rules/effects/scripts/systems2'
+import { needsBarrage } from '../rules/battle/actions'
 
 const STATUS_VALUE: Record<string, number> = {
   stunned: 9, exposed: 6, immobilized: 3.5, impaired: 3, jammed: 3, shredded: 3, slowed: 2, prone: 2.5, lockon: 1.5,
@@ -50,7 +51,8 @@ function effectValue(b: Battle, src: Unit, t: Unit, effects: Effect[]): number {
  * is Energy damage to a character without a Heat Cap, and matters most when it would overheat the target.
  */
 function invadeValue(b: Battle, u: Unit, t: Unit): number {
-  const status = effectValue(b, u, t, [{ do: 'status', status: 'impaired' } as Effect, { do: 'status', status: 'slowed' } as Effect])
+  // an NPC's Invade only Impairs (no Slowed)
+  const status = effectValue(b, u, t, u.kind === 'npc' ? [{ do: 'status', status: 'impaired' } as Effect] : [{ do: 'status', status: 'impaired' } as Effect, { do: 'status', status: 'slowed' } as Effect])
   return status + invadeHeatValue(t)
 }
 /** The 2 heat every Invade deals on a hit (see invadeValue). */
@@ -105,11 +107,11 @@ function aoeValue(b: Battle, u: Unit, w: Weapon, from: Pos): { value: number; ti
     let best: { value: number; tile: Pos } | null = null
     const aims = b.alive().filter(t => b.hostile(u, t)).map(t => t.pos)
     for (const aim of aims) {
-      const tiles = b.aoeTiles(u, w, aim)
-      if (typeof tiles === 'string') continue
+      // who the attack actually affects: line of sight and height from the pattern, own Blast and deployables
+      const hit = b.aoeTargets(u, w, aim)
+      if (typeof hit === 'string') continue
       let v = 0
-      for (const t of unitsOnTiles(b.alive(), tiles)) {
-        if (t === u) continue
+      for (const t of hit) {
         const dmg = b.profile(w).damage.reduce((a, d) => a + averageDice(d.val), 0)
         const val = (dmg * 0.6 + effectValue(b, u, t, b.profile(w).onHit) * 0.6) * (t.isGrunt ? 0.6 : 1)
         v += b.hostile(u, t) ? val : -val * 1.5
@@ -184,8 +186,9 @@ function customValue(b: Battle, u: Unit, a: CustomAction, from: Pos): { value: n
     if (a.target === 'tile' && a.area) {
       let best: { value: number; target?: Pos } | null = null
       for (const h of hostiles) {
-        const aim = h.pos
-        if (a.range != null && b.distance(u, h) > a.range + 1) continue
+        // aim at the hostile's nearest space: the engine checks the action's range to the aimed space
+        const aim = footprint(h).reduce((x, y) => (distanceToTile(b.map, u, y) < distanceToTile(b.map, u, x) ? y : x))
+        if (a.range != null && a.area.shape !== 'line' && a.area.shape !== 'cone' && distanceToTile(b.map, u, aim) > a.range) continue
         const tiles = a.area.shape === 'line' ? lineTiles(b.map, u, aim, a.area.size) : a.area.shape === 'cone' ? coneTiles(b.map, u, aim, a.area.size) : blastTiles(b.map, aim, a.area.size)
         let v = 0
         for (const t of unitsOnTiles(b.alive(), tiles)) if (t !== u) v += b.hostile(u, t) ? (f ? effectValue(b, u, t, effects) : (a.aiScore?.(b, u, t) ?? 3) * 0.6) : -4
@@ -340,11 +343,11 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
       if (v > 0 && (!best || v > best.value)) best = { value: v, aim: { targetId: t.id } }
     }
     if (!best) continue
-    if (w.size === 'Superheavy' || w.activation === 'full') opts.push({ kind: 'barrage', a: { weapon: w, aim: best.aim }, value: best.value, cost: 'full' })
+    if (needsBarrage(w) || w.activation === 'full') opts.push({ kind: 'barrage', a: { weapon: w, aim: best.aim }, value: best.value, cost: 'full' })
     else opts.push({ kind: 'skirmish', weapon: w, aim: best.aim, value: best.value, cost: 'quick' })
   }
   // barrage: best two skirmish-capable weapons
-  const sk = opts.filter((o): o is Extract<Option, { kind: 'skirmish' }> => o.kind === 'skirmish' && !o.weapon.tech).sort((a, b) => b.value - a.value)
+  const sk = opts.filter((o): o is Extract<Option, { kind: 'skirmish' }> => o.kind === 'skirmish' && !o.weapon.tech && o.weapon.size !== 'Superheavy').sort((a, b) => b.value - a.value)
   if (sk.length >= 2) opts.push({ kind: 'barrage', a: { weapon: sk[0].weapon, aim: sk[0].aim }, b: { weapon: sk[1].weapon, aim: sk[1].aim }, value: sk[0].value + sk[1].value, cost: 'full' })
   for (const a of b.customActions(u)) {
     const c = costOf(a)
@@ -370,7 +373,8 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
     const r = customValue(b, u, a, p)
     if (r && r.value > 0.5) opts.push({ kind: 'custom', action: a, target: r.target, value: r.value, cost: c })
   }
-  if (u.kind === 'mech' && !b.has(u, 'jammed') && (b.canQuickTech(u, 'invade') === true || b.canQuickTech(u, 'lock_on') === true)) {
+  // mechs and NPCs alike can Invade and Lock On (NPC quick tech, core book p.280)
+  if ((u.kind === 'mech' || (u.kind === 'npc' && u.role !== 'Biological')) && !b.has(u, 'jammed') && (b.canQuickTech(u, 'invade') === true || b.canQuickTech(u, 'lock_on') === true)) {
     for (const t of hostiles) {
       if (t.kind !== 'mech' && t.kind !== 'npc') continue
       const saved = u.pos

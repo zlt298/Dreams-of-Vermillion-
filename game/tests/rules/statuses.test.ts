@@ -295,7 +295,7 @@ describe('Lock On', () => {
     expect(b.has(ally, 'lockon')).toBe(true)
   })
 
-  it('Hacker 1 (SNOW-CRASH) still consumes Lock On itself: +1 accuracy once, not twice', () => {
+  it('Hacker 1 (SNOW-CRASH): the tech attack consumes Lock On once (+1 accuracy, not twice) and SNOW_CRASH reads it', () => {
     const a = mech({ talents: [['t_hacker', 1]], weapons: [['Heavy', 'mw_assault_rifle']] })
     const e = pregenUnit('Sniper', 'enemy')
     a.pos = { x: 1, y: 5 }; e.pos = { x: 4, y: 5 }

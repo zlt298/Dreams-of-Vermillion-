@@ -63,7 +63,8 @@ describe("Death's Head", () => {
     e.stats.armor = 0
     const hp = e.hp
     const ctx = b.newAttackCtx(a, e, { weapon: a.weapons[0], hit: true, crit: true, ranged: true })
-    getScript('core:mf_deaths_head')!.afterAttack!(b, a, ctx, 'attacker')
+    getScript('core:mf_deaths_head')!.afterAnyRoll!(b, a, ctx)
+    expect(ctx.bonusDamage).toEqual([])
     expect(e.hp).toBe(hp)
   })
 })

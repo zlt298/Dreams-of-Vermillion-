@@ -65,6 +65,10 @@ describe('HA Genghis', () => {
     b.addHeat(a, 2)
     expect(a.heat).toBe(0)
     expect(a.stress).toBe(stress) // no overheat
+    // "characters other than you take 2 burn and 2 heat when they start their turn in the area"
+    expect(e.burn).toBe(0)
+    b.endTurn(a)
+    act(b, e)
     expect(e.burn).toBe(2)
     expect(e.heat).toBe(2)
   })
@@ -224,7 +228,7 @@ describe('SSC Monarch', () => {
   it('Seeking Payload: a Launcher attack on a Locked On target consumes the Lock On, ignores cover and "cannot be reduced"', () => {
     const { a, e, b } = frame('mf_monarch', { x: 3, y: 3 }, { x: 3, y: 7 }, { weapons: 'mw_concussion_missiles' })
     b.addStatus(e, 'lockon', 'until_cleared', a)
-    const ctx = b.buildWeaponCtx(a, w(a, 'mw_concussion_missiles'), e, 'free', false)
+    const ctx = b.buildWeaponCtx(a, w(a, 'mw_concussion_missiles'), e, 'free', true)
     expect(b.has(e, 'lockon')).toBe(false)
     expect(ctx.irreducible).toBe(true)
     expect(ctx.ignoreCover).toBe(true)
@@ -276,7 +280,8 @@ describe('IPS-N Tortuga', () => {
     const reactions = a.reactionsPerRound
     b.activateCore(a)
     expect(b.weaponThreat(a, rifle)).toBe(3)
-    expect(a.reactionsPerRound).toBe(reactions + 1)
+    expect(a.reactionsPerRound).toBe(reactions)
+    expect(a.flags.extraOverwatch).toBe(1) // "1/round, you may take an additional Overwatch reaction" (only Overwatch)
     a.stats.attackBonus = 50
     b.weaponAttack(a, rifle, { targetId: e.id }, 'overwatch')
     expect(b.has(e, 'immobilized')).toBe(true)

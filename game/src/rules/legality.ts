@@ -31,7 +31,7 @@ export const SLOT_SIZES: Record<string, string[][]> = {
 /** Mount types added by the builder or importer that aren't part of the frame's own mount list. */
 const EXTRA_MOUNTS = new Set(['CB-Integrated', 'Integrated'])
 
-const hasTag = (x: { tags?: { id: string }[] } | undefined, id: string) => !!x?.tags?.some(t => t.id === id)
+const hasTag = (x: unknown, id: string) => !!(x as { tags?: { id: string }[] } | undefined)?.tags?.some(t => t.id === id)
 
 /** The license an item belongs to (frame id) and the rank it needs; null for GMS/unlicensed items. */
 export function licenseOf(item: { license_id?: string; license_level?: number; source?: string } | undefined): { id: string; rank: number } | null {
@@ -111,6 +111,23 @@ export function manufacturerRanks(source: string, lic: Map<string, number>): num
   return n
 }
 
+/** Does this system or mod count as an AI (tg_ai)? The Enlightenment-Class NHP doesn't count toward the limit. */
+export const isAI = (id: string) => id !== 'ms_technophile_3' && hasTag(Lancer.systems.get(id) ?? Lancer.mods.get(id), 'tg_ai')
+/** AIs installed on the mech: AI systems plus AI mods (the UNCLE-Class COMP/CON). */
+export function aiCount(p: PilotBuild): number {
+  let n = p.mech.systems.filter(isAI).length
+  for (const m of p.mech.mounts) for (const s of m.slots) if (s.weaponId && s.modId && isAI(s.modId)) n++
+  return n
+}
+/** How many AIs the mech may have: one, plus The Lesson of Shaping (core bonuses with ai_cap). */
+export function aiCap(p: PilotBuild): number {
+  let cap = 1
+  for (const c of p.coreBonuses) for (const b of Lancer.coreBonuses.get(c)?.bonuses ?? []) if (b.id === 'ai_cap') cap += Number(b.val) || 0
+  return cap
+}
+/** Can this mount take mods? Integrated mounts and the Integrated Weapon core bonus mount (no_mods) can't. */
+export const mountTakesMods = (m: MountBuild) => m.type !== 'Integrated' && m.type !== 'CB-Integrated'
+
 const nameOf = (id: string) =>
   Lancer.weapons.get(id)?.name ?? Lancer.systems.get(id)?.name ?? Lancer.mods.get(id)?.name ?? Lancer.talents.get(id)?.name ?? Lancer.coreBonuses.get(id)?.name ?? Lancer.frames.get(id)?.name ?? id
 
@@ -136,6 +153,9 @@ export function validateBuild(p: PilotBuild): Legality {
     if (td && (t.rank < 1 || t.rank > td.ranks.length)) errors.push(`${td.name} rank must be 1–${td.ranks.length}`)
   }
   if (talents.used > talents.max) errors.push(`Too many talent ranks (${talents.used}/${talents.max})`)
+  // talents are taken one rank per License Level (LL0: three rank-I talents), so rank II/III each need an LL
+  const rankUps = p.talents.reduce((a, t) => a + Math.max(0, t.rank - 1), 0)
+  if (rankUps > LL) errors.push(`Talent ranks above I need one License Level each (${rankUps} rank-ups at LL${LL})`)
   else if (talents.used < talents.max) warnings.push(`${talents.max - talents.used} talent rank(s) unspent`)
 
   // licenses
@@ -163,6 +183,11 @@ export function validateBuild(p: PilotBuild): Legality {
   const frameMounts = p.mech.mounts.filter(m => !EXTRA_MOUNTS.has(m.type))
   const want = expectedMounts(p.mech.frameId, p.coreBonuses).filter(t => !EXTRA_MOUNTS.has(t))
   if (f && frameMounts.length !== want.length) errors.push(`${f.name} should have ${want.length} mounts, has ${frameMounts.length}`)
+  else if (f) frameMounts.forEach((m, i) => {
+    // mount types must match the frame's (Mount Retrofitting turns its mount into a Main/Aux)
+    const retro = m.bonusEffects.includes('cb_mount_retrofitting') && m.type === 'Main/Aux'
+    if (m.type !== want[i] && !retro) errors.push(`Mount ${i + 1} should be ${want[i]}, is ${m.type}`)
+  })
   if (p.coreBonuses.includes('cb_integrated_weapon') !== p.mech.mounts.some(m => m.type === 'CB-Integrated'))
     errors.push('The Integrated Weapon core bonus mount is missing or extra')
   if (p.mech.mounts.filter(m => m.bonusEffects.includes('cb_mount_retrofitting')).length > (p.coreBonuses.includes('cb_mount_retrofitting') ? 1 : 0))
@@ -181,7 +206,9 @@ export function validateBuild(p: PilotBuild): Legality {
       if (hasTag(w as any, 'tg_unique')) unique.set(w.id, (unique.get(w.id) ?? 0) + 1)
       if (s.modId) {
         const mod = Lancer.mods.get(s.modId)
-        if (mod && !modFits(mod, w)) errors.push(`${mod.name} can't be fitted to ${w.name}`)
+        if (!mountTakesMods(m)) errors.push(`${w.name} is integrated: it can't be modified`)
+        else if (mod && !modFits(mod, w)) errors.push(`${mod.name} can't be fitted to ${w.name}`)
+        if (mod && hasTag(mod, 'tg_unique')) unique.set(mod.id, (unique.get(mod.id) ?? 0) + 1)
       }
     })
   })
@@ -194,6 +221,8 @@ export function validateBuild(p: PilotBuild): Legality {
     if (s && hasTag(s, 'tg_unique')) unique.set(id, (unique.get(id) ?? 0) + 1)
   }
   for (const [id, n] of unique) if (n > 1) errors.push(`${nameOf(id)} is Unique: only one allowed`)
+  const ais = aiCount(p), cap = aiCap(p)
+  if (ais > cap) errors.push(cap === 1 ? `Only one AI can be installed (has ${ais})` : `Only ${cap} AIs can be installed (has ${ais})`)
 
   const sp = mechSP(p)
   if (sp.used > sp.max) errors.push(`Over SP budget (${sp.used}/${sp.max})`)

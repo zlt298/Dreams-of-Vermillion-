@@ -131,9 +131,11 @@ describe('audit: attacks and cover', () => {
 
   it('hard cover only counts when the target is adjacent to it; otherwise it is soft cover', () => {
     const wall = (x: number) => (x === 7 ? { h: 3, kind: 'ground' as const } : undefined)
-    const near = duel((x, y) => (y === 5 ? wall(x) : undefined), { x: 1, y: 5 }, { x: 8, y: 6 })
-    const far = duel((x, y) => (y === 5 ? wall(x) : undefined), { x: 1, y: 5 }, { x: 10, y: 6 })
-    expect(['hard', 'soft']).toContain(near.b.cover(near.a, near.e))
+    // (Audit 2: the target used to stand at (8,6), diagonal to the wall, but a line from (1,5) to (8,6) is clear of
+    // it, so that target is flanked (core p. 66). Directly behind the wall it is in hard cover.)
+    const near = duel((x, y) => (y === 5 ? wall(x) : undefined), { x: 1, y: 5 }, { x: 8, y: 5 })
+    const far = duel((x, y) => (y === 5 ? wall(x) : undefined), { x: 1, y: 5 }, { x: 10, y: 5 })
+    expect(near.b.cover(near.a, near.e)).toBe('hard')
     expect(far.b.cover(far.a, far.e)).not.toBe('hard')
   })
 
@@ -604,7 +606,7 @@ describe('audit: reactions, grapples and the rest of the action list', () => {
     expect(b.canSpend(a, 'reaction', 'overwatch')).not.toBe(true)
   })
 
-  it('a reaction used this round stays used until its owner starts its next turn, even across a new round', () => {
+  it('a reaction used this round stays used through its owner\'s own turn and refreshes at the next round start (owner ruling)', () => {
     const a = pregenUnit('Assault'); const a2 = pregenUnit('Vanguard')
     const e = pregenUnit('Sniper', 'enemy')
     a.pos = { x: 5, y: 5 }; a2.pos = { x: 1, y: 12 }; e.pos = { x: 6, y: 5 }
@@ -618,10 +620,10 @@ describe('audit: reactions, grapples and the rest of the action list', () => {
     expect(a.reactionsLeft).toBe(r - 1)
     b.endTurn(e)
     b.beginTurn(a2); b.endTurn(a2)
-    // round 2 opens with the enemy (a player took the last turn): a's Overwatch is still spent
+    // round 2 opens with the enemy (a player took the last turn): a's Overwatch is back (it refreshes at round start)
     expect(b.round).toBe(2)
     expect(b.currentSide).toBe('enemy')
-    expect(b.canSpend(a, 'reaction', 'overwatch')).not.toBe(true)
+    expect(b.canSpend(a, 'reaction', 'overwatch')).toBe(true)
   })
 
   it('a Grapple ends when the two are knocked apart', () => {

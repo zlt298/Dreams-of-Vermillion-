@@ -4,15 +4,17 @@ import type { DamageData, RangeData, TagData, BonusData } from '../../data/lance
 import { Lancer } from '../../data/lancer'
 import {
   type AreaEffect, type GridMap, type Tile, type Cover, tileAt, footprint, elevationAt, unitElevation, distanceBetween,
-  distanceToTile, hasLineOfSight, hasLineOfSightToTile, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
+  distanceToTile, hasLineOfSight, hasLineOfSightToTile, hasLineOfSightFromTile, pointUnit, coverBetween, burstTiles, blastTiles, lineTiles, coneTiles,
   unitsOnTiles, key, chebyshev, center, footprintSize,
 } from '../grid'
 import { parseDice, Rng, rollDice, rollAccuracy, averageDice } from '../rng'
 import { hasTag, tagVal, nextUid, isWeaponType } from '../stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
-import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
+import { type FieldOverlay, type AttackCtx, type BonusDamage, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
+import { useLockOn } from './tech'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
+import { needsBarrage } from './actions'
 
 export function triggerOverwatch(bt: Battle, mover: Unit) {
   if (bt.reactionDepth > 0) return
@@ -37,6 +39,7 @@ export function bestThreatWeapon(bt: Battle, o: Unit, target: Unit): Weapon | nu
     if (!bt.weaponReady(o, w)) continue
     const pr = w.profiles[w.profileIndex]
     if (bt.isAoE(pr) || hasTag(pr.tags, 'tg_ordnance')) continue // Ordnance can't be used for Overwatch
+    if (needsBarrage(w)) continue // Overwatch is a Skirmish: Superheavy weapons can't (the Leviathan's Standard profile can)
     const threat = bt.weaponThreat(o, w)
     if (threat <= 0 || bt.distance(o, target) > threat) continue
     // a target the attack would refuse (Hidden, intangible, no line of sight) doesn't provoke the reaction
@@ -88,7 +91,8 @@ export function ranges(bt: Battle, u: Unit, w: Weapon): RangeData[] {
 export function weaponThreat(bt: Battle, u: Unit, w: Weapon): number {
   const rs = bt.ranges(u, w)
   const t = rs.find(r => r.type === 'Threat')
-  let v = t ? Number(t.val) : bt.isMelee(w) ? 1 : 0
+  // every weapon has Threat 1 unless it says otherwise (core p. 64, glossary p. 79): ranged weapons can Overwatch too
+  let v = t ? Number(t.val) : 1
   if (u.flags.hyperReflex && !bt.isMelee(w) && !bt.isAoE(bt.profile(w))) v = Math.max(v, 3)
   return v
 }
@@ -143,7 +147,7 @@ export function validTarget(bt: Battle, u: Unit, w: Weapon, t: Unit, from: Pos =
   if (t === u) return 'Cannot target self'
   if (t.flags.intangible) return 'Intangible'
   if (bt.isBlinded(u) && chebyshev(from, t.pos) > 1 && distanceBetween(bt.map, { ...u, pos: from }, t) > 1) return 'Blinded: can only see adjacent spaces'
-  if (bt.has(t, 'hidden') && bt.hostile(u, t)) return 'Hidden'
+  if (bt.has(t, 'hidden') && bt.hostile(u, t) && !seesHidden(bt, u, t)) return 'Hidden'
   if (hasTag(bt.profile(w).tags, 'tg_ordnance') && bt.hostile(u, t) && bt.adjacent({ ...u, pos: from } as Unit, t)) return 'Ordnance can’t target characters engaged with you'
   for (const s of scriptsFor(u)) { const no = s.forbidsTarget?.(bt, u, w, t, from); if (no) return no }
   const pr = bt.profile(w)
@@ -154,8 +158,15 @@ export function validTarget(bt: Battle, u: Unit, w: Weapon, t: Unit, from: Pos =
   const minR = u.bonuses.find(b => b.id === 'min_range')
   void minR
   const magRound = u.flags.ammo === 'mag' && w.size === 'Main' && !bt.isMelee(w) && !u.flags['turn:ammoUsed']
-  if (!hasTag(tags, 'tg_seeking') && !hasTag(tags, 'tg_arcing') && !magRound && !bt.los(u, t, from)) return 'No line of sight'
+  // flags.noLos: the weapon needs no line of sight (Phase-Ready Mod); seeksTarget: a script makes it Seeking (Monarch)
+  const seeks = hasTag(tags, 'tg_seeking') || scriptsFor(u).some(s => s.seeksTarget?.(bt, u, w, t))
+  if (!seeks && !hasTag(tags, 'tg_arcing') && !magRound && !w.flags?.noLos && !bt.los(u, t, from)) return 'No line of sight'
   return true
+}
+
+/** Eye of HORUS: `u` ignores Hidden and Invisible on characters within `u.flags.seeHiddenWithin` spaces. */
+export function seesHidden(bt: Battle, u: Unit, t: Unit): boolean {
+  return u.flags.seeHiddenWithin != null && bt.distance(u, t) <= u.flags.seeHiddenWithin
 }
 
 export function aoeTiles(bt: Battle, u: Unit, w: Weapon, aim: Pos): Pos[] | string {
@@ -172,13 +183,114 @@ export function aoeTiles(bt: Battle, u: Unit, w: Weapon, aim: Pos): Pos[] | stri
   if (shape === 'line') return lineTiles(bt.map, origin, aim, Number(line!.val))
   if (shape === 'cone') return coneTiles(bt.map, origin, aim, Number(cone!.val))
   if (blast) {
+    for (const s of scriptsFor(u)) { const no = s.forbidsAim?.(bt, u, w, aim); if (no) return no }
     const range = rs.find(r => r.type === 'Range')
     const reach = range ? Number(range.val) : 1
     if (distanceToTile(bt.map, u, aim) > reach) return 'Out of range'
-    if (!hasTag(bt.profile(w).tags, 'tg_arcing') && !hasTag(bt.profile(w).tags, 'tg_seeking') && !hasLineOfSightToTile(bt.effectiveMap(), u, aim)) return 'No line of sight to blast centre'
+    const aimed = bt.alive().find(o => footprint(o).some(p => p.x === aim.x && p.y === aim.y))
+    const seeks = hasTag(bt.profile(w).tags, 'tg_seeking') || (!!aimed && scriptsFor(u).some(s => s.seeksTarget?.(bt, u, w, aimed)))
+    if (!hasTag(bt.profile(w).tags, 'tg_arcing') && !seeks && !w.flags?.noLos && !hasLineOfSightToTile(bt.effectiveMap(), u, aim)) return 'No line of sight to blast centre'
     return blastTiles(bt.map, aim, Number(blast.val))
   }
   return 'Not an area weapon'
+}
+
+export type AreaShape = 'blast' | 'burst' | 'line' | 'cone'
+
+/** The pattern a weapon's attack draws, with its size. */
+export function areaShape(bt: Battle, u: Unit, w: Weapon): { shape: AreaShape; size: number } | null {
+  const rs = bt.ranges(u, w)
+  const get = (t: string) => rs.find(r => r.type === t)
+  const burst = get('Burst'), blast = get('Blast'), line = get('Line'), cone = get('Cone')
+  if (burst) return { shape: 'burst', size: Number(burst.val) }
+  const shape = line && cone ? (w.flags?.shape === 'line' ? 'line' : 'cone') : line ? 'line' : cone ? 'cone' : null
+  if (shape === 'line') return { shape, size: Number(line!.val) }
+  if (shape === 'cone') return { shape, size: Number(cone!.val) }
+  if (blast) return { shape: 'blast', size: Number(blast.val) }
+  return null
+}
+
+/**
+ * Who an area (Line, Cone, Blast, Burst) affects, among the units on `tiles` (core pp. 64-65 and the owner's rulings):
+ *  - every character and object in the area, the user's own deployables and Hidden characters included;
+ *  - a Burst never affects its user, a Line or Cone can't (they start beside it), but the user's own Blast can;
+ *  - the pattern needs line of sight to them (from the Blast's centre, otherwise from the user or `origin`) unless
+ *    `ignoreLos` (Arcing, Seeking), and reaches only `size` spaces up or down.
+ */
+export function areaVictims(bt: Battle, u: Unit, tiles: Pos[], shape: AreaShape, size: number, opts: { centre?: Pos; origin?: Unit; ignoreLos?: boolean } = {}): Unit[] {
+  const map = bt.effectiveMap()
+  const origin = opts.origin ?? u
+  const from = shape === 'blast' && opts.centre ? pointUnit(opts.centre) : origin
+  return unitsOnTiles(bt.alive(), tiles).filter(x => {
+    if (shape !== 'blast' && (x === u || x.id === origin.id)) return false
+    if (distanceBetween(bt.map, from, x) > size) return false
+    if (opts.ignoreLos) return true
+    if (shape === 'blast' && opts.centre) return hasLineOfSightFromTile(map, opts.centre, x)
+    return hasLineOfSight(map, origin, x)
+  })
+}
+
+/** The units a weapon's area attack aimed at `aim` would affect (or why it can't be made). */
+export function aoeTargets(bt: Battle, u: Unit, w: Weapon, aim: Pos): Unit[] | string {
+  const tiles = bt.aoeTiles(u, w, aim)
+  if (typeof tiles === 'string') return tiles
+  const a = areaShape(bt, u, w)
+  if (!a) return 'Not an area weapon'
+  const tags = bt.profile(w).tags
+  const origin = bt.attackOrigin ? { ...u, pos: bt.attackOrigin, stats: { ...u.stats, size: 1 } } : u
+  return areaVictims(bt, u, tiles, a.shape, a.size, { centre: a.shape === 'blast' ? aim : undefined, origin, ignoreLos: hasTag(tags, 'tg_arcing') || hasTag(tags, 'tg_seeking') })
+}
+
+/**
+ * Add bonus damage to an attack (Hunter Lock, Thermal Charge, Mark for Death...). It joins the attack's own damage
+ * packet, so Armor comes off once and Resistance and Exposed apply to the whole hit, and it follows the bonus-damage
+ * rules: rolled once per attack, halved against multiple targets, doubled dice on a crit, dropped by attacks that can't
+ * deal bonus damage. Call it from beforeAttack (role 'attacker'), or from afterAnyRoll once hit/crit are known.
+ *  - `type` defaults to the weapon's first damage type (Kinetic for none)
+ *  - `opts.critOnly`: only on a critical hit
+ *  - `opts.onlyIf(ctx)`: checked when the attack hits, just before damage (e.g. `() => once(self, 'hunterlock')`)
+ *  - `opts.notHalved`: keep it whole against multiple targets
+ *  - `opts.source`: a name for the log
+ */
+export type BonusDamageOpts = Omit<BonusDamage, 'type' | 'val'>
+export function addBonusDamage(bt: Battle, ctx: AttackCtx, val: string | number, type?: string, opts: BonusDamageOpts = {}): BonusDamage {
+  const bd: BonusDamage = { type: type ?? ctx.profile?.damage[0]?.type ?? 'Kinetic', val, ...opts }
+  ctx.bonusDamage.push(bd)
+  if (opts.source) ctx.reasons.push(`${opts.source} +${val}${opts.critOnly ? ' on a crit' : ''}`)
+  return bd
+}
+
+/**
+ * Knockback from a melee or weapon attack, after bonuses. Two kinds of `knockback` bonus exist:
+ *  - Improvised-only ones (Brawler 2 Sledgehammer) give the attack Knockback X, like the tag;
+ *  - the rest (Titanomachy Mesh: "knock them back 1 additional space") only lengthen a knockback the attack already
+ *    has: they never add one.
+ * Without a weapon (Ram) the attack counts as a melee attack; Improvised Attacks are melee attacks too.
+ */
+export function knockbackDistance(bt: Battle, u: Unit, base: number, w?: Weapon): number {
+  const applies = (b: BonusData) => {
+    if (!b.weapon_types) return true
+    if (!w || w.type === 'Improvised') return b.weapon_types.some(t => t === 'Melee' || (w && t === 'Improvised'))
+    return bt.bonusApplies(b, w)
+  }
+  const kb = u.bonuses.filter(b => b.id === 'knockback' && (!b.condition || bt.evalCondition(u, b.condition)) && applies(b))
+  const grants = (b: BonusData) => b.weapon_types?.length === 1 && b.weapon_types[0] === 'Improvised'
+  let n = base
+  for (const b of kb) if (grants(b)) n = Math.max(n, Number(b.val) || 0)
+  if (n <= 0) return 0
+  for (const b of kb) if (!grants(b)) n += Number(b.val) || 0
+  return n
+}
+
+/**
+ * Titanomachy Mesh: "1/round, when you successfully Ram or Grapple a mech, you can Ram or Grapple again as a free
+ * action." Called by Ram and Grapple on a hit; the next Ram or Grapple this turn costs nothing.
+ */
+export function titanomachyFollowUp(bt: Battle, u: Unit, t: Unit) {
+  if (t.kind !== 'mech' || !u.coreBonuses.includes('cb_titanomachy_mesh') || u.flags['round:titanomachy'] || !u.activeTurn) return
+  u.flags['round:titanomachy'] = true
+  u.flags['turn:freeQuick'] = ['ram', 'grapple']
+  bt.say(`  Titanomachy Mesh: ${u.name} can Ram or Grapple again as a free action.`)
 }
 
 /** Damage bonus (flat) from bonuses, per damage type */
@@ -223,6 +335,8 @@ export function previewDetail(bt: Battle, attacker: Unit, w: Weapon, target: Uni
     const pool = target.hp + target.overshield
     const destroyOnPool = target.isGrunt || target.kind === 'deployable' || target.kind === 'drone' || target.stats.structure <= 1 || target.structure <= 1
     const rel = tagVal(pr.tags, 'tg_reliable') ?? 0
+    // conditions are checked once, as if the attack hit (this runs in a sandbox)
+    const bonus = ctx.noBonusDamage ? [] : ctx.bonusDamage.filter(bd => !bd.onlyIf || bd.onlyIf({ ...ctx, hit: true, crit: false }))
     let hits = 0, crits = 0, lethal = 0, sum = 0, min = Infinity, max = 0, heat = 0
     const reduce = (parts: { type: string; amount: number }[]) => {
       // armor once from the attack's total (largest parts first), then resistance per type
@@ -247,8 +361,8 @@ export function previewDetail(bt: Battle, attacker: Unit, w: Weapon, target: Uni
       if (crit) crits++
       const parts: { type: string; amount: number }[] = []
       for (const d of pr.damage) parts.push({ type: d.type, amount: Math.max(0, rollDice(rng, d.val, { crit }).total + bt.flatDamageBonus(attacker, w, d.type)) })
-      for (const bd of ctx.bonusDamage) parts.push({ type: bd.type, amount: rollDice(rng, bd.val, { crit }).total })
-      for (const e of [...pr.onHit, ...(crit ? pr.onCrit : [])]) if (e.do === 'bonus_damage') parts.push({ type: e.type ?? pr.damage[0]?.type ?? 'Kinetic', amount: rollDice(rng, e.val, { crit }).total })
+      for (const bd of bonus) if (!bd.critOnly || crit) parts.push({ type: bd.type, amount: rollDice(rng, bd.val, { crit }).total })
+      if (!ctx.noBonusDamage) for (const e of [...pr.onHit, ...(crit ? pr.onCrit : [])]) if (e.do === 'bonus_damage') parts.push({ type: e.type ?? pr.damage[0]?.type ?? 'Kinetic', amount: rollDice(rng, e.val, { crit }).total })
       const burnTag = tagVal(pr.tags, 'tg_burn')
       if (burnTag) parts.push({ type: 'Burn', amount: burnTag })
       for (const p of parts) if (p.type === 'Heat') heat += p.amount
@@ -320,11 +434,7 @@ export function buildWeaponCtx(bt: Battle, attacker: Unit, w: Weapon, target: Un
   if (bt.has(target, 'prone')) { ctx.accuracy++; ctx.reasons.push('Prone target +1') }
   if (bt.has(target, 'braced')) { ctx.difficulty++; ctx.reasons.push('Braced target -1') }
   if (!melee && bt.isEngaged(attacker) && !ctx.tech) { ctx.difficulty++; ctx.reasons.push('Engaged -1') }
-  if (bt.has(target, 'lockon') && bt.hostile(attacker, target)) {
-    ctx.accuracy++
-    ctx.reasons.push('Lock On +1')
-    if (consume) { bt.removeStatus(target, 'lockon'); ctx.lockOnConsumed = true }
-  }
+  useLockOn(bt, attacker, target, ctx, consume)
   for (const b of [...attacker.bonuses, ...w.bonuses]) {
     if (b.id === 'attack' && typeof b.val === 'number' && !b.accuracy && bt.bonusApplies(b, w)) { ctx.attackBonus += b.val; ctx.reasons.push(`+${b.val} attack`) }
   }
@@ -363,12 +473,15 @@ export function weaponAttack(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, mod
   const pr = bt.profile(w)
   let targets: Unit[] = []
   let tiles: Pos[] | null = null
+  let aimCentre: Pos | null = null
   if (bt.isAoE(pr)) {
     const aimTile = aim.tile ?? (aim.targetId ? bt.unit(aim.targetId)!.pos : u.pos)
     const t = bt.aoeTiles(u, w, aimTile)
     if (typeof t === 'string') return { ctxs: [], ok: false, reason: t }
     tiles = t
-    targets = unitsOnTiles(bt.alive(), t).filter(x => x !== u && (x.kind !== 'deployable' || bt.hostile(u, x)))
+    aimCentre = aimTile
+    const v = bt.aoeTargets(u, w, aimTile)
+    targets = typeof v === 'string' ? [] : v
     bt.emit({ type: 'area', tiles: t, kind: 'attack' })
   } else {
     const t = bt.unit(aim.targetId)
@@ -386,12 +499,13 @@ export function weaponAttack(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, mod
   // roll damage once for all targets
   const overkill = hasTag(pr.tags, 'tg_overkill')
   const ctxs: AttackCtx[] = []
+  const blast = areaShape(bt, u, w)?.shape === 'blast'
   for (const t of targets) {
-    const blast = bt.ranges(u, w).some(r => r.type === 'Blast')
-    bt.blastCentre = blast && aim.tile ? aim.tile : null
+    // a Blast's cover is calculated from its centre
+    bt.blastCentre = blast && aimCentre ? aimCentre : null
     let ctx: AttackCtx
     try { ctx = bt.buildWeaponCtx(u, w, t, mode, true, multi) } finally { bt.blastCentre = null }
-    if (opts.noBonusDamage || w.noBonusDamage) ctx.bonusDamage = []
+    if (opts.noBonusDamage || w.noBonusDamage) { ctx.bonusDamage = []; ctx.noBonusDamage = true }
     if (opts.autoHit) ctx.autoHit = true
     bt.rollToHit(ctx)
     ctxs.push(ctx)
@@ -400,6 +514,7 @@ export function weaponAttack(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, mod
   const dmgNormal: { type: string; amount: number }[] = []
   const dmgCrit: { type: string; amount: number }[] = []
   let overkillHeat = 0
+  const bonusRolls = new Map<string, number>()
   for (const d of pr.damage) {
     const flat = bt.flatDamageBonus(u, w, d.type)
     const r1 = u.flags.averageDamage ? averageRoll(d.val) : rollDice(bt.rng, d.val, { overkill })
@@ -417,16 +532,26 @@ export function weaponAttack(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, mod
       // Brutal (Predator): a natural 20 crit deals maximum damage and bonus damage
       const base = ctx.maxDamage ? pr.damage.map(d => ({ type: d.type, amount: maxOf(d.val) + bt.flatDamageBonus(u, w, d.type) })) : (ctx.crit ? dmgCrit : dmgNormal).map(x => ({ ...x }))
       if (ctx.convertDamage) for (const p of base) if (p.type === 'Kinetic' || p.type === 'Explosive') p.type = ctx.convertDamage
-      // bonus damage (halved vs multiple targets)
-      for (const bd of ctx.bonusDamage) {
-        let a = ctx.maxDamage ? maxOf(bd.val) : rollDice(bt.rng, bd.val, { crit: ctx.crit }).total
-        if (multi) a = Math.ceil(a / 2)
-        base.push({ type: bd.type, amount: a })
+      // bonus damage: part of the same damage packet, rolled once for the whole attack, halved vs multiple targets
+      const seen = new Map<string, number>()
+      const addBonus = (val: string | number, type: string, halve: boolean, source?: string) => {
+        const k0 = `${ctx.crit ? 'c' : 'n'}|${val}`
+        const n = seen.get(k0) ?? 0
+        seen.set(k0, n + 1)
+        const k = `${k0}|${n}`
+        let a = ctx.maxDamage ? maxOf(val) : bonusRolls.get(k)
+        if (a == null) { a = rollDice(bt.rng, val, { crit: ctx.crit }).total; bonusRolls.set(k, a) }
+        if (multi && halve) a = Math.ceil(a / 2)
+        if (source) bt.say(`  ${source}: +${a} bonus damage.`)
+        base.push({ type, amount: a })
       }
-      for (const e of [...pr.onHit, ...(ctx.crit ? pr.onCrit : [])]) if (e.do === 'bonus_damage') {
-        let a = ctx.maxDamage ? maxOf(e.val) : rollDice(bt.rng, e.val, { crit: ctx.crit }).total
-        if (multi) a = Math.ceil(a / 2)
-        base.push({ type: e.type ?? pr.damage[0]?.type ?? 'Kinetic', amount: a })
+      if (!ctx.noBonusDamage) {
+        for (const bd of ctx.bonusDamage) {
+          if (bd.critOnly && !ctx.crit) continue
+          if (bd.onlyIf && !bd.onlyIf(ctx)) continue
+          addBonus(bd.val, bd.type, !bd.notHalved, bd.source)
+        }
+        for (const e of [...pr.onHit, ...(ctx.crit ? pr.onCrit : [])]) if (e.do === 'bonus_damage') addBonus(e.val, e.type ?? pr.damage[0]?.type ?? 'Kinetic', true)
       }
       // Combat Drill: each Overkill activation adds +1d6, chaining while the new die is a 1
       if (ctx.overkillBonus && overkillHeat > 0) {
@@ -449,7 +574,7 @@ export function weaponAttack(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, mod
       if (!ctx.cancelDamage) ctx.damageDealt = bt.applyDamage(t, base, {
         source: u, attack: ctx, ap: hasTag(pr.tags, 'tg_ap') || !!ctx.ap, irreducible: hasTag(pr.tags, 'tg_irreducible') || ctx.irreducible, resistAll,
       })
-      const kb = (tagVal(pr.tags, 'tg_knockback') ?? 0) + u.bonuses.filter(b => b.id === 'knockback' && bt.bonusApplies(b, w)).reduce((a, b) => a + Number(b.val), 0)
+      const kb = knockbackDistance(bt, u, tagVal(pr.tags, 'tg_knockback') ?? 0, w)
       if (kb && !t.destroyed) bt.forceMove(t, u, kb, 1)
       bt.runEffects(u, t, pr.onHit.filter(e => e.do !== 'bonus_damage'), ctx)
       if (ctx.crit) bt.runEffects(u, t, pr.onCrit.filter(e => e.do !== 'bonus_damage'), ctx)
@@ -470,12 +595,14 @@ export function weaponAttack(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, mod
   }
   // costs
   const heatSelf = tagVal(pr.tags, 'tg_heat_self')
-  if (heatSelf && !w.flags?.delayedImpact) bt.addHeat(u, heatSelf)
-  if (overkillHeat) { bt.say(`  Overkill: +${overkillHeat} heat.`); bt.addHeat(u, overkillHeat) }
+  if (heatSelf && !w.flags?.delayedImpact) bt.addHeat(u, heatSelf, u)
+  if (overkillHeat) { bt.say(`  Overkill: +${overkillHeat} heat.`); bt.addHeat(u, overkillHeat, u) }
   if (hasTag(pr.tags, 'tg_loading')) w.loaded = false
   if (w.usesLeft != null) w.usesLeft--
   if (w.recharge != null) w.charged = false
-  if (tiles && pr.onAttack.some(e => e.do !== 'text')) bt.runEffects(u, u, pr.onAttack, undefined)
+  // structured on_attack effects (Gravity Gun: Hull save or damage) hit every character in the affected area
+  const onAttack = pr.onAttack.filter(e => e.do !== 'text')
+  if (tiles && onAttack.length) for (const v of targets) if (!v.destroyed && v.kind !== 'deployable') bt.runEffects(u, v, onAttack, undefined)
   return { ctxs, ok: true }
 }
 
@@ -506,7 +633,7 @@ export function rollToHit(bt: Battle, ctx: AttackCtx) {
     bt.emit({ type: 'attack', attackerId: ctx.attacker.id, targetId: t.id, hit: false, crit: false, weapon: ctx.weapon?.name ?? 'tech', total: 0 })
     return
   }
-  const seesThrough = t.flags.trackedBy === ctx.attacker.id || (ctx.attacker.flags.horusUntil && bt.round <= ctx.attacker.flags.horusUntil) || bt.inRevealField(t)
+  const seesThrough = t.flags.trackedBy === ctx.attacker.id || seesHidden(bt, ctx.attacker, t) || bt.inRevealField(t)
   if ((bt.has(t, 'invisible') || ctx.forceInvisible) && !seesThrough && bt.rng.d(6) <= 3) {
     ctx.hit = false
     ctx.crit = false
@@ -550,7 +677,11 @@ export function runEffects(bt: Battle, src: Unit, target: Unit, effects: Effect[
     const who = e.do !== 'text' && e.do !== 'bonus_damage' && e.do !== 'teleport' && (e as any).target === 'self' ? src : target
     if (who.destroyed && e.do !== 'text') continue
     if ('save' in e && e.save && bt.hostile(src, who) && bt.has(src, 'hidden')) bt.removeStatus(src, 'hidden')
-    const saved = 'save' in e && e.save ? bt.save(who, e.save, st, 0, src) : false
+    // what the save avoids, for "+1 Accuracy on saves to avoid Prone or Knockback" (Stable Structure)
+    const avoids = e.do === 'push' ? 'knockback' : e.do === 'status' && e.status === 'prone' ? 'prone' : undefined
+    if (avoids) who.flags.saveAvoid = avoids
+    let saved: boolean
+    try { saved = 'save' in e && e.save ? bt.save(who, e.save, st, 0, src) : false } finally { if (avoids) delete who.flags.saveAvoid }
     switch (e.do) {
       case 'text':
         bt.say(`  ${stripHtml(e.text)}`)
@@ -608,14 +739,15 @@ export function estimateIncoming(bt: Battle, t: Unit, parts: { type: string; amo
 }
 
 export function shouldBrace(bt: Battle, t: Unit, parts: { type: string; amount: number }[]): boolean {
-  if (t.kind !== 'mech' && !(t.kind === 'npc' && t.stats.structure > 1)) return false
+  // only mechs Brace: NPCs can't Overcharge or Brace (core p. 280)
+  if (t.kind !== 'mech') return false
   if (bt.canSpend(t, 'reaction') !== true) return false
   const est = bt.estimateIncoming(t, parts)
   return est >= t.hp + t.overshield && t.structure <= Math.max(2, t.stats.structure - 1)
 }
 
 export function braceWanted(bt: Battle, t: Unit, attacker: Unit, parts: { type: string; amount: number }[], ctx: AttackCtx): boolean {
-  if (t.policies.brace === 'off' || (t.kind !== 'mech' && !(t.kind === 'npc' && t.stats.structure > 1))) return false
+  if (t.policies.brace === 'off' || t.kind !== 'mech') return false
   if (bt.canSpend(t, 'reaction') !== true) return false
   const est = bt.estimateIncoming(t, parts)
   if (t.policies.brace === 'ask') {
@@ -629,6 +761,7 @@ export function braceWanted(bt: Battle, t: Unit, attacker: Unit, parts: { type: 
 }
 
 export function brace(bt: Battle, t: Unit): boolean {
+  if (t.kind !== 'mech') return false
   if (bt.canSpend(t, 'reaction', 'brace') !== true) return false
   bt.spend(t, 'reaction', 'brace')
   bt.say(`${t.name} BRACES for impact!`, 'status')

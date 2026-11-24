@@ -55,6 +55,7 @@ export function profileFromData(base: WeaponData, p: WeaponProfile, extraTags: T
     onHit: effectsFromData(p.on_hit ?? base.on_hit),
     onCrit: effectsFromData(p.on_crit ?? base.on_crit),
     text: p.effect ?? base.effect,
+    ...(p.skirmish ? { skirmish: true } : {}),
   }
 }
 
@@ -161,13 +162,38 @@ export function deriveMechStats(p: PilotBuild, bonuses: BonusData[]): Stats {
     structure: fs.structure + sum('structure'),
     stress: fs.stress + sum('stress'),
     repcap: fs.repcap + Math.floor(hull / 2) + sum('repcap'),
-    size: fs.size + sum('size'),
+    size: mechSize(fs.size, sum('size')),
     hull, agi, sys, eng,
     grit,
     limitedBonus: Math.floor(eng / 2) + sum('limited_bonus'),
     attackBonus: grit,
     activations: 1,
   }
+}
+
+/**
+ * Size after Size bonuses (Fomorian Frame, lancer-data): each +1 is one increment (1/2 → 1, 1 → 2, 2 → 3),
+ * capped at Size 3. Without a bonus the frame's own Size stands.
+ */
+export function mechSize(frameSize: number, bonus: number): number {
+  if (bonus <= 0) return frameSize
+  let size = frameSize
+  for (let i = 0; i < bonus; i++) size = size < 1 ? 1 : size + 1
+  return Math.max(frameSize, Math.min(Lancer.rules.max_frame_size ?? 3, size))
+}
+
+/**
+ * Integrated items a talent grants at `rank`. A talent whose ranks each grant an integrated item (Engineer's
+ * Prototype, Walking Armory's Ammo Case) upgrades that one item: only the highest rank's version is fitted.
+ */
+export function talentIntegrated(talentId: string, rank: number): string[] {
+  const td = Lancer.talents.get(talentId)
+  let items: string[] = []
+  for (let i = 0; i < Math.min(rank, td?.ranks.length ?? 0); i++) {
+    const it = td!.ranks[i].integrated ?? []
+    if (it.length) items = [...it]
+  }
+  return items
 }
 
 export function mechSP(p: PilotBuild): { used: number; max: number } {
@@ -204,22 +230,24 @@ export function buildMechUnit(p: PilotBuild, side: 'player' | 'enemy' = 'player'
     for (const cb of m.bonusEffects) mountBonuses.push(...(Lancer.coreBonuses.get(cb)?.bonuses ?? []))
     for (const s of m.slots) {
       if (!s.weaponId) continue
-      const w = weaponFromData(s.weaponId, mi, { modId: s.modId, profile: s.profile, bonuses: mountBonuses, limitedBonus: stats.limitedBonus })
-      if (w && m.type === 'CB-Integrated') w.flags = { cbIntegrated: true }
+      // a COMP/CON 'Integrated' mount repeats the frame's (or a talent's) integrated weapon: that copy is added below
+      if (m.type === 'Integrated') continue
+      const w = weaponFromData(s.weaponId, mi, { modId: m.type === 'CB-Integrated' ? null : s.modId, profile: s.profile, bonuses: mountBonuses, limitedBonus: stats.limitedBonus })
+      // the Integrated Weapon core bonus mount is integrated: it can't be destroyed or modified
+      if (w && m.type === 'CB-Integrated') { w.flags = { cbIntegrated: true }; w.integrated = true }
       if (w) weapons.push(w)
     }
   })
-  // integrated weapons from frame core systems / talents
+  // integrated weapons from frame core systems / talents (and any other weapon an imported Integrated mount carries)
   const integrated = [...(f.core_system.integrated ?? [])]
-  for (const t of p.talents) {
-    const td = Lancer.talents.get(t.id)
-    for (let i = 0; i < Math.min(t.rank, td?.ranks.length ?? 0); i++) integrated.push(...(td!.ranks[i].integrated ?? []))
-  }
+  for (const t of p.talents) integrated.push(...talentIntegrated(t.id, t.rank))
+  for (const m of p.mech.mounts) if (m.type === 'Integrated') for (const s of m.slots) if (s.weaponId && !integrated.includes(s.weaponId)) integrated.push(s.weaponId)
   const systems: SystemInst[] = []
   for (const id of integrated) {
     if (weapons.some(w => w.dataId === id)) continue
     const w = weaponFromData(id, -1, { limitedBonus: stats.limitedBonus })
-    if (w) weapons.push(w)
+    // integrated weapons can't be destroyed, removed, replaced or modified (core book: mounts)
+    if (w) { w.integrated = true; weapons.push(w) }
     else { const s = systemFromData(id, stats.limitedBonus); if (s) systems.push(s) }
   }
   for (const id of p.mech.systems) {

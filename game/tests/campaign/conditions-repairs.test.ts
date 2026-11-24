@@ -197,6 +197,14 @@ describe('repairs (core book: HP 1, weapon/system 1, Structure 2, Stress 2)', ()
     expect(c.repairs).toBe(5 - sc)
   })
 
+  // Audit 2: restoring a Structure is its own repair (core p.82); it used to refill HP as well
+  it('repairing 1 Structure does not also restore HP', () => {
+    const { run, p, c, u } = damaged()
+    applyRepair(run, p.id, 'structure')
+    expect(c.structure).toBe(u.stats.structure)
+    expect(c.hp).toBe(1)
+  })
+
   it('refuses a repair it cannot pay for, or one that is not needed', () => {
     const { run, p, c } = damaged()
     c.repairs = 1

@@ -233,6 +233,8 @@ export class Battle {
   cacheVersion = -1
   invalidateTerrain() {
     this.terrainVersion++
+    // cover may have changed or been destroyed: Hidden characters re-check it (core p.69)
+    movement.recheckHidden(this)
   }
   checkCaches() {
     if (this.cacheVersion !== this.terrainVersion || this.losCache.size > 50000) {
@@ -317,8 +319,9 @@ export class Battle {
     return u.statuses.some(x => x.id === s)
   }
   isEngaged(u: Unit, at: Pos = u.pos): boolean {
-    if (u.kind === 'deployable') return false
-    return this.alive().some(o => o !== u && this.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc') && !this.has(o, 'hidden') &&
+    // Hidden characters don't cause engagement, and aren't engaged themselves (core p.77); drones are characters (p.78)
+    if (u.kind === 'deployable' || this.has(u, 'hidden')) return false
+    return this.alive().some(o => o !== u && this.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc' || o.kind === 'drone') && !this.has(o, 'hidden') &&
       this.adjacent(u, o, at))
   }
   /** symmetric: both sides use ground elevation (flying doesn't lift a unit out of reach of its neighbours) */
@@ -337,6 +340,7 @@ export class Battle {
     // flyers that are Immobilized or Stunned fall (they land; they take off again when they next move)
     if ((id === 'immobilized' || id === 'stunned') && u.flying && !data?.grapple && !data?.lift) this.land(u, `${id}`)
     const inst: StatusInstance = { id, source: source?.id, data }
+    if (source?.flags.techActing) inst.tech = true // from a tech action (ICEOUT)
     if (duration === 'end_of_turn') { inst.clockUnit = this.activeId ?? u.id; inst.turnsLeft = 1 }
     else if (duration === 'next_turn_end_target') { inst.clockUnit = u.id; inst.turnsLeft = u.activeTurn ? 2 : 1 }
     else if (duration === 'next_turn_end_source' && source) { inst.clockUnit = source.id; inst.turnsLeft = source.activeTurn ? 2 : 1 }
@@ -375,6 +379,8 @@ export class Battle {
       this.emit({ type: 'status', unitId: u.id, status: id, added: false })
       this.say(`${u.name} is no longer ${id}.`, 'status')
       for (const s of scriptsFor(u)) s.onStatusRemoved?.(this, u, id)
+      // Hidden while Invisible lasts past Invisible only in cover (core p.69)
+      if (id === 'invisible') movement.recheckHidden(this)
     }
   }
   tickStatuses(clock: Unit, atStart: boolean) {
@@ -422,21 +428,39 @@ export class Battle {
   check(u: Unit, stat: Stat, extraAcc = 0): boolean {
     if ((stat === 'hull' || stat === 'agi') && this.has(u, 'stunned')) { this.say(`${u.name} automatically fails the ${stat.toUpperCase()} check (stunned).`); return false }
     const acc = this.accuracyFromStatuses(u, 'check', stat) + extraAcc
-    const d = this.rollD20(u, 'check'), a = rollAccuracy(this.rng, acc)
-    const total = d + u.stats[stat] + a.bonus
-    const ok = total >= 10
-    this.say(`${u.name} ${stat.toUpperCase()} check: ${total} (${d}${fmtAcc(a.bonus)}+${u.stats[stat]}) ${ok ? 'success' : 'failure'}.`)
-    return ok
+    const roll = () => {
+      const d = this.rollD20(u, 'check'), a = rollAccuracy(this.rng, acc)
+      const total = d + u.stats[stat] + a.bonus
+      const ok = total >= 10
+      this.say(`${u.name} ${stat.toUpperCase()} check: ${total} (${d}${fmtAcc(a.bonus)}+${u.stats[stat]}) ${ok ? 'success' : 'failure'}.`)
+      return ok
+    }
+    const ok = roll()
+    return ok || (this.offerReroll(u, 'check', stat) && roll())
+  }
+  /** A failed check or save: a script (e.g. a Commander's Voice of Authority) may let it be rerolled once. */
+  offerReroll(u: Unit, kind: 'check' | 'save', stat: Stat): boolean {
+    for (const o of this.alive()) for (const s of scriptsFor(o)) if (s.rerollFailed?.(this, o, u, kind, stat)) return true
+    return false
   }
   /** Save vs a source's save target. */
   save(u: Unit, stat: Stat, target: number, extraAcc = 0, source?: Unit): boolean {
+    if (source && source !== u && !source.destroyed) for (const sc of scriptsFor(source)) sc.onSaveForced?.(this, source, u, stat)
     if ((stat === 'hull' || stat === 'agi') && this.has(u, 'stunned')) { this.say(`${u.name} automatically fails the ${stat.toUpperCase()} save (stunned).`); return false }
     if ((stat === 'hull' || stat === 'agi') && u.flags.autoSaveUntil != null && this.round <= u.flags.autoSaveUntil) { this.say(`${u.name} automatically passes the ${stat.toUpperCase()} save.`); return true }
     const acc = this.accuracyFromStatuses(u, 'save', stat) + extraAcc
-    const d = this.rollD20(u, 'save'), a = rollAccuracy(this.rng, acc)
-    const total = d + u.stats[stat] + a.bonus
-    const ok = total >= target
-    this.say(`${u.name} ${stat.toUpperCase()} save vs ${target}: ${total} — ${ok ? 'success' : 'failure'}.`)
+    const roll = () => {
+      const d = this.rollD20(u, 'save'), a = rollAccuracy(this.rng, acc)
+      const total = d + u.stats[stat] + a.bonus
+      const ok = total >= target
+      this.say(`${u.name} ${stat.toUpperCase()} save vs ${target}: ${total} — ${ok ? 'success' : 'failure'}.`)
+      return ok
+    }
+    // a save forced during the source's own turn (Raleigh Full Metal Jacket)
+    if (source && source !== u && source.activeTurn) source.flags['turn:forcedSave'] = true
+    let ok = roll()
+    if (!ok && this.offerReroll(u, 'save', stat)) ok = roll()
+    for (const o of this.alive()) for (const sc of scriptsFor(o)) sc.onAnySave?.(this, o, u, stat, ok, source)
     if (!ok && source && source !== u && !source.destroyed) for (const sc of scriptsFor(source)) sc.onSaveFailed?.(this, source, u, stat)
     return ok
   }
@@ -530,9 +554,9 @@ export class Battle {
   stepCost(u: Unit, from: Pos, to: Pos): number { return movement.stepCost(this, u, from, to) }
 
   /** Dijkstra over anchor positions. Returns reachable stop positions with cost and path. */
-  reachable(u: Unit, budget: number, opts: { ignoreEngagement?: boolean; noTakeOff?: boolean } = {}): Map<string, { pos: Pos; cost: number; prev?: string }> { return movement.reachable(this, u, budget, opts) }
+  reachable(u: Unit, budget: number, opts: movement.ReachOpts = {}): Map<string, { pos: Pos; cost: number; prev?: string }> { return movement.reachable(this, u, budget, opts) }
 
-  pathTo(u: Unit, dest: Pos, budget: number, opts: { ignoreEngagement?: boolean; noTakeOff?: boolean } = {}): { path: Pos[]; cost: number } | null { return movement.pathTo(this, u, dest, budget, opts) }
+  pathTo(u: Unit, dest: Pos, budget: number, opts: movement.ReachOpts = {}): { path: Pos[]; cost: number } | null { return movement.pathTo(this, u, dest, budget, opts) }
 
   canMove(u: Unit, mode: MoveOpts['mode']): true | string { return movement.canMove(this, u, mode) }
 
@@ -547,7 +571,7 @@ export class Battle {
   undoMove(u: Unit) { return this.command('undoMove', [u], () => movement.undoMove(this, u)) }
 
   /** Move along an explicit path (straight swings, scripted dashes): same triggers as a normal move. */
-  moveAlong(u: Unit, path: Pos[]) { return movement.moveAlong(this, u, path) }
+  moveAlong(u: Unit, path: Pos[], opts: { noReactions?: boolean } = {}) { return movement.moveAlong(this, u, path, opts) }
   followPath(u: Unit, path: Pos[]) { return movement.followPath(this, u, path) }
   updateEngagementTerminal(_u: Unit) {}
 
@@ -572,6 +596,14 @@ export class Battle {
   validTarget(u: Unit, w: Weapon, t: Unit, from: Pos = u.pos): true | string { return attacks.validTarget(this, u, w, t, from) }
 
   aoeTiles(u: Unit, w: Weapon, aim: Pos): Pos[] | string { return attacks.aoeTiles(this, u, w, aim) }
+  /** The units a weapon's area attack aimed at `aim` would affect (line of sight, height, own Blast, deployables). */
+  aoeTargets(u: Unit, w: Weapon, aim: Pos): Unit[] | string { return attacks.aoeTargets(this, u, w, aim) }
+  /** Who an area pattern on `tiles` affects (for scripted and system areas): see attacks.areaVictims. */
+  areaVictims(u: Unit, tiles: Pos[], shape: attacks.AreaShape, size: number, opts: { centre?: Pos; origin?: Unit; ignoreLos?: boolean } = {}): Unit[] { return attacks.areaVictims(this, u, tiles, shape, size, opts) }
+  /** Add bonus damage to an attack's own damage packet (Armor once, rolled once, halved vs multiple targets): see attacks.addBonusDamage. */
+  addBonusDamage(ctx: AttackCtx, val: string | number, type?: string, opts: attacks.BonusDamageOpts = {}) { return attacks.addBonusDamage(this, ctx, val, type, opts) }
+  /** A knockback's length after bonuses (Titanomachy Mesh); 0 stays 0. Without a weapon it counts as a melee attack. */
+  knockbackDistance(u: Unit, base: number, w?: Weapon): number { return attacks.knockbackDistance(this, u, base, w) }
 
   /** Damage bonus (flat) from bonuses, per damage type */
   flatDamageBonus(u: Unit, w: Weapon, type: string): number { return attacks.flatDamageBonus(this, u, w, type) }
@@ -679,7 +711,7 @@ export class Battle {
 
   overcharge(u: Unit) { return this.command('overcharge', [u], () => terrain.overcharge(this, u)) }
 
-  stabilize(u: Unit, mode: 'cool' | 'repair', clear?: { unit: Unit; status?: StatusId | 'burn' | 'reload' }) { return this.command('stabilize', [u, mode, clear], () => terrain.stabilize(this, u, mode, clear)) }
+  stabilize(u: Unit, mode: 'cool' | 'repair', clear?: { unit: Unit; status?: StatusId | 'burn' | 'reload' }, opts: { paid?: boolean } = {}) { return this.command('stabilize', [u, mode, clear, opts], () => terrain.stabilize(this, u, mode, clear, opts)) }
 
   disengage(u: Unit) { return this.command('disengage', [u], () => terrain.disengage(this, u)) }
 

@@ -128,7 +128,8 @@ describe('Skirmisher', () => {
   it('2 Lockbreaker: after you Skirmish, "you may move 2 spaces. This movement ignores engagement"', () => {
     const { a, e, b } = setup([['t_skirmisher', 2]], { x: 5, y: 9 })
     addUnit(b, mech({ callsign: 'Brawler' }, 'enemy'), 6, 4)
-    expect(b.customActions(a).some(c => /Lockbreaker/.test(c.name))).toBe(false)
+    // "before or after you Skirmish": offered before it too, while a quick action is left for the Skirmish
+    expect(custom(b, a, /Lockbreaker/).text).toMatch(/Before/)
     rigDice(b, 20, 1)
     b.skirmish(a, w(a, 'mw_assault_rifle'), { targetId: e.id })
     b.useCustom(a, custom(b, a, /Lockbreaker/), { x: 3, y: 4 })

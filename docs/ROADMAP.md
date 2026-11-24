@@ -51,7 +51,7 @@ Useful commands, all run from `game/`:
   - Grunts die to external heat
   - Ultras refresh reactions every turn
   - NPCs and tech attacks can't crit
-- A quick action can't be repeated in a turn from normal actions. It can be repeated when paid with a free-action quick: Overcharge, Everest Initiative, ASURA. Full Tech still gives two quick techs.
+- A quick action can't be repeated in a turn from normal actions. It can be repeated when paid with a free-action quick: Overcharge, Everest Initiative. (ASURA's extra actions obey the duplicate rule.) Full Tech still gives two quick techs.
 
 ### Stability and performance
 - Caches for the map, line of sight and cover, plus per-unit script lists and single-pass AI pathing. The AI takes about 15 ms per turn on average (p95 about 35 ms).
@@ -328,6 +328,42 @@ Out of the 392 items in lancer-data, all 392 are fully executed. The rest show a
 | Core bonuses | 9 | 4 | 17 | 0 |
 
 ---
+
+### Rules audit 2 (core book PDF and lancer-data errata)
+Ten parallel audits checked 700 rules and items: the combat chapter line by line, the building rules, NPC rules, all 392 player items (by manufacturer) and every talent rank.
+- **Results:**
+  - 429 matched.
+  - 189 mismatches and 33 unmodelled rules were found. All were fixed except the ones the owner ruled out of scope (listed in `docs/ENGINE.md`).
+  - Each of the 34 ambiguous rules was settled by the owner.
+- **Core rules:**
+  - Every weapon has Threat 1, so ranged weapons Overwatch.
+  - Flanking and hard cover follow the book, including Size 2+ targets and shooting over your own cover.
+  - Area attacks need line of sight. Cones start 1 wide. Areas hit your own deployables, and your own Blast can hit you.
+  - Each reaction refreshes at round start.
+  - Hidden ends when a hostile gains line of sight or the cover is destroyed.
+  - Climbing, teleport and flight rules (straight lines; move or land) follow the book.
+  - Overcharge pays first.
+  - Stabilize, Shut Down, grapple contests and System Trauma (the player chooses) follow the book.
+  - Scripted item actions now check their range and target side for the player too.
+- **Building:**
+  - one AI per mech
+  - integrated weapons can't be destroyed and take no mods
+  - talent ranks in order
+  - mount types checked
+  - Unique mods
+  - the Fomorian Size cap
+  - one Engineer or Walking Armory item
+- **NPCs:**
+  - NPCs never Brace.
+  - One Recharge roll per NPC, and every NPC rolls.
+  - Grunts take nothing on a passed save and ignore Overshield.
+  - 1-Stress heat clears like a mech's.
+  - Veterans get one trait per tier. Elites get an extra optional system and refresh reactions once per round.
+  - Standard encounters field at least 1 NPC per player.
+- **Items:** about 130 item, talent and core bonus fixes. New features:
+  - talents: Engineer 2 Revision, Technophile, Leader 2/3, Hacker 2's real invades, Ace 1
+  - frames and systems: Minotaur Metafold Maze, Tokugawa Overclock, Iskander Mine Deployers, Blackbeard Lock/Kill, Manticore Castigation, Balor Self-Perpetuating, Kai Bioplating, External Ammo Feed
+- **Balance:** these change balance noticeably (Overwatch for every gun, encounter sizes, NPC fixes). A Balance Tester pass is due.
 
 ### Rules fixes (owner-reported)
 - **Weapons can attack more than once a turn.** The limit is on actions, not weapons: Skirmish is a quick action, so a second Skirmish needs a free action (Overcharge, Initiative...), but it may use the same weapon. Only item text restricts a weapon (Loading, Limited, Ordnance, UNCLE).

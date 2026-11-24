@@ -113,9 +113,8 @@ describe('systems: control', () => {
   it('Tracking Bug: on a hit "They can\'t Hide and you ignore their Invisible status"', () => {
     const { a, e, b } = setup(['ms_tracking_bug'])
     rigDice(b, 20, 20)
-    b.addStatus(e, 'hidden', 'until_cleared', e)
     b.useCustom(a, custom(b, a, /Tracking Bug/), e)
-    expect(b.has(e, 'hidden')).toBe(false)
+    expect(b.canHide(e)).toBe(false)
     b.addStatus(e, 'invisible', 'until_cleared', e)
     a.stats.attackBonus = 50
     rigDice(b, 20, 10) // no invisibility d6 is rolled before this attack roll
@@ -225,7 +224,9 @@ describe('systems: defence and support', () => {
     rigDice(b, 6, 3, 3) // the rifle's damage and the teleport distance
     const reactions = a.reactionsLeft
     b.weaponAttack(e, w(e, 'mw_assault_rifle'), { targetId: a.id }, 'free')
-    expect(a.pos).toEqual({ x: 5, y: 1 }) // 3 spaces, away from the attacker
+    // a teleport of up to 3 spaces, away from the attacker
+    expect(Math.max(Math.abs(a.pos.x - 5), Math.abs(a.pos.y - 4))).toBe(3)
+    expect(b.distance(a, e)).toBe(7)
     expect(a.reactionsLeft).toBe(reactions - 1)
   })
   it('Black ICE Module: tech attacks against you get +1 difficulty, +1 more each time, "resetting to +1 difficulty" past +3', () => {
@@ -332,11 +333,14 @@ describe('systems: defence and support', () => {
     b.weaponAttack(a, w(a, 'mw_assault_rifle'), { targetId: e.id }, 'free')
     expect(e.hp).toBe(e.stats.hp)
   })
-  it('Stable Structure: "+1 Accuracy on saves to avoid Prone or Knockback" (Hull saves)', () => {
-    const { a, b } = setup(['ms_stable_structure'])
+  it('Stable Structure: "+1 Accuracy on saves to avoid Prone or Knockback" (any stat), not on other saves', () => {
+    const { a, e, b } = setup(['ms_stable_structure'])
     rigDice(b, 20, 10)
-    rigDice(b, 6, 6) // the accuracy die
-    expect(b.save(a, 'hull', 10 + a.stats.hull + 6)).toBe(true)
+    expect(b.save(a, 'hull', 10 + a.stats.hull + 1)).toBe(false) // a plain Hull save: no accuracy die
+    rigDice(b, 20, 10)
+    rigDice(b, 6, 6) // the accuracy die on an Agility save against Prone
+    b.runEffects(e, a, [{ do: 'status', status: 'prone', save: 'agi' }], undefined, 10 + a.stats.agi + 6)
+    expect(b.has(a, 'prone')).toBe(false)
   })
   it('Rapid Burst Jump Jet System: "You can fly when you Boost", landing at the end of the turn', () => {
     const { a, e, b } = setup(['ms_rapid_burst_jump_jet_system'])
@@ -346,12 +350,14 @@ describe('systems: defence and support', () => {
     expect(a.flying).toBe(false)
     void e
   })
-  it('Caltrop Launcher: the Burst 1 area "becomes difficult terrain" and mechs in it take 1d3 AP explosive', () => {
+  it('Caltrop Launcher: the Burst 1 area "becomes difficult terrain" and mechs that "end their turn within it" take 1d3 AP explosive', () => {
     const { a, e, b } = setup(['ms_caltrop_launcher'], { x: 5, y: 8 })
     b.useCustom(a, custom(b, a, /Caltrop/), { x: 5, y: 8 })
     expect(b.stepCost(e, { x: 5, y: 9 }, { x: 5, y: 8 })).toBe(2)
+    toEnemy(b, a, e) // starting a turn inside does nothing
+    expect(e.hp).toBe(e.stats.hp)
     rigDice(b, 3, 2)
-    toEnemy(b, a, e) // the enemy starts its turn inside the field
+    b.endTurn(e) // ending it there does
     expect(e.hp).toBe(e.stats.hp - 2)
   })
 })
@@ -381,8 +387,9 @@ describe('systems: tech and movement', () => {
   it('Eye of Horus: "characters within Sensors don\'t benefit from Hidden … against you"', () => {
     const { a, e, b } = setup(['ms_eye_of_horus'])
     b.addStatus(e, 'hidden', 'until_cleared', e)
+    expect(b.validTarget(a, w(a, 'mw_assault_rifle'), e)).toBe('Hidden')
     b.useCustom(a, custom(b, a, /Eye of Horus/))
-    expect(b.has(e, 'hidden')).toBe(false)
+    expect(b.validTarget(a, w(a, 'mw_assault_rifle'), e)).toBe(true)
   })
   it('Bulwark Mods: "ignore difficult terrain"; High-Stress Mag Clamps: climb "as flat ground"', () => {
     const map = flatMap(16, 16, (x, y) => (x === 5 && y === 6 ? { h: 3 } : undefined))

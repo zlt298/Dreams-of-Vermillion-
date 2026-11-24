@@ -31,6 +31,7 @@ describe('Ace', () => {
   it('Ace 3 (Supersonic): spin up and nominate a target when ending the turn flying', () => {
     const { a, b } = setup9([['t_ace', 3]])
     a.flying = true
+    b.move(a, { x: a.pos.x + 1, y: a.pos.y }) // a flyer must move to stay up (core p.63)
     b.useCustom(a, custom(b, a, /Spin Up/))
     b.endTurn(a)
     expect(a.flags.supersonic).toBeDefined()
@@ -38,6 +39,7 @@ describe('Ace', () => {
   it('Ace 3: Supersonic flies you next to the nominee when its turn ends', () => {
     const { a, e, b } = setup12([['t_ace', 3]])
     a.flying = true
+    b.move(a, { x: a.pos.x + 1, y: a.pos.y }) // a flyer must move to stay up (core p.63)
     b.useCustom(a, custom(b, a, /Spin Up/))
     b.endTurn(a)
     expect(a.flags.supersonic).toBe(e.id)
@@ -274,9 +276,11 @@ describe('Leader', () => {
     const { e, b } = setup9([['t_leader', 3]])
     const ally = pregenUnit('Sniper'); ally.pos = { x: 6, y: 4 }; b.units.push(ally)
     ally.stats.armor = 0
+    ally.flags.leaderDie = b.units[0].id // it holds the Leader's die (Inspiring Presence spends the ally's die)
     const hp = ally.hp
     b.applyDamage(ally, [{ type: 'Kinetic', amount: 8 }], { source: e })
     expect(hp - ally.hp).toBeLessThan(8)
+    expect(ally.flags.leaderDie).toBeUndefined()
   })
 })
 
@@ -294,6 +298,7 @@ describe('Siege Specialist', () => {
     const { a, e, b } = setupT([['t_siege_specialist', 3]], { weapons: [['Heavy', 'mw_heavy_machine_gun']] })
     const e2 = pregenUnit('Hacker', 'enemy'); e2.pos = { x: 6, y: 8 }; b.units.push(e2)
     e2.stats.armor = 0
+    e2.reactionsLeft = 0 // it can't drop Prone as a reaction, so it takes the blast
     const hp = e2.hp, pos = { ...e2.pos }
     const ctx = b.newAttackCtx(a, e, { weapon: a.weapons[0], hit: true, crit: true })
     getScript('t_siege_specialist:3')!.afterAttack!(b, a, ctx, 'attacker')
@@ -308,7 +313,7 @@ describe('Spotter', () => {
     const ally = pregenUnit('Assault'); ally.pos = { x: 5, y: 4 }; b.units.push(ally)
     e.pos = { x: 4, y: 7 }
     b.lockOn(a, e)
-    expect(b.log.some(l => /fires on .*'s mark/.test(l.text))).toBe(true)
+    expect(b.log.some(l => /acts on .*'s mark/.test(l.text))).toBe(true)
   })
 })
 

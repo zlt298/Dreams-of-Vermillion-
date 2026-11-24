@@ -2,7 +2,7 @@
 import { scriptsFor } from '../rules/effects/registry'
 import { blankTurnState, defaultPolicies, nextUid, weaponFromData } from '../rules/stats'
 import type { Profile, SystemInst, Unit, Weapon } from '../rules/types'
-import { type EnemyTeam, type EnemyUnitDef, type NpcStats, type Tier, applyTemplates, baselineStats, unitBudget } from './ruleset'
+import { type EnemyTeam, type EnemyUnitDef, type NpcStats, type Tier, TEMPLATE_RULES, applyTemplates, baselineStats, finalizeStats, unitBudget, veteranTraitsOf, MIN_STANDARD_PER_PC } from './ruleset'
 
 const ROLE_COLORS: Record<string, string> = {
   Striker: '#d9534f', Artillery: '#e08e2b', Controller: '#9b59b6', Defender: '#7f8c8d', Support: '#2e9e6b', Biological: '#a0522d',
@@ -12,7 +12,7 @@ export function npcStats(def: EnemyUnitDef, tier: Tier): NpcStats {
   const s = def.baseStats ? applyTemplates({ ...def.baseStats }, def.templates) : baselineStats(def.role, tier, def.templates)
   for (const f of def.features) if (f.type === 'trait' && f.stats) for (const [k, v] of Object.entries(f.stats)) (s as any)[k] += v
   for (const [k, v] of Object.entries(def.stats ?? {})) (s as any)[k] = v
-  return s
+  return finalizeStats(s, def.templates)
 }
 
 export function buildNpc(def: EnemyUnitDef, tier: Tier, index = 0): Unit {
@@ -52,7 +52,7 @@ export function buildNpc(def: EnemyUnitDef, tier: Tier, index = 0): Unit {
   if (templates.includes('Veteran')) {
     const best = (['hull', 'agi', 'sys', 'eng'] as const).reduce((a, k) => (s[k] > s[a] ? k : a), 'hull' as 'hull' | 'agi' | 'sys' | 'eng')
     traits.push(`veterancy:${def.veterancy ?? best}`)
-    if (def.veteranTrait) traits.push(def.veteranTrait)
+    traits.push(...veteranTraitsOf(def))
   }
   if (templates.includes('Ultra')) traits.push('deadly', 'legendary', 'reflex')
   if (traits.includes('insulated')) immune.push('burn')
@@ -76,7 +76,7 @@ export function buildNpc(def: EnemyUnitDef, tier: Tier, index = 0): Unit {
     // only Veterans and Ultras can score critical hits
     canCrit: templates.includes('Veteran') || templates.includes('Ultra'),
     ...blankTurnState(), activationsLeft: s.activations,
-    bonuses: [], flags: { budget: unitBudget({ ...def, count: 1 }), description: def.description },
+    bonuses: [], flags: { budget: unitBudget({ ...def, count: 1 }), description: def.description, ...(templates.some(t => TEMPLATE_RULES[t]?.reactionsEachTurn) ? { reactionsEachTurn: true } : {}) },
     destroyed: false, policies: defaultPolicies(), color: def.color ?? ROLE_COLORS[def.role],
   }
   for (const sc of scriptsFor(unit)) sc.init?.(unit)
@@ -94,6 +94,21 @@ export function buildTeam(team: EnemyTeam, squadSize = team.designedFor): Unit[]
       if (ts.includes('Ultra')) continue
       const c = d.count ?? 1
       d.count = Math.max(ts.includes('Grunt') ? 1 : c > 1 ? 1 : c, Math.round(c * ratio))
+    }
+  }
+  // a rescaled standard encounter keeps at least one NPC (or its Grunt equivalent) per player: top up with the
+  // cheapest units (at its design size the validator already holds a standard team to that floor)
+  if (ratio !== 1 && (team.kind ?? 'standard') === 'standard') {
+    const spent = () => defs.reduce((a, d) => a + unitBudget(d), 0)
+    const cost = (d: EnemyUnitDef) => unitBudget({ ...d, count: 1 })
+    const filler = defs.filter(d => !(d.templates ?? []).includes('Ultra')).sort((a, b) => cost(a) - cost(b))
+    for (let guard = 0; filler.length && spent() < squadSize * MIN_STANDARD_PER_PC && guard < 40; guard++) {
+      // round-robin over the units that don't overshoot what's missing (the cheapest one if none fits)
+      const need = squadSize * MIN_STANDARD_PER_PC - spent()
+      const fits = filler.filter(d => cost(d) <= need)
+      const pick = fits.length ? fits : filler.slice(0, 1)
+      const d = pick[guard % pick.length]
+      d.count = (d.count ?? 1) + 1
     }
   }
   for (const d of defs) for (let i = 0; i < (d.count ?? 1); i++) units.push(buildNpc(d, team.tier, i))

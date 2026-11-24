@@ -11,6 +11,7 @@ import { blastTiles, burstTiles, coneTiles, distanceToTile, footprint, hasLineOf
 import { rollDice } from '../rng'
 import { blankTurnState, defaultPolicies, nextUid, normalizeStatus } from '../stats'
 import type { Pos, Stat, SystemInst, Unit, Weapon } from '../types'
+import { pointUnit } from '../grid'
 import { getScript, type Activation, type CustomAction } from './registry'
 
 const statOf = (s?: string): Stat | undefined =>
@@ -53,7 +54,10 @@ function rangeVal(a: { range?: { type: string; val: any }[] }, type: string): nu
 
 function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: SystemInst): CustomAction {
   const blast = rangeVal(a, 'Blast'), burst = rangeVal(a, 'Burst'), line = rangeVal(a, 'Line'), cone = rangeVal(a, 'Cone')
+  // a Line, Cone or Burst that also lists a Range is drawn from a point within that Range (core p. 64): Napalm Grenade
+  const thrown = !blast && (burst != null || line != null || cone != null) && rangeVal(a, 'Range') != null
   let range = rangeVal(a, 'Range') ?? rangeVal(a, 'Threat') ?? (a.activation === 'Invade' ? u.stats.sensors : 1)
+  const baseRange = range
   if (u.flags.assaultLauncher && sys && Lancer.systems.get(sys.dataId)?.tags?.some(t => t.id === 'tg_grenade')) range = Math.max(range, 15)
   const area = burst ? { shape: 'burst' as const, size: burst } : blast ? { shape: 'blast' as const, size: blast } : line ? { shape: 'line' as const, size: line } : cone ? { shape: 'cone' as const, size: cone } : undefined
   const isTech = a.activation === 'Invade' || a.activation === 'Quick Tech' || a.activation === 'Full Tech'
@@ -62,8 +66,8 @@ function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: 
     name: a.name,
     activation: activationOf(a.activation) ?? 'quick',
     text: stripHtml(a.detail ?? ''),
-    target: burst ? 'self' : area ? 'tile' : 'enemy',
-    range: burst ? undefined : range,
+    target: burst && !thrown ? 'self' : area ? 'tile' : 'enemy',
+    range: burst && !thrown ? undefined : range,
     techOption: a.activation === 'Invade' ? 'invade' : undefined,
     area,
     sourceUid: sys?.uid,
@@ -71,20 +75,45 @@ function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: 
     run: (bt, self, target) => {
       spendUse(sys)
       let victims: Unit[] = []
+      const aim = (target && 'x' in target ? target : (target as Unit | undefined)?.pos) ?? self.pos
       if (area) {
         let tiles: Pos[] = []
         const aim = (target && 'x' in target ? target : (target as Unit | undefined)?.pos) ?? self.pos
-        if (burst) tiles = burstTiles(bt.map, self, burst)
+        // the pattern starts from the user, or from the impact point of a thrown one
+        let from: Unit = self
+        if (thrown) {
+          if (distanceToTile(bt.map, self, aim) > range) throw new Error('Out of range')
+          if (!hasLineOfSightToTile(bt.effectiveMap(), self, aim)) throw new Error('No line of sight')
+          from = pointUnit(aim)
+        }
+        if (burst) tiles = burstTiles(bt.map, from, burst)
         else if (blast) {
           if (distanceToTile(bt.map, self, aim) > range) throw new Error('Out of range')
           if (!hasLineOfSightToTile(bt.effectiveMap(), self, aim)) throw new Error('No line of sight')
+          // Iskander Assault Launcher: a throw beyond the grenade's own range uses it up for the round
+          if (distanceToTile(bt.map, self, aim) > baseRange) self.flags.assaultLauncher = false
           tiles = blastTiles(bt.map, aim, blast)
+        } else if (thrown) {
+          // "a path of your choice from its impact location": pick one of the eight directions
+          const dirs = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]
+          const names = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east']
+          const pattern = (i: number) => (line ? lineTiles : coneTiles)(bt.map, from, { x: aim.x + dirs[i][0], y: aim.y + dirs[i][1] }, (line ?? cone)!)
+          const score = (i: number) => bt.areaVictims(self, pattern(i), line ? 'line' : 'cone', (line ?? cone)!, { origin: from }).reduce((n, v) => n + (bt.hostile(self, v) ? 1 : -1.5), 0)
+          let best = 0
+          for (let i = 1; i < 8; i++) if (score(i) > score(best)) best = i
+          const i = bt.choose({ kind: 'pattern_direction', unit: self, title: a.name, text: `Which way does the ${line ? 'line' : 'cone'} go from the impact point?`, options: names.map(n => ({ label: n })), defaultIndex: best })
+          tiles = pattern(i)
         } else if (line) tiles = lineTiles(bt.map, self, aim, line)
         else if (cone) tiles = coneTiles(bt.map, self, aim, cone)
         bt.emit({ type: 'area', tiles, kind: 'attack' })
-        victims = unitsOnTiles(bt.alive(), tiles).filter(v => v !== self)
+        const shape = burst ? 'burst' : blast ? 'blast' : line ? 'line' : 'cone'
+        victims = bt.areaVictims(self, tiles, shape, (burst ?? blast ?? line ?? cone)!, { centre: blast || (thrown && burst) ? aim : undefined, origin: from })
       } else if (target && 'id' in target) victims = [target]
       const parts = (a.damage ?? []).map(d => ({ type: d.type, amount: rollDice(bt.rng, d.val).total, save: statOf(d.save), half: d.save_half }))
+      // a critical hit rolls the damage dice twice, keeping the highest (core p.77); rolled once for the whole attack
+      let critParts: { type: string; amount: number }[] | undefined
+      const critRoll = () => (critParts ??= (a.damage ?? []).map(d => ({ type: d.type, amount: rollDice(bt.rng, d.val, { crit: true }).total })))
+      const melee = !area && rangeVal(a, 'Threat') != null && rangeVal(a, 'Range') == null
       for (const v of victims) {
         const save = parts.find(p => p.save)?.save
         if (save) {
@@ -93,15 +122,18 @@ function damageAction(b: Battle, u: Unit, a: ActionData, keyBase: string, sys?: 
           bt.applyDamage(v, parts.map(p => ({ type: p.type, amount: ok ? bt.halfOnSave(v, p.amount) : p.amount })), { source: self })
         } else {
           const ctx = isTech ? bt.techAttackRoll(self, v, a.name) : (() => {
-            const c = bt.newAttackCtx(self, v, { mode: 'free', multiTarget: victims.length > 1 })
-            if (bt.has(self, 'impaired')) c.difficulty++
-            const cov = bt.cover(self, v)
+            // the modifiers every attack gets (core p.64-78): Impaired, Prone, Braced, Lock On, Engaged (ranged), cover
+            const c = bt.newAttackCtx(self, v, { mode: 'free', multiTarget: victims.length > 1, melee, ranged: !melee })
+            bt.meleeAttackMods(self, v, c)
+            if (!melee && bt.isEngaged(self)) { c.difficulty++; c.reasons.push('Engaged -1') }
+            // a Blast's cover is measured from its centre
+            const cov = melee ? 'none' : bt.cover(self, v, blast ? aim : undefined)
             if (cov === 'hard') c.difficulty += 2
             else if (cov === 'soft') c.difficulty++
             bt.rollToHit(c)
             return c
           })()
-          if (ctx.hit) bt.applyDamage(v, parts.map(p => ({ type: p.type, amount: p.amount })), { source: self, attack: ctx })
+          if (ctx.hit) bt.applyDamage(v, (ctx.crit ? critRoll() : parts).map(p => ({ type: p.type, amount: p.amount })), { source: self, attack: ctx })
         }
       }
       if (a.detail && !a.damage?.length) bt.say(`  ${stripHtml(a.detail)}`)
@@ -141,8 +173,9 @@ export function deployableUnit(owner: Unit, d: DeployableData, pos: Pos): Unit {
   const isDrone = d.type === 'Drone'
   const size = d.size ?? (isDrone ? 0.5 : 1)
   const hpBonus = owner.bonuses.filter(b => b.id === (isDrone ? 'drone_hp' : 'deployable_hp')).reduce((a, b) => a + Number(b.val), 0)
-  const resistAll = owner.bonuses.some(b => b.id === (isDrone ? 'drone_resist' : 'deployable_resist'))
-  const hp = (d.hp ?? 5) + hpBonus
+  // (drone_resist / deployable_resist: Hydra Shepherd Field, granted only while adjacent to the Hydra by its frame script)
+  // objects have 10 HP per Size unless stated (core p. 68); drones 5
+  const hp = (d.hp ?? (isDrone ? 5 : Math.max(5, Math.ceil(10 * size)))) + hpBonus
   const u: Unit = {
     id: nextUid('dep'),
     name: d.name,
@@ -156,7 +189,7 @@ export function deployableUnit(owner: Unit, d: DeployableData, pos: Pos): Unit {
       limitedBonus: 0, attackBonus: owner.stats.attackBonus, activations: 0,
     },
     hp, heat: 0, structure: 1, stress: 1, overshield: 0, burn: 0, repairs: 0, coreAvailable: false, coreActive: false, overchargeLevel: 0,
-    statuses: [], resist: resistAll ? ['all'] : [], immune: [], weapons: [], systems: [], talents: [], coreBonuses: [],
+    statuses: [], resist: [], immune: [], weapons: [], systems: [], talents: [], coreBonuses: [],
     canCrit: false, ...blankTurnState(), activationsLeft: 0, bonuses: [], flags: { isCover: d.type === 'Deployable' && size >= 1 && !d.damage, dataName: d.name },
     destroyed: false, ownerId: owner.id, policies: defaultPolicies(),
   }

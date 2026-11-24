@@ -7,6 +7,21 @@ import type { DamageData } from '../../data/lancer'
 import type { Battle, Mine } from '../battle'
 import type { Duration, Pos, Profile, StatusId, Unit, Weapon } from '../types'
 
+/**
+ * One source of bonus damage on an attack. It joins the attack's damage packet, so Armor and Resistance apply once
+ * to the whole hit. Add it with `bt.addBonusDamage(ctx, ...)` (see attacks.ts) from beforeAttack or afterAnyRoll.
+ */
+export interface BonusDamage extends DamageData {
+  /** only on a critical hit */
+  critOnly?: boolean
+  /** checked once the attack hits, just before damage is dealt ("first hit each round"); false drops it */
+  onlyIf?: (ctx: AttackCtx) => boolean
+  /** not halved against multiple targets (flat "+X damage" that the item says isn't bonus damage) */
+  notHalved?: boolean
+  /** name for the log */
+  source?: string
+}
+
 export interface AttackCtx {
   attacker: Unit
   target: Unit
@@ -30,7 +45,9 @@ export interface AttackCtx {
   accuracy: number
   difficulty: number
   attackBonus: number
-  bonusDamage: DamageData[]
+  bonusDamage: BonusDamage[]
+  /** the attack can't deal bonus damage (secondary attacks and similar) */
+  noBonusDamage?: boolean
   ignoreCover: boolean
   noLosNeeded: boolean
   reasons: string[]
@@ -101,6 +118,8 @@ export interface DamageCtx {
   kind: 'hp' | 'heat' | 'burn'
   /** damage types of the parts dealt (applyDamage), e.g. ['Energy', 'Heat'] */
   types?: string[]
+  /** the damage can't be reduced (Irreducible, Seeking Payload…) */
+  irreducible?: boolean
 }
 
 export interface ItemScript {
@@ -142,6 +161,8 @@ export interface ItemScript {
   onStatusAdded?(b: Battle, self: Unit, status: StatusId, duration: Duration, source?: Unit): void
   /** a character failed a save against you */
   onSaveFailed?(b: Battle, self: Unit, target: Unit, stat: string): void
+  /** you forced a character to make a save (pass or fail) */
+  onSaveForced?(b: Battle, self: Unit, target: Unit, stat: string): void
   /** another unit gained a status */
   onAnyStatusAdded?(b: Battle, self: Unit, target: Unit, status: StatusId, duration: Duration, source?: Unit): void
   /** another unit took heat */
@@ -176,6 +197,8 @@ export interface ItemScript {
   afterAnyRoll?(b: Battle, self: Unit, ctx: AttackCtx): void
   /** extra accuracy (or difficulty, if negative) this unit grants `u` on a check or save */
   checkAccuracy?(b: Battle, self: Unit, u: Unit, kind: 'check' | 'save', stat?: string): number
+  /** `u` failed a check or save: return true to let it reroll once (the script pays any cost, e.g. a reaction) */
+  rerollFailed?(b: Battle, self: Unit, u: Unit, kind: 'check' | 'save', stat: string): boolean
   /** persistent zones this unit's systems project (drawn as map overlays, listed in tooltips) */
   fields?(b: Battle, self: Unit): FieldOverlay[]
   /** actions this unit's systems make available to another unit (`other`) */
@@ -202,6 +225,20 @@ export interface ItemScript {
   onStatusRemoved?(b: Battle, self: Unit, status: string): void
   /** this unit took the Stabilize action */
   onStabilize?(b: Battle, self: Unit): void
+  /** this unit just cleared all of its heat (Stabilize, Shut Down, AGNI, Auto-Cooler…) */
+  onClearHeat?(b: Battle, self: Unit): void
+  /** any character finished a save (`ok`: it succeeded); `source` is whoever forced it */
+  onAnySave?(b: Battle, self: Unit, u: Unit, stat: string, ok: boolean, source?: Unit): void
+  /** the attacker's own rule refuses this area-attack aim point (Siege Stabilizers: no blasts centred within range 5) */
+  forbidsAim?(b: Battle, self: Unit, w: Weapon, aim: Pos): string | undefined
+  /** refuse an action or reaction this unit would spend (canSpend): return a reason (Napoleon Activate Aegis) */
+  forbidsAction?(b: Battle, self: Unit, cost: string, action?: string): string | undefined
+  /** this unit is about to take structure damage: return true to take none (Balor Hive Frenzy) */
+  beforeStructureDamage?(b: Battle, self: Unit): boolean
+  /** this unit planted a mine */
+  onMinePlaced?(b: Battle, self: Unit, mine: Mine): void
+  /** this unit's attack with `w` against `target` counts as Seeking (no line of sight needed: Monarch Seeking Payload) */
+  seeksTarget?(b: Battle, self: Unit, w: Weapon, target: Unit): boolean
 }
 
 const registry = new Map<string, ItemScript>()
@@ -226,6 +263,7 @@ export function allScriptIds(): string[] {
 /** Script ids that apply to a unit right now. */
 export function scriptIdsFor(u: Unit): string[] {
   const ids: string[] = []
+  if (u.kind === 'npc') ids.push('npc:base')
   if (u.frameId) {
     ids.push(`frame:${u.frameId}`)
     ids.push(`core:${u.frameId}`)

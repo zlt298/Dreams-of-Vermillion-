@@ -182,6 +182,6 @@ describe('fields and AI', () => {
     const b = battle([...players, ...enemies], flatMap(16, 20), 11)
     autoBattle(b, 10)
     expect(aiErrors).toEqual([])
-    expect(b.units.filter(u => u.kind === 'drone' || u.kind === 'deployable').length).toBe(6) // seeded: exactly what this battle deploys (16 after the AI deploy-once fix; 6 since the AI closes in sooner and takes Invade/attacks over a deploy)
+    expect(b.units.filter(u => u.kind === 'drone' || u.kind === 'deployable').length).toBe(8) // seeded: exactly what this battle deploys (re-pinned after audit 2 + the AI overhaul)
   })
 })

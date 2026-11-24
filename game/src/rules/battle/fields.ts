@@ -12,6 +12,8 @@ import { hasTag, tagVal, nextUid, isWeaponType } from '../stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
+import { hasFlightSystem } from './movement'
+import { withTechScope } from './tech'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
 
 /** Every persistent zone on the map (terrain areas, drone and system fields), for overlays and tooltips. */
@@ -40,14 +42,17 @@ export function fieldOverlays(bt: Battle): FieldOverlay[] {
   return out
 }
 
-/** Zero-g areas: characters inside can fly and can't fall, but are Slowed unless they already fly. */
+/** Zero-g areas (core p.63): characters inside can fly and can't fall, but are Slowed without a propulsion or flight system. */
 export function syncZeroG(bt: Battle, u: Unit) {
   if (u.destroyed || (u.kind !== 'mech' && u.kind !== 'npc')) return
   const inside = bt.areas.some(a => a.kind === 'zero_g' && footprint(u).some(p => a.tiles.some(t => t.x === p.x && t.y === p.y)))
   if (inside && !u.flags.zeroG) {
     u.flags.zeroG = true
     u.flags.zeroGNative = u.flying
-    if (!u.flying) { u.flying = true; u.statuses.push({ id: 'slowed', source: u.id, data: { zeroG: true } }); bt.say(`${u.name} floats in zero-g.`, 'status') }
+    // owning flight (even switched off, or landed) is enough to manoeuvre
+    const propelled = u.flying || !!u.flags.landed || hasFlightSystem(bt, u)
+    if (!u.flying) { u.flying = true; bt.say(`${u.name} floats in zero-g.`, 'status') }
+    if (!propelled) u.statuses.push({ id: 'slowed', source: u.id, data: { zeroG: true } })
   } else if (!inside && u.flags.zeroG) {
     u.flags.zeroG = false
     u.flying = !!u.flags.zeroGNative
@@ -122,6 +127,7 @@ export function placeMine(bt: Battle, owner: Unit, pos: Pos, m: Omit<Mine, 'id' 
   bt.mines.push(mine)
   bt.say(`${owner.name} plants ${m.name}${mine.armed ? '' : ' (it arms at the end of the turn)'}.`)
   bt.emit({ type: 'mine', mineId: mine.id, pos: mine.pos, added: true })
+  for (const sc of scriptsFor(owner)) sc.onMinePlaced?.(bt, owner, mine)
   return mine
 }
 
@@ -205,7 +211,27 @@ export function customActions(bt: Battle, u: Unit): CustomAction[] {
   // actions other units' systems make available to this one (e.g. activating an ally's restock drone)
   if (u.kind === 'mech' || u.kind === 'npc') for (const o of bt.alive()) if (o !== u) for (const s of scriptsFor(o)) if (s.grantActions) out.push(...s.grantActions(bt, o, u))
   out.push(...genericActionsFor(bt, u))
+  // Iskander Assault Launcher (1/round): any Grenade can be thrown at range 15
+  if (u.flags.assaultLauncher) for (let i = 0; i < out.length; i++) out[i] = assaultLaunched(bt, u, out[i])
   return out
+}
+
+/** A grenade action with range 15 that uses up the Assault Launcher when it is thrown beyond its own range. */
+function assaultLaunched(bt: Battle, u: Unit, a: CustomAction): CustomAction {
+  if (a.range == null || a.range >= 15 || a.target === 'none' || a.target === 'self' || /mine/i.test(a.name)) return a
+  const sys = u.systems.find(s => s.uid === a.sourceUid) ?? (a.scriptId ? u.systems.find(s => s.dataId === a.scriptId) : undefined)
+  if (!sys || !Lancer.systems.get(sys.dataId)?.tags?.some(t => t.id === 'tg_grenade')) return a
+  const own = a.range
+  return {
+    ...a,
+    range: 15,
+    run: (b, self, t) => {
+      const p = t && 'x' in t ? t : (t as Unit | undefined)?.pos
+      const far = !!p && distanceToTile(b.map, self, p) > own
+      a.run(b, self, t)
+      if (far) self.flags.assaultLauncher = false
+    },
+  }
 }
 
 /**
@@ -221,10 +247,32 @@ function heatSelfOf(bt: Battle, u: Unit, a: CustomAction): number {
   return rollDice(bt.rng, tag.val as any).total
 }
 
+/**
+ * A scripted action's declared range (from the user, footprint-aware) and target side, for every caller: the
+ * player, the AI and scripts alike. Actions without a target (or only aimed at their user) aren't checked here.
+ */
+export function customTargetValid(bt: Battle, u: Unit, a: CustomAction, target?: Unit | Pos): true | string {
+  if (!target || a.target === 'none') return true
+  const unit = 'id' in target ? (target as Unit) : undefined
+  if (a.target === 'self') return !unit || unit === u ? true : 'This only targets yourself'
+  if (unit) {
+    if (a.target === 'ally' && bt.hostile(u, unit)) return 'Target yourself or an ally'
+    if (a.target === 'enemy' && !bt.hostile(u, unit) && unit.side !== 'neutral') return 'Target a hostile'
+    if (a.range != null && bt.distance(u, unit) > a.range) return `Out of range (${a.range})`
+    return true
+  }
+  // a Line or Cone is aimed in a direction: its range is its length, not a distance to the aimed space
+  if (a.range != null && a.area?.shape !== 'line' && a.area?.shape !== 'cone' && distanceToTile(bt.map, u, target as Pos) > a.range) return `Out of range (${a.range})`
+  return true
+}
+
 export function useCustom(bt: Battle, u: Unit, a: CustomAction, target?: Unit | Pos) {
   const ok = a.usable(bt, u)
   if (ok !== true) throw new Error(ok)
+  const valid = customTargetValid(bt, u, a, target)
+  if (valid !== true) throw new Error(valid)
   const cost = a.activation === 'quick_tech' ? null : a.activation === 'full_tech' ? 'full' : a.activation
+  if (a.activation === 'full_tech' && u.flags.hackSlash) throw new Error('Hack/Slash: no tech actions until you reboot or Shut Down') // Hacker 2 (talents.ts)
   if (a.activation === 'quick_tech') {
     const option = a.techOption ?? `qt:${a.sourceUid ?? a.key}`
     const c = bt.canQuickTech(u, option)
@@ -243,7 +291,11 @@ export function useCustom(bt: Battle, u: Unit, a: CustomAction, target?: Unit | 
   // ACTIVATE: any number per turn, but not the same SYSTEM more than once (unless free)
   else bt.spend(u, cost as any, cost === 'quick' || cost === 'full' ? `activate:${a.sourceUid ?? a.key}` : undefined)
   const heat = a.heat ?? heatSelfOf(bt, u, a)
-  if (heat) bt.addHeat(u, heat)
+  if (heat) bt.addHeat(u, heat, u)
   bt.say(`${u.name} uses ${a.name}.`, 'attack')
-  a.run(bt, u, target)
+  // a tech action: what it inflicts is marked as from tech (Shut Down ends it; //SCORPION and ICEOUT read techActing)
+  const tech = a.activation === 'quick_tech' || a.activation === 'full_tech'
+  const was = u.flags.techActing
+  if (tech) u.flags.techActing = true
+  try { if (tech) withTechScope(bt, () => a.run(bt, u, target)); else a.run(bt, u, target) } finally { if (tech) u.flags.techActing = was }
 }

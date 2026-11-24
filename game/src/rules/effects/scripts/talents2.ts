@@ -71,15 +71,15 @@ registerScripts([
       self.flying = true
       let best: { pos: Pos; cost: number } | null = null
       try {
-        const r = b.reachable(self, 200, { ignoreEngagement: true })
+        const r = b.reachable(self, 200, { ignoreEngagement: true, anyPath: true })
         for (const n of r.values()) if (footprint(self).length && chebyshev(n.pos, u.pos) <= Math.max(1, Math.ceil(u.stats.size)) && b.adjacent({ ...self, pos: n.pos } as Unit, u) && (!best || n.cost < best.cost)) best = n
       } finally { self.flying = was }
       if (!best) return
       if (!b.offerReaction(self, 'supersonic', 'Supersonic?', `${u.name}'s turn ended. Fly to it?`)) return
       b.spend(self, 'reaction', 'supersonic')
       self.flying = true
-      const p = b.pathTo(self, best.pos, 200, { ignoreEngagement: true })
-      if (p) b.moveAlong(self, p.path)
+      const p = b.pathTo(self, best.pos, 200, { ignoreEngagement: true, anyPath: true })
+      if (p) b.moveAlong(self, p.path, { noReactions: true })
       b.say(`${self.name} goes supersonic to ${u.name}!`)
     },
   },
@@ -174,10 +174,18 @@ registerScripts([
     },
   },
   // ---------------- Grease Monkey 1, 3; Technophile 1–2 (no combat effect)
-  narrative('t_grease_monkey:1', 'replenish Limited uses while resting (campaign rests already restore them)'),
-  narrative('t_grease_monkey:3', 'once-per-mission supply drop while resting'),
+  narrative('t_grease_monkey:1', 'field repairs offer "spend 2 Repairs: +1 use of every Limited item" (run.ts repairOptions)'),
+  narrative('t_grease_monkey:3', 'field repairs offer a free supply drop once per Full Repair: every mech +1 Limited use and +1 Structure (run.ts repairOptions)'),
   narrative('t_technophile:1', 'custom Servant-class NHP (personality only)'),
-  narrative('t_technophile:2', 'custom Student-class NHP (personality only)'),
+  {
+    id: 't_technophile:2', note: 'Student-Class NHP (Enlightenment-Class at rank 3) — NHP Assistance: 1/round, reroll a mech skill check or save (the new result stands; offered when it fails)',
+    rerollFailed(b, self, u, kind, stat) {
+      if (u !== self || self.flags['round:nhpAssist'] || self.destroyed) return false
+      if (b.choose({ kind: 'nhp_assistance', unit: self, title: 'NHP Assistance?', text: `Your ${stat.toUpperCase()} ${kind} failed. Reroll it (1/round; the new result stands)?`, options: [{ label: 'Reroll' }, { label: 'Keep it' }], defaultIndex: 0 }) !== 0) return false
+      self.flags['round:nhpAssist'] = true
+      return true
+    },
+  },
   // ---------------- Heavy Gunner 2–3 (implemented in Covering Fire, t_heavy_gunner:1)
   { id: 't_heavy_gunner:2', note: 'Hammerbeat: covering-fire hits Immobilize (handled by Covering Fire)' },
   { id: 't_heavy_gunner:3', note: 'Bracketing Fire: Covering Fire pins a second target (handled by Covering Fire)' },
@@ -196,7 +204,7 @@ registerScripts([
           if (t && !b.save(t, 'sys', self.stats.save, 0, self)) { t.flags.blindUntil = b.round + 1; b.say(`${self.name}'s flash bomb blinds ${t.name}!`) }
         }
         if (b.has(self, 'immobilized') || b.has(self, 'stunned')) return
-        const r = b.reachable(self, self.stats.speed, { ignoreEngagement: true })
+        const r = b.reachable(self, self.stats.speed, { ignoreEngagement: true, anyPath: true })
         const far = (p: Pos) => Math.min(99, ...hostiles(b, self).map(h => chebyshev(h.pos, p)))
         const spots = [...r.values()].filter(n => n.cost > 0)
         if (!spots.length) return
@@ -206,8 +214,8 @@ registerScripts([
         const k = b.choose({ kind: 'mastermind_move', unit: self, title: 'Mastermind: move', options: opts.map(o => ({ label: o.label, hint: o.hint })), defaultIndex: 0 })
         const to = opts[k].to
         if (!to) return
-        const p = b.pathTo(self, to, self.stats.speed, { ignoreEngagement: true })
-        if (p) { b.say(`${self.name} slips away.`); b.moveAlong(self, p.path) }
+        const p = b.pathTo(self, to, self.stats.speed, { ignoreEngagement: true, anyPath: true })
+        if (p) { b.say(`${self.name} slips away.`); b.moveAlong(self, p.path, { noReactions: true }) }
       } finally { delete self.flags.mastermindBusy }
     },
   },
@@ -239,6 +247,7 @@ registerScripts([
         const p = t && 'x' in t ? t : (t as Unit).pos
         me.flags['round:unstoppable'] = true
         me.flags['round:boosted'] = true
+        me.flags.momentum = true // it is a Boost: Momentum (Juggernaut 1) arms the next Ram
         const passed = charge(bt, me, p, me.stats.speed)
         for (const o of passed) if (!bt.save(o, 'hull', me.stats.save, 0, me)) bt.addStatus(o, 'prone', 'until_cleared', me)
         bt.addHeat(me, rollDice(bt.rng, '1d3+3').total)
@@ -251,17 +260,35 @@ registerScripts([
     })],
   },
   // ---------------- Leader 2–3 (Leadership dice are in t_leader:1)
-  { id: 't_leader:2', note: 'Open Channels: 5 Leadership dice; orders any number of times (handled by Field Commander)' },
   {
-    id: 't_leader:3', note: 'Inspiring Presence: 6 dice; allies holding a die can spend it to reduce incoming damage by 1d6',
-    modifyAnyIncoming(b, self, target, d) {
-      if (d.kind !== 'hp' || d.amount < 5 || b.hostile(self, target) || target === self || (self.flags.leaderDice ?? 0) <= 0) return
-      if (target.flags[`scene:led:${self.id}`] || b.distance(self, target) > self.stats.sensors) return
-      target.flags[`scene:led:${self.id}`] = true
+    id: 't_leader:2', note: 'Open Channels: 5 Leadership Dice; at the start of any other allied pilot\'s turn you may issue a command as a reaction (any number of times per round), handing it a Leadership Die',
+    onAnyTurnStart(b, self, u) {
+      if (u === self || u.kind !== 'mech' || b.hostile(self, u) || u.flags.leaderDie || (self.flags.leaderDice ?? 0) <= 0 || self.destroyed) return
+      if (b.canSpend(self, 'reaction') !== true) return
+      if (!b.offerReaction(self, 'open_channels', 'Open Channels?', `${u.name} starts its turn. Issue a command and give it a Leadership Die (${self.flags.leaderDice} left)?`)) return
+      b.spend(self, 'reaction') // no per-round limit: "any number of times per round"
       self.flags.leaderDice--
+      u.flags.leaderDie = self.id
+      b.say(`${self.name} issues a command to ${u.name} (Open Channels).`)
+    },
+  },
+  {
+    id: 't_leader:3', note: 'Inspiring Presence: 6 dice; an ally holding your Leadership Die can expend it to reduce damage it takes by 1d6, or to deal +1d6 bonus damage when it hits with an attack',
+    afterAnyRoll(b, self, ctx) {
+      const a = ctx.attacker
+      if (a.flags.leaderDie !== self.id || !ctx.hit || ctx.target.destroyed || !b.hostile(a, ctx.target)) return
+      if (b.choose({ kind: 'leader_damage', unit: a, title: 'Spend the Leadership Die?', text: `+1d6 bonus damage on this hit (${self.name}'s Inspiring Presence).`, options: [{ label: 'Spend it (+1d6 damage)' }, { label: 'Keep it' }], defaultIndex: ctx.crit ? 0 : 1 }) !== 0) return
+      delete a.flags.leaderDie
+      ctx.bonusDamage.push({ type: ctx.profile?.damage[0]?.type ?? 'Kinetic', val: '1d6' })
+      ctx.reasons.push(`${self.name}'s Leadership Die +1d6`)
+    },
+    modifyAnyIncoming(b, self, target, d) {
+      if (d.kind !== 'hp' || d.amount <= 0 || target.flags.leaderDie !== self.id || target.destroyed) return
+      if (b.choose({ kind: 'leader_shield', unit: target, title: 'Spend the Leadership Die?', text: `Reduce ${d.amount} incoming damage by 1d6 (${self.name}'s Inspiring Presence).`, options: [{ label: 'Spend it (-1d6 damage)' }, { label: 'Keep it' }], defaultIndex: d.amount >= 5 || d.amount >= target.hp + target.overshield ? 0 : 1 }) !== 0) return
+      delete target.flags.leaderDie
       const r = b.rng.d(6)
       d.amount = Math.max(0, d.amount - r)
-      b.say(`  ${target.name} spends ${self.name}'s Leadership die: -${r} damage.`)
+      b.say(`  ${target.name} spends ${self.name}'s Leadership Die: -${r} damage.`)
     },
   },
   // ---------------- Siege Specialist 1: Jackhammer
@@ -309,18 +336,31 @@ registerScripts([
     },
   },
   {
-    id: 't_spotter:3', note: 'Bentham/Foucault Elimination: when you Lock On, an adjacent ally attacks the target at once as a reaction',
+    id: 't_spotter:3', note: 'Bentham/Foucault Elimination: when you Lock On (part of that quick action), you may nominate an adjacent ally: it may at once take a quick action as a reaction (an attack with one weapon, or Invade), consuming the target\'s Lock On',
     onStatusInflicted(b, self, target, status) {
-      if (status !== 'lockon' || !self.activeTurn || target.destroyed || !once(self, 'bentham', 'turn')) return
-      for (const ally of chars(b).filter(a => a !== self && !b.hostile(self, a) && b.adjacent(self, a))) {
-        if (b.canSpend(ally, 'reaction') !== true) continue
-        const w = ally.weapons.find(x => !x.tech && b.weaponReady(ally, x) && b.validTarget(ally, x, target) === true)
-        if (!w) continue
-        b.spend(ally, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
-        b.say(`${ally.name} fires on ${self.name}'s mark!`, 'attack')
-        b.weaponAttack(ally, w, { targetId: target.id }, 'free')
-        return
-      }
+      if (status !== 'lockon' || !self.activeTurn || target.destroyed || !b.hostile(self, target) || self.flags.benthamBusy) return
+      const allies = chars(b).filter(a => a !== self && !b.hostile(self, a) && b.adjacent(self, a) && b.canSpend(a, 'reaction') === true)
+      if (!allies.length) return
+      const weaponOf = (a: Unit) => a.weapons.find(x => !x.tech && b.weaponReady(a, x) && b.weaponUsable(a, x, false) === true && b.validTarget(a, x, target) === true)
+      const def = allies.findIndex(a => !!weaponOf(a))
+      const i = b.choose({ kind: 'bentham', unit: self, title: 'Bentham/Foucault Elimination', text: `Nominate an adjacent ally to act on ${target.name}'s Lock On.`, options: [...allies.map(a => ({ label: a.name })), { label: 'Nobody' }], defaultIndex: def >= 0 ? def : allies.length })
+      const ally = allies[i]
+      if (!ally) return
+      // the ally picks its quick action
+      const ws = ally.weapons.filter(x => !x.tech && b.weaponReady(ally, x) && b.weaponUsable(ally, x, false) === true && b.validTarget(ally, x, target) === true)
+      const canInvade = b.techTargetValid(ally, target, 'invade') === true
+      const opts: { label: string; run: () => void }[] = [
+        ...ws.map(w => ({ label: `Skirmish: ${w.name}`, run: () => { b.weaponAttack(ally, w, { targetId: target.id }, 'free') } })),
+        ...(canInvade ? [{ label: 'Invade (Fragment Signal)', run: () => { b.withFreeTech(ally, () => b.invade(ally, target)) } }] : []),
+        { label: 'No action', run: () => {} },
+      ]
+      const k = b.choose({ kind: 'bentham_action', unit: ally, title: `${self.name}'s mark: take a quick action`, options: opts.map(o => ({ label: o.label })), defaultIndex: 0 })
+      if (k === opts.length - 1) return
+      b.spend(ally, 'reaction') // through spend(): reveals Hidden, ends Ghostweave, runs onAnyAction hooks
+      b.say(`${ally.name} acts on ${self.name}'s mark!`, 'attack')
+      self.flags.benthamBusy = true
+      try { opts[k].run() } finally { delete self.flags.benthamBusy }
+      if (b.has(target, 'lockon')) b.removeStatus(target, 'lockon') // the action consumes the Lock On either way
     },
   },
   // ---------------- Stormbringer 3: Torrent

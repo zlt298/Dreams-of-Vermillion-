@@ -3,7 +3,7 @@
 import { Lancer, type WeaponData, type SystemData, type FrameData, type ModData, type CoreBonusData } from '../data/lancer'
 import type { MountBuild, PilotBuild } from '../import/compcon'
 import {
-  SLOT_SIZES, coreBonusAllowed, effectiveLicenses, expectedMounts, licensed, modFits, requiredLicenses, slotSizes, MAX_LICENSE_RANK, validateBuild,
+  SLOT_SIZES, aiCap, aiCount, coreBonusAllowed, effectiveLicenses, expectedMounts, isAI, licensed, modFits, mountTakesMods, requiredLicenses, slotSizes, MAX_LICENSE_RANK, validateBuild,
 } from '../rules/legality'
 import { mechSP } from '../rules/stats'
 
@@ -12,7 +12,7 @@ export const EVEREST = 'mf_standard_pattern_i_everest'
 export const MOUNT_CBS = ['cb_auto_stabilizing_hardpoints', 'cb_overpower_caliber', 'cb_mount_retrofitting']
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name)
-const isUnique = (x: { tags?: { id: string }[] }) => !!x.tags?.some(t => t.id === 'tg_unique')
+const isUnique = (x: unknown) => !!(x as { tags?: { id: string }[] }).tags?.some(t => t.id === 'tg_unique')
 
 /** Items that can be picked from a list (frame-integrated and talent-granted gear has no source). */
 const pickableWeapon = (w: WeaponData) => !!w.source && w.mount !== 'Integrated' && w.mount !== ('Ship-class' as any)
@@ -67,7 +67,7 @@ export function layoutMounts(frameId: string, coreBonuses: string[], old: MountB
     prev?.slots.forEach((s, i) => {
       if (i < m.slots.length && s.weaponId) {
         const w = Lancer.weapons.get(s.weaponId)
-        if (w && slotSizes(m, i).includes(w.mount)) m.slots[i] = { ...m.slots[i], weaponId: s.weaponId, modId: s.modId ?? null, profile: s.profile }
+        if (w && slotSizes(m, i).includes(w.mount)) m.slots[i] = { ...m.slots[i], weaponId: s.weaponId, modId: mountTakesMods(m) ? s.modId ?? null : null, profile: s.profile }
       }
     })
     return m
@@ -149,17 +149,28 @@ export function weaponOptions(p: PilotBuild, mi: number, slot: number): WeaponDa
     .sort(byName)
 }
 
-export function modOptions(p: PilotBuild, weaponId: string | null | undefined): ModData[] {
+/**
+ * Mods for the weapon in slot `slot` of mount `mi` (or for `weaponId` alone). Integrated mounts take no mods;
+ * a Unique mod fitted elsewhere and an AI mod past the AI limit are left out.
+ */
+export function modOptions(p: PilotBuild, weaponId: string | null | undefined, mi?: number, slot?: number): ModData[] {
   const w = weaponId ? Lancer.weapons.get(weaponId) : undefined
   if (!w) return []
+  const m = mi != null ? p.mech.mounts[mi] : undefined
+  if (m && !mountTakesMods(m)) return []
+  const current = m && slot != null ? m.slots[slot]?.modId : undefined
+  const elsewhere = new Set(p.mech.mounts.flatMap((mm, i) => mm.slots.filter((_, j) => !(i === mi && j === slot)).map(s => (s.weaponId ? s.modId : null))).filter(Boolean))
+  const aiFull = aiCount(p) - (current && isAI(current) ? 1 : 0) >= aiCap(p)
   const lic = effectiveLicenses(p)
-  return [...Lancer.mods.values()].filter(m => modFits(m, w) && licensed(m, lic)).sort(byName)
+  return [...Lancer.mods.values()].filter(x => x.id === current || (modFits(x, w) && licensed(x, lic) && !(isUnique(x) && elsewhere.has(x.id)) && !(aiFull && isAI(x.id)))).sort(byName)
 }
 
+/** Systems that can be added: licensed, not a second copy of a Unique, and no AI past the mech's AI limit. */
 export function systemOptions(p: PilotBuild): SystemData[] {
   const lic = effectiveLicenses(p)
   const have = new Set(p.mech.systems)
-  return [...Lancer.systems.values()].filter(s => pickableSystem(s) && licensed(s, lic) && !(isUnique(s) && have.has(s.id))).sort(byName)
+  const aiFull = aiCount(p) >= aiCap(p)
+  return [...Lancer.systems.values()].filter(s => pickableSystem(s) && licensed(s, lic) && !(isUnique(s) && have.has(s.id)) && !(aiFull && isAI(s.id))).sort(byName)
 }
 
 export function coreBonusOptions(p: PilotBuild): { cb: CoreBonusData; allowed: boolean }[] {
@@ -200,7 +211,14 @@ export function fitToLevel(src: PilotBuild, level: number): PilotBuild {
   // mech skills: take points off the highest skill first
   let over = p.mechSkills.reduce((a, b) => a + b, 0) - (2 + level)
   while (over-- > 0) { const i = p.mechSkills.indexOf(Math.max(...p.mechSkills)); p.mechSkills[i]-- }
-  // talents: drop ranks from the most recently listed talent
+  // talents: one rank-up per LL (LL0 is three rank-I talents), so first take ranks off the highest-rank talents,
+  // then drop ranks from the most recently listed talent until the total fits
+  const ups = () => p.talents.reduce((a, t) => a + t.rank - 1, 0)
+  while (ups() > level) {
+    const top = Math.max(...p.talents.map(t => t.rank))
+    const t = [...p.talents].reverse().find(x => x.rank === top)!
+    t.rank--
+  }
   let tOver = p.talents.reduce((a, t) => a + t.rank, 0) - (3 + level)
   while (tOver-- > 0) { const t = p.talents[p.talents.length - 1]; if (--t.rank <= 0) p.talents.pop() }
   // licenses: start from what the gear implies, keep the frame's license first, then the highest ranks
@@ -223,6 +241,14 @@ export function fitToLevel(src: PilotBuild, level: number): PilotBuild {
   for (const c of p.coreBonuses) if (keep.length < Math.floor(level / 3) && coreBonusAllowed(c, keep, lic)) keep.push(c)
   p.coreBonuses = keep
   syncMounts(p)
+  // AIs past the limit (The Lesson of Shaping may be gone): drop the later ones
+  while (aiCount(p) > aiCap(p)) {
+    const i = p.mech.systems.map(isAI).lastIndexOf(true)
+    if (i >= 0) { p.mech.systems.splice(i, 1); continue }
+    const slot = p.mech.mounts.flatMap(m => m.slots).reverse().find(x => x.weaponId && x.modId && isAI(x.modId))
+    if (slot) slot.modId = null
+    else break
+  }
   // SP: drop systems from the end until it fits
   while (p.mech.systems.length && mechSP(p).used > mechSP(p).max) p.mech.systems.pop()
   return p

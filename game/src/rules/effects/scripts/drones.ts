@@ -182,6 +182,12 @@ function droneKit(b: Battle, self: Unit, spec: DeploySpec, opts: { recall?: bool
 /** Once per round per (unit, key). */
 const oncePerRound = (u: Unit, key: string) => { const k = `round:${key}`; if (u.flags[k]) return false; u.flags[k] = true; return true }
 
+/** a save that avoids Prone or Knockback (Stable Structure gives +1 Accuracy on those) */
+function saveVs(b: Battle, u: Unit, stat: 'hull' | 'agi' | 'sys' | 'eng', src: Unit, avoid: 'prone' | 'knockback'): boolean {
+  u.flags.saveAvoid = avoid
+  try { return b.save(u, stat, src.stats.save, 0, src) } finally { delete u.flags.saveAvoid }
+}
+
 /** Run `fx` for characters that start their turn in, or first enter in a round, a field (`inField`). */
 function inDenial(b: Battle, self: Unit, u: Unit): boolean {
   const d = mine(b, self, 'Assassin Drone').find(x => x.flags.denial)
@@ -301,12 +307,20 @@ const scripts: ItemScript[] = [
     grantActions: (b, self, other) => (b.hostile(self, other) ? [] : restockUse(b, self, other)),
   },
   {
-    id: 'ms_iceout_drone', note: 'ICEOUT Drone: Burst 1 field; characters inside are immune to tech actions and cannot take them',
+    id: 'ms_iceout_drone', note: 'ICEOUT Drone: Burst 1 field; characters inside are immune to tech actions and cannot take them; conditions and effects that tech actions already gave them are suppressed while they are inside',
     actions: (b, u) => {
       const out = droneKit(b, u, { ...ICEOUT, aiScore: (bt, me) => (hostiles(bt, me).some(h => h.weapons.some(w => w.tech) || h.kind === 'mech') && earlyWhenEngaged(12)(bt, me) ? 1.5 : 0) }, { recall: false, redeploy: false })
       for (const d of mine(b, u, 'ICEOUT Drone')) out.push({ ...redeployAction(b, u, d, ICEOUT, 'Move'), key: `move:${d.id}` })
-      return out
+      return out.map(a => ({ ...a, run: (bt: Battle, me: Unit, t?: Unit | Pos) => { a.run(bt, me, t); iceoutSync(bt) } }))
     },
+    onMove: b => iceoutSync(b),
+    onTurnStart: b => iceoutSync(b),
+    onAnyTurnStart: b => iceoutSync(b),
+    onTurnEnd: b => iceoutSync(b),
+    onAnyTurnEnd: b => iceoutSync(b),
+    onStatusAdded: b => iceoutSync(b),
+    onAnyStatusAdded: b => iceoutSync(b),
+    onDestroyed: b => iceoutSync(b),
   },
   {
     id: 'ms_hive_drone',
@@ -328,9 +342,11 @@ const scripts: ItemScript[] = [
     beforeAnyAttack(b, self, ctx) {
       const a = ctx.attacker
       if (a.destroyed || !b.hostile(self, a) || !mine(b, self, 'Sentinel Drone').some(d => b.distance(d, a) <= 2)) return
-      const k = `${b.round}|${b.activeId}|${ctx.weapon?.uid ?? 'tech'}`
-      if (a.flags.sentinelKey === k) return
-      a.flags.sentinelKey = k
+      // once per attack (all targets of one weapon attack share b.lastAim; each tech attack is its own)
+      if (b.previewing) return
+      const k = ctx.weapon && b.lastAim ? b.lastAim : ctx
+      if (sentinelSeen.get(a) === k) return
+      sentinelSeen.set(a, k)
       b.say(`  ${self.name}'s sentinel drone fires on ${a.name}.`)
       b.applyDamage(a, [{ type: 'Kinetic', amount: 3 }], { source: self })
     },
@@ -341,7 +357,7 @@ const scripts: ItemScript[] = [
     actions: (b, u) => droneKit(b, u, { ...TEMPEST, aiScore: earlyWhenEngaged() }),
     ...fieldTriggers('tempest', (b, self, u) => mine(b, self, 'Tempest Drone').some(d => b.distance(d, u) <= 1), (b, self, u) => {
       const d = mine(b, self, 'Tempest Drone').find(x => b.distance(x, u) <= 1)!
-      if (b.save(u, 'hull', self.stats.save, 0, self)) return
+      if (saveVs(b, u, 'hull', self, 'knockback')) return
       b.applyDamage(u, [{ type: 'Energy', amount: 4 }], { source: self })
       if (!u.destroyed) b.forceMove(u, d, 3, 1)
     }),
@@ -398,7 +414,7 @@ const scripts: ItemScript[] = [
       const d = mine(b, self, 'Perimeter Command Plate')[0]
       if (d.flags.pcp === 'repulse') {
         if (!b.hostile(self, u)) { pcpFly(b, u); return }
-        if (b.save(u, 'hull', self.stats.save, 0, self)) return
+        if (saveVs(b, u, 'hull', self, 'knockback')) return
         pcpRepulse(b, self, d, u)
       } else if (!b.save(u, 'hull', self.stats.save, 0, self)) b.addStatus(u, 'immobilized', 'until_cleared', self, { pcp: d.id })
     }),
@@ -427,7 +443,7 @@ const scripts: ItemScript[] = [
   },
   {
     id: 'ms_portable_bunker',
-    fields: (b, u) => mine(b, u, 'Portable Bunker').map(d => ({ tiles: footprint(d), effect: 'protect' as const, label: b.round >= (d.flags.unfoldRound ?? 0) ? `${u.name}'s bunker: hard cover and area-attack resistance inside` : `${u.name}'s bunker (unfolds next turn)` })), note: 'Portable Bunker: open-topped 4x4 emplacement (unfolds next turn); inside: hard cover and AoE resistance vs attacks from outside',
+    fields: (b, u) => mine(b, u, 'Portable Bunker').map(d => ({ tiles: footprint(d), effect: 'protect' as const, label: b.round >= (d.flags.unfoldRound ?? 0) ? `${u.name}'s bunker: hard cover and area-attack resistance inside` : `${u.name}'s bunker (unfolds next turn)` })), note: 'Portable Bunker: open-topped 4x4 emplacement (unfolds next turn); every character completely inside gains hard cover and Resistance to Blast/Line/Burst/Cone attacks from outside',
     actions: (b, u) => droneKit(b, u, { ...BUNKER, aiScore: earlyWhenEngaged(12) }, { recall: false, redeploy: false }),
     adjustCover(b, self, attacker, target, c) {
       const bk = bunkerHolding(b, self, target)
@@ -435,7 +451,9 @@ const scripts: ItemScript[] = [
     },
     beforeAnyAttack(b, self, ctx) {
       const bk = bunkerHolding(b, self, ctx.target)
-      if (bk && !inside(bk, ctx.attacker) && ctx.weapon && b.isAoE(b.profile(ctx.weapon))) { ctx.resistAll = true; ctx.reasons.push('Bunker') }
+      // Blast, Line, Burst and Cone attacks (weapons or systems) from outside
+      const aoe = ctx.weapon ? b.isAoE(b.profile(ctx.weapon)) : ctx.multiTarget
+      if (bk && !inside(bk, ctx.attacker) && aoe) { ctx.resistAll = true; ctx.reasons.push('Bunker') }
     },
   },
   {
@@ -474,7 +492,7 @@ const scripts: ItemScript[] = [
   },
   {
     id: 'ms_stasis_barrier',
-    fields: (b, u) => { const segs = mine(b, u, 'Stasis Barrier'); return segs.length ? [{ tiles: segs.map(sg => sg.pos), effect: 'barrier' as const, label: `${u.name}'s stasis barrier: soft cover; attacks on covered characters fail on 4+` }] : [] }, note: 'Stasis Barrier: Line 4 obstruction; soft cover; attacks on characters it covers are consumed on 4+',
+    fields: (b, u) => { const segs = mine(b, u, 'Stasis Barrier'); return segs.length ? [{ tiles: segs.map(sg => sg.pos), effect: 'barrier' as const, label: `${u.name}'s stasis barrier: soft cover; attacks on covered characters fail on 4+` }] : [] }, note: 'Stasis Barrier: Line 4 obstruction; soft cover to every character behind it; attacks on characters it covers are consumed on 4+',
     actions: (b, u) => {
       const segs = mine(b, u, 'Stasis Barrier')
       if (segs.length) return [{ key: 'stasis_off', name: 'Deactivate Stasis Barrier', activation: 'quick', target: 'none', text: 'Dismiss the barrier.', usable: () => true, run: bt => segs.forEach(s => bt.removeUnit(s, 'fades')) }]
@@ -508,13 +526,14 @@ const scripts: ItemScript[] = [
         aiScore: (bt, me) => (hostiles(bt, me).some(h => bt.distance(me, h) <= 10) ? 2 : 0),
       }]
     },
+    // owner's ruling: like terrain, it shelters every character behind it (either side)
     adjustCover(b, self, attacker, target, c) {
-      if (c !== 'none' || b.hostile(self, target)) return c
+      if (c !== 'none' || (target.kind !== 'mech' && target.kind !== 'npc' && target.kind !== 'drone')) return c
       return mine(b, self, 'Stasis Barrier').some(sg => shields(b, attacker, target, sg.pos)) ? 'soft' : c
     },
     beforeAnyAttack(b, self, ctx) {
       const t = ctx.target
-      if (b.hostile(self, t) || b.has(t, 'invisible') || !mine(b, self, 'Stasis Barrier').some(sg => shields(b, ctx.attacker, t, sg.pos))) return
+      if ((t.kind !== 'mech' && t.kind !== 'npc' && t.kind !== 'drone') || b.has(t, 'invisible') || !mine(b, self, 'Stasis Barrier').some(sg => shields(b, ctx.attacker, t, sg.pos))) return
       if (b.rng.d(6) >= 4) { ctx.cancelled = true; b.say(`  The stasis barrier swallows the attack on ${t.name}.`) }
     },
   },
@@ -577,9 +596,28 @@ function autoload(b: Battle, owner: Unit, user: Unit): CustomAction[] {
   }))
 }
 
+/** the last attack each attacker was shot at for (Sentinel Drone) */
+const sentinelSeen = new WeakMap<Unit, object>()
+
+/**
+ * ICEOUT: a character inside the field is immune to conditions and effects that tech actions gave it; they come back
+ * when it leaves (while suppressed they keep their clocks, under the id 'iceout').
+ */
+function iceoutSync(b: Battle) {
+  for (const u of b.units) {
+    if (u.destroyed || (u.kind !== 'mech' && u.kind !== 'npc')) continue
+    const inside = b.inIceout(u)
+    for (const s of u.statuses) {
+      if (inside && s.tech && s.id !== ('iceout' as StatusId)) { s.data = { ...s.data, iceoutOf: s.id }; s.id = 'iceout' as StatusId }
+      else if (!inside && s.id === ('iceout' as StatusId) && s.data?.iceoutOf) { s.id = s.data.iceoutOf; delete s.data.iceoutOf }
+    }
+  }
+}
+
 const inside = (bk: Unit, u: Unit) => footprint(u).every(p => footprint(bk).some(q => q.x === p.x && q.y === p.y))
 function bunkerHolding(b: Battle, owner: Unit, u: Unit): Unit | undefined {
-  return mine(b, owner, 'Portable Bunker').find(bk => b.round >= (bk.flags.unfoldRound ?? 0) && inside(bk, u) && !b.hostile(owner, u))
+  // "All characters completely within" — whichever side they are on
+  return mine(b, owner, 'Portable Bunker').find(bk => b.round >= (bk.flags.unfoldRound ?? 0) && inside(bk, u) && (u.kind === 'mech' || u.kind === 'npc' || u.kind === 'drone'))
 }
 
 registerScripts(scripts)

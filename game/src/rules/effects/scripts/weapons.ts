@@ -1,7 +1,7 @@
 // Weapons, weapon mods and core bonuses with rules beyond the structured data.
 // Weapon scripts run for every attack the owner makes, so each filters on ctx.weapon.dataId.
 import { blastTiles, burstTiles, coneTiles, distanceToTile, lineTiles, unitsOnTiles, footprint } from '../../grid'
-import { averageDice, rollDice } from '../../rng'
+import { averageDice, rollAccuracy, rollDice } from '../../rng'
 import type { Pos, Unit, Weapon } from '../../types'
 import type { Battle } from '../../battle'
 import { registerScripts, type AttackCtx, type CustomAction, type ItemScript } from '../registry'
@@ -30,8 +30,51 @@ function perFiring(id: string, f: (b: Battle, self: Unit, ctx: AttackCtx) => voi
   }
 }
 
+/**
+ * Run `f` (more attacks that belong to one firing of `w`: Annihilator, Pinaka's second area, Arc Projector chains,
+ * Sharanga's second target) without paying the weapon's costs again: no heat (self), Loading, Limited or Recharge.
+ * The firing's own costs are paid once, by the primary attack.
+ */
+function sameFiring<T>(w: Weapon, f: () => T): T {
+  const fl = (w.flags ??= {})
+  const had = fl.delayedImpact
+  const { loaded, usesLeft, charged } = w
+  fl.delayedImpact = true // attacks.ts skips tg_heat_self for it
+  try { return f() } finally {
+    if (had) fl.delayedImpact = had
+    else delete fl.delayedImpact
+    w.loaded = loaded
+    w.usesLeft = usesLeft
+    w.charged = charged
+  }
+}
+
 function secondaryAttack(b: Battle, self: Unit, w: Weapon, t: Unit) {
-  b.weaponAttack(self, w, { targetId: t.id }, 'secondary', { noBonusDamage: true })
+  return sameFiring(w, () => b.weaponAttack(self, w, { targetId: t.id }, 'secondary', { noBonusDamage: true }))
+}
+
+/** Characters a firing may choose among: the attack's valid targets, hostiles first. */
+function chooseTarget(b: Battle, self: Unit, cands: Unit[], kind: string, title: string, text: string, none: string): Unit | null {
+  if (!cands.length) return null
+  const order = [...cands].sort((x, y) => Number(b.hostile(self, y)) - Number(b.hostile(self, x)))
+  const firstHostile = order.findIndex(o => b.hostile(self, o))
+  const i = b.choose({
+    kind, unit: self, title, text,
+    options: [...order.map(o => ({ label: o.name, hint: b.hostile(self, o) ? 'hostile' : 'ally' })), { label: none }],
+    defaultIndex: firstHostile >= 0 ? firstHostile : order.length,
+  })
+  return order[i] ?? null
+}
+
+/**
+ * A reload (Stabilize, the Autoloader Drone, Full Metal Jacket) sets `flags.reloaded`. ROLAND Chamber and the
+ * Mjolnir each answer it, so the first one to look splits it into a window for each (using one doesn't cancel the other).
+ */
+export function takeReload(u: Unit) {
+  if (!u.flags.reloaded) return
+  delete u.flags.reloaded
+  u.flags.rolandReady = true
+  u.flags.mjolnirReady = true
 }
 
 const avgDamage = (w: Weapon) => w.profiles[w.profileIndex]?.damage.reduce((a, d) => a + (typeof d.val === 'number' ? d.val : averageDice(String(d.val))), 0) ?? 0
@@ -59,11 +102,24 @@ registerScripts([
   {
     id: 'mw_bristlecrown_flechette_launcher', note: 'Ignores engaged penalty; 3 damage to grappled/biological',
     beforeAttack(b, self, ctx, role) { if (role === 'attacker' && is(ctx, 'mw_bristlecrown_flechette_launcher') && ctx.reasons.includes('Engaged -1')) ctx.difficulty-- },
-    afterAttack(b, self, ctx, role) {
-      if (role === 'attacker' && is(ctx, 'mw_bristlecrown_flechette_launcher') && ctx.hit && !ctx.target.destroyed && (b.has(ctx.target, 'grappled') || ctx.target.role === 'Biological')) b.applyDamage(ctx.target, [{ type: 'Kinetic', amount: 2 }], { source: self })
+    // 3 kinetic instead of 1: the extra 2 joins the attack's own damage packet (armor applies once). It is the
+    // weapon's damage, not bonus damage, so it is added after the roll (noBonusDamage has already been applied) and
+    // doubled first when the hit is against several targets (bonus parts are halved then).
+    afterAnyRoll(b, self, ctx) {
+      if (ctx.attacker !== self || !is(ctx, 'mw_bristlecrown_flechette_launcher') || !ctx.hit) return
+      if (b.has(ctx.target, 'grappled') || ctx.target.role === 'Biological') ctx.bonusDamage.push({ type: 'Kinetic', val: ctx.multiTarget ? 4 : 2 })
     },
   },
-  { id: 'mw_cutter_mkii_plasma_torch', note: 'Bonus vs objects/terrain only (no effect on characters)' },
+  {
+    id: 'mw_cutter_mkii_plasma_torch', note: 'Deals 10 AP energy to objects (deployables) and terrain',
+    // terrain: attackTerrain reads flags.objectDamage
+    init(u) { for (const w of u.weapons) if (w.dataId === 'mw_cutter_mkii_plasma_torch') (w.flags ??= {}).objectDamage = 10 },
+    // objects: 10 AP energy replaces the weapon's damage (one packet)
+    afterAnyRoll(b, self, ctx) { if (ctx.attacker === self && is(ctx, 'mw_cutter_mkii_plasma_torch') && ctx.hit && ctx.target.kind === 'deployable') ctx.cancelDamage = true },
+    afterAttack(b, self, ctx, role) {
+      if (role === 'attacker' && is(ctx, 'mw_cutter_mkii_plasma_torch') && ctx.hit && ctx.target.kind === 'deployable' && !ctx.target.destroyed) ctx.damageDealt = b.applyDamage(ctx.target, [{ type: 'Energy', amount: 10 }], { source: self, attack: ctx, ap: true })
+    },
+  },
   {
     id: 'mw_daisy_cutter', note: 'Soft-cover cloud in the cone until the end of your next turn',
     ...perFiring('mw_daisy_cutter', (b, self, ctx) => b.addArea({ kind: 'soft_cover', tiles: coneTiles(b.map, self, ctx.target.pos, 7), expiresRound: b.round + 1, ownerId: self.id })),
@@ -97,14 +153,22 @@ registerScripts([
     beforeAttack(b, self, ctx, role) {
       if (role !== 'attacker' || !is(ctx, 'mw_veil_rifle') || b.hostile(self, ctx.target)) return
       ctx.cancelled = true
-      b.addArea({ kind: 'soft_cover', tiles: footprint(ctx.target), expiresRound: b.round + 1, ownerId: self.id })
+      // the shroud travels with the ally: soft cover until the end of its next turn
+      ctx.target.flags.veilShroud = 1
+      b.say(`${ctx.target.name} is shrouded (soft cover until the end of its next turn).`, 'status')
     },
+    adjustCover(_b, _self, _attacker, target, c) { return c === 'none' && target.flags.veilShroud ? 'soft' : c },
+    onAnyTurnStart(_b, _self, u) { if (u.flags.veilShroud === 1) u.flags.veilShroud = 2 },
+    onAnyTurnEnd(_b, _self, u) { if (u.flags.veilShroud === 2) delete u.flags.veilShroud },
   },
   {
     id: 'mw_sharanga_missiles', note: 'Attacks a second target',
     ...perFiring('mw_sharanga_missiles', (b, self, ctx) => {
-      const t = b.alive().find(o => o !== ctx.target && b.hostile(self, o) && b.validTarget(self, ctx.weapon!, o) === true)
-      if (t) b.weaponAttack(self, ctx.weapon!, { targetId: t.id }, 'secondary')
+      const w = ctx.weapon!
+      const cands = b.alive().filter(o => o !== ctx.target && o.kind !== 'deployable' && b.validTarget(self, w, o) === true)
+      const t = chooseTarget(b, self, cands, 'sharanga_second', 'Sharanga: second target', 'This weapon attacks two targets at a time.', 'No second target')
+      // one attack against two targets: the costs are paid once
+      if (t) sameFiring(w, () => b.weaponAttack(self, w, { targetId: t.id }, 'secondary'))
     }),
   },
   {
@@ -121,7 +185,8 @@ registerScripts([
       const i = b.choose({ kind: 'pinaka_second', unit: self, title: 'Pinaka: second blast', text: 'Place the second Blast 1 area (it cannot overlap the first).', options: opts, defaultIndex: 0 })
       if (i >= cands.length) return
       self.flags.pinakaSecond = true
-      try { b.weaponAttack(self, w, { tile: cands[i].pos }, 'secondary', { noBonusDamage: true }) } finally { delete self.flags.pinakaSecond }
+      // the same attack: its heat is paid once
+      try { sameFiring(w, () => b.weaponAttack(self, w, { tile: cands[i].pos }, 'secondary', { noBonusDamage: true })) } finally { delete self.flags.pinakaSecond }
     }),
     actions: (b, u) => {
       const w = weaponOf(u, 'mw_pinaka_missiles')
@@ -212,19 +277,20 @@ registerScripts([
     })] : []),
   },
   {
-    id: 'mw_arc_projector', note: 'Chains to new targets within 3 on hits (1 heat each, no bonus damage)',
+    id: 'mw_arc_projector', note: 'On hits, optional secondary attacks on new characters within 3 of the first target (1 heat each, no bonus damage, nobody twice)',
     ...perFiring('mw_arc_projector', (b, self, ctx) => {
       const w = ctx.weapon!
-      const hit = new Set([ctx.target.id])
-      let last = ctx.target, lastHit = !!ctx.hit
+      const first = ctx.target
+      const struck = new Set([first.id])
+      let lastHit = !!ctx.hit
       while (lastHit && !self.destroyed) {
-        const next = b.alive().find(o => b.hostile(self, o) && !hit.has(o.id) && b.distance(last, o) <= 3 && o.kind !== 'deployable')
+        const cands = b.alive().filter(o => !struck.has(o.id) && o.kind !== 'deployable' && b.distance(first, o) <= 3 && b.validTarget(self, w, o) === true)
+        const next = chooseTarget(b, self, cands, 'arc_chain', 'Arc Projector: secondary attack', `Attack another character within 3 of ${first.name} (1 heat)?`, 'Stop')
         if (!next) break
-        hit.add(next.id)
+        struck.add(next.id)
         b.addHeat(self, 1)
-        const r = b.weaponAttack(self, w, { targetId: next.id }, 'secondary', { noBonusDamage: true })
+        const r = secondaryAttack(b, self, w, next)
         lastHit = !!r.ctxs[0]?.hit
-        last = next
       }
     }),
   },
@@ -234,7 +300,12 @@ registerScripts([
       const w = weaponOf(u, 'mw_autogun')
       if (!w || !w.loaded) return
       const t = b.alive().filter(o => b.hostile(u, o) && (o.kind === 'mech' || o.kind === 'npc') && b.validTarget(u, w, o) === true).sort((a, c) => a.hp - c.hp)[0]
-      if (t) { b.say(`${u.name}'s autogun fires.`); b.weaponAttack(u, w, { targetId: t.id }, 'free') }
+      if (!t) return
+      b.say(`${u.name}'s autogun fires.`)
+      // no_synergies: it doesn't benefit from or trigger your talents (their scripts are set aside for the attack)
+      const talents = u.talents
+      u.talents = []
+      try { b.weaponAttack(u, w, { targetId: t.id }, 'free') } finally { u.talents = talents }
     },
   },
   {
@@ -273,9 +344,9 @@ registerScripts([
     beforeAttack(b, self, ctx, role) { if (role === 'attacker' && is(ctx, 'mw_shatterhead_colony_missiles')) ctx.ignoreDifficulty = true },
   },
   {
-    id: 'mw_tachyon_lance', note: 'Danger Zone backblast (cone 3 behind you)',
+    id: 'mw_tachyon_lance', note: 'Danger Zone backblast (cone 3 behind you), 1/round',
     ...perFiring('mw_tachyon_lance', (b, self, ctx) => {
-      if (!b.has(self, 'dangerzone')) return
+      if (!b.has(self, 'dangerzone') || !once(self, 'tachyonBackblast')) return
       const back = { x: 2 * self.pos.x - ctx.target.pos.x, y: 2 * self.pos.y - ctx.target.pos.y }
       const tiles = coneTiles(b.map, self, back, 3)
       b.emit({ type: 'area', tiles, kind: 'explosion' })
@@ -284,9 +355,27 @@ registerScripts([
     }),
   },
   {
-    id: 'mw_annihilator', note: 'Secondary attacks against everyone in burst 1 of the target',
+    id: 'mw_gravity_gun', note: 'On attack: characters in the blast make a Hull save or take 1d6 energy and are pulled as close to its centre as possible',
+    // the data's on_attack effect would run against the attacker (attacks.ts runs it on the user): this script runs it
+    init(u) { for (const w of u.weapons) if (w.dataId === 'mw_gravity_gun') for (const p of w.profiles) p.onAttack = p.onAttack.filter(e => e.do === 'text') },
+    ...perFiring('mw_gravity_gun', (b, self, ctx) => {
+      const centre = b.lastAim?.tile
+      if (!centre) return
+      const tiles = b.aoeTiles(self, ctx.weapon!, centre)
+      if (typeof tiles === 'string') return
+      for (const t of unitsOnTiles(b.alive(), tiles)) {
+        if (t.kind === 'deployable' || t.destroyed) continue
+        if (b.save(t, 'hull', self.stats.save, 0, self)) continue
+        b.applyDamage(t, [{ type: 'Energy', amount: rollDice(b.rng, '1d6').total }], { source: self })
+        if (!t.destroyed) b.forceMove(t, centre, 6, -1)
+      }
+    }),
+  },
+  {
+    id: 'mw_annihilator', note: 'On hit: secondary attacks against every character in burst 1 of the target (no bonus damage, no heat cost, no further secondaries)',
     ...perFiring('mw_annihilator', (b, self, ctx) => {
-      for (const t of unitsOnTiles(b.alive(), burstTiles(b.map, ctx.target, 1))) if (t !== ctx.target && t !== self) secondaryAttack(b, self, ctx.weapon!, t)
+      if (!ctx.hit) return
+      for (const t of unitsOnTiles(b.alive(), burstTiles(b.map, ctx.target, 1))) if (t !== ctx.target && t !== self && t.kind !== 'deployable') secondaryAttack(b, self, ctx.weapon!, t)
     }),
   },
   {
@@ -294,36 +383,62 @@ registerScripts([
     ...perFiring('mw_fuel_rod_gun', (b, self) => { self.heat = Math.max(0, self.heat - 4); b.say(`${self.name} vents 4 heat.`) }),
   },
   {
-    id: 'mw_lancaster_integrated', note: 'Latch Drone: attack an ally vs Evasion 8; on hit spend 1 Repair to restore half their HP',
+    id: 'mw_lancaster_integrated', note: 'Latch Drone: ranged attack on an allied mech within range and line of sight vs Evasion 8; on a hit you or it spends 1 Repair to restore half its HP (not while Supercharger is active)',
     actions: (b, u) => [action({
-      key: 'latch', name: 'Latch Drone Repair', activation: 'quick', target: 'ally', range: 8, text: 'Ranged attack vs Evasion 8 on an allied mech; on a hit spend 1 Repair to restore half its HP.',
-      usable: (bt, self) => (self.repairs <= 0 ? 'No repairs' : true),
+      key: 'latch', name: 'Latch Drone Repair', activation: 'quick', target: 'ally', range: 8, text: 'Ranged attack vs Evasion 8 on an allied mech within range and line of sight; on a hit you or the target spends 1 Repair to restore half its HP.',
+      usable: (bt, self) => (self.flags.superchargeTarget ? 'The Latch Drone is clamped on (Supercharger)' : !weaponOf(self, 'mw_lancaster_integrated') ? 'Destroyed' : true),
       run: (bt, self, t) => {
         const target = t as Unit
-        const r = bt.rng.d(20) + self.stats.grit
-        bt.say(`  Latch drone: ${r} vs 8`)
-        if (r >= 8) { self.repairs--; bt.heal(target, Math.ceil(target.stats.hp / 2)) }
+        const w = weaponOf(self, 'mw_lancaster_integrated')!
+        if (!target || !('hp' in target) || target === self || target.kind !== 'mech' || bt.hostile(self, target)) throw new Error('Choose an allied mech')
+        if (bt.distance(self, target) > bt.weaponReach(self, w)) throw new Error('Out of range')
+        if (!bt.los(self, target)) throw new Error('No line of sight')
+        if (self.repairs <= 0 && target.repairs <= 0) throw new Error('No repairs to spend')
+        // a real ranged attack: accuracy, difficulty (Impaired, cover...) and attack bonuses apply; the defence is Evasion 8
+        const ctx = bt.buildWeaponCtx(self, w, target, 'free', false)
+        const net = ctx.accuracy - (ctx.ignoreDifficulty ? 0 : ctx.difficulty)
+        const d20 = bt.rollD20(self, 'attack', ctx)
+        const acc = rollAccuracy(bt.rng, net)
+        const total = d20 + ctx.attackBonus + acc.bonus
+        const hit = total >= 8
+        bt.say(`  Latch drone vs ${target.name}: ${total} (d20 ${d20} +${ctx.attackBonus}${net ? ` ${net > 0 ? '+' : '-'}${Math.abs(net)}[${acc.dice.join(',')}]` : ''}) vs 8 — ${hit ? 'HIT' : 'MISS'}`, 'attack')
+        if (!hit) return
+        const payers = [self, target].filter(x => x.repairs > 0)
+        const i = payers.length > 1 ? bt.choose({ kind: 'latch_payer', unit: self, title: 'Latch Drone: who spends the Repair?', options: payers.map(x => ({ label: x.name, hint: `${x.repairs} Repairs` })), defaultIndex: self.repairs >= target.repairs ? 0 : 1 }) : 0
+        payers[i].repairs--
+        bt.heal(target, Math.ceil(target.stats.hp / 2))
       },
       aiScore: (bt, self, t) => (t && 'hp' in t ? (t.stats.hp - t.hp) * 0.6 : 0),
     })],
   },
   {
-    id: 'mw_raleigh_integrated', note: 'Mjolnir: may also fire as a free action when you reload (1/round)',
-    actions: (b, u) => (u.flags.reloaded && !u.flags['round:mjolnir'] ? [action({
+    id: 'mw_raleigh_integrated', note: 'Mjolnir: may also fire as a free action when you reload (1/round, until the end of that turn)',
+    actions: (b, u) => ((u.flags.reloaded || u.flags.mjolnirReady) && !u.flags['round:mjolnir'] ? [action({
       key: 'mjolnir', name: 'M35 Mjolnir (free)', activation: 'free', target: 'enemy', range: 5, text: 'Fire the Mjolnir as a free action after reloading.',
-      run: (bt, self, t) => { self.flags['round:mjolnir'] = true; delete self.flags.reloaded; const w = weaponOf(self, 'mw_raleigh_integrated'); if (w) bt.weaponAttack(self, w, { targetId: (t as Unit).id }, 'free') },
+      run: (bt, self, t) => {
+        takeReload(self)
+        self.flags['round:mjolnir'] = true
+        delete self.flags.mjolnirReady
+        const w = weaponOf(self, 'mw_raleigh_integrated')
+        if (w) bt.weaponAttack(self, w, { targetId: (t as Unit).id }, 'free')
+      },
     })] : []),
+    // the free shot answers the reload: the window closes at the end of the turn (ROLAND Chamber keeps its own)
+    onTurnEnd(_b, u) { takeReload(u); delete u.flags.mjolnirReady },
   },
   // ------------------------------------------------------------ mods
   {
-    id: 'wm_thermal_charge', note: 'On hit: +1d6 explosive (3 charges)',
-    beforeAttack(b, self, ctx, role) {
-      if (role === 'attacker' && ctx.weapon?.modId === 'wm_thermal_charge' && (self.flags.thermalCharges ?? 3) > 0) self.flags.thermalReady = true
-    },
-    afterAttack(b, self, ctx, role) {
-      if (role !== 'attacker' || !self.flags.thermalReady) return
-      delete self.flags.thermalReady
-      if (ctx.hit && !ctx.target.destroyed) { self.flags.thermalCharges = (self.flags.thermalCharges ?? 3) - 1; b.applyDamage(ctx.target, [{ type: 'Explosive', amount: rollDice(b.rng, '1d6').total }], { source: self }) }
+    id: 'wm_thermal_charge', note: 'On a hit with the modded weapon, expend a charge (Limited 3, plus your Limited bonus) as a free action: +1d6 explosive bonus damage',
+    afterAnyRoll(b, self, ctx) {
+      if (ctx.attacker !== self || !ctx.hit || ctx.weapon?.modId !== 'wm_thermal_charge') return
+      const f = (ctx.weapon.flags ??= {})
+      f.thermalCharges ??= 3 + self.stats.limitedBonus
+      if (f.thermalCharges <= 0) return
+      if (b.choose({ kind: 'thermal_charge', unit: self, title: 'Thermal Charge?', text: `Expend a charge (${f.thermalCharges} left) for +1d6 explosive bonus damage?`, options: [{ label: 'Detonate' }, { label: 'No' }], defaultIndex: 0 }) !== 0) return
+      f.thermalCharges--
+      // bonus damage joins the attack's damage packet: armor applies once and it rolls twice on a crit
+      ctx.bonusDamage.push({ type: 'Explosive', val: '1d6' })
+      ctx.reasons.push('Thermal Charge +1d6')
     },
   },
   {
@@ -341,6 +456,8 @@ registerScripts([
   },
   {
     id: 'wm_phase_ready_mod', note: 'Ignores LoS and cover; targets count as Invisible',
+    // validTarget / aoeTiles read flags.noLos: no line of sight needed
+    init(u) { for (const w of u.weapons) if (w.modId === 'wm_phase_ready_mod') (w.flags ??= {}).noLos = true },
     beforeAttack(b, self, ctx, role) {
       if (role === 'attacker' && ctx.weapon?.modId === 'wm_phase_ready_mod') {
         ctx.ignoreCover = true
@@ -407,8 +524,7 @@ registerScripts([
     afterAnyAttack: (b, self) => ghostReactCheck(b, self),
   },
   {
-    id: 'cb_the_lesson_of_the_open_door', note: '+2 Save Target; 1/round, when a character fails a save against you, it takes 2 heat',
-    init: u => { u.stats.save += 2 },
+    id: 'cb_the_lesson_of_the_open_door', note: '+2 Save Target (its lancer-data bonus, added once by stats.ts); 1/round, when a character fails a save against you, it takes 2 heat',
     onSaveFailed(b, self, target) {
       if (self.flags['round:opendoor'] || target.destroyed) return
       self.flags['round:opendoor'] = true

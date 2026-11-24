@@ -197,7 +197,7 @@ describe('overheating table', () => {
     u.heat = 6
     b.addHeat(u, 3) // no rigged dice: none may be rolled
     expect(u.stress).toBe(1)
-    expect(u.heat).toBe(3) // as implemented: the heat beyond the cap stays
+    expect(u.heat).toBe(2) // owner ruling: heat clears like a mech's, only what went beyond cap + 1 carries over (core p.81)
     expect(b.has(u, 'exposed')).toBe(true)
     expect(said(b, /overheats and vents violently/)).toBe(true)
     expect(said(b, /Overheating check/)).toBe(false)

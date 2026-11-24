@@ -209,7 +209,7 @@
           ]
         }
       ],
-      "veteranTrait": "deadly"
+      "veteranTraits": ["deadly", "hacker"]
     },
     {
       "name": "Detachment Bastion",
@@ -279,7 +279,7 @@
           ]
         }
       ],
-      "veteranTrait": "shock_armor"
+      "veteranTraits": ["shock_armor", "steel_jaw"]
     },
     {
       "name": "Detachment Trooper",

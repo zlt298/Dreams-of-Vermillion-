@@ -12,6 +12,7 @@ import { hasTag, tagVal, nextUid, isWeaponType } from '../stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
+import { hazardCheck, hovers } from './movement'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
 
 export function start(bt: Battle) {
@@ -67,8 +68,9 @@ export function beginTurn(bt: Battle, u: Unit) {
   u.actedThisTurn = false
   u.boostedThisTurn = false
   u.flags.fullTechLeft = 0
-  for (const k of Object.keys(u.flags)) if (k.startsWith('turn:') || k.startsWith('react:')) delete u.flags[k]
+  for (const k of Object.keys(u.flags)) if (k.startsWith('turn:')) delete u.flags[k]
   // "You can only take one reaction per turn – your turn or other characters' turns": refresh everyone's per-turn budget
+  // (each specific reaction is 1/round on top of that: see canSpend; those refresh at round start)
   for (const o of bt.units) if (!o.destroyed) o.reactionsLeft = bt.has(o, 'bracing_recovery') ? 0 : o.reactionsPerRound
   bt.tickStatuses(u, true)
   if (bt.grapples.length) bt.grappleContest(u)
@@ -106,11 +108,10 @@ export function endTurnInner(bt: Battle, u: Unit) {
   if (bt.has(u, 'hidden') && bt.inRevealField(u)) bt.removeStatus(u, 'hidden')
   // Prowl ends with the turn: lose Hidden if exposed now
   if (u.flags.prowl && bt.has(u, 'hidden')) { u.activeTurn = false; const ok = bt.canHide(u); u.activeTurn = true; if (!ok) bt.removeStatus(u, 'hidden') }
-  // dangerous terrain: ending a turn in it also requires the (once per round) Engineering check
-  if (!u.destroyed && !u.flying && !u.flags.ignoreHazard && !u.flags['round:hazard'] && footprint(u).some(q => tileAt(bt.map, q)?.kind === 'hazard')) {
-    u.flags['round:hazard'] = true
-    if (!bt.check(u, 'eng')) bt.applyDamage(u, [{ type: 'Energy', amount: 5 }], {})
-  }
+  // flight (core p.63): a flyer that didn't move at least 1 space this turn falls (lands), unless it hovers
+  if (!u.destroyed && u.flying && !u.flags['turn:moved'] && !u.flags.zeroG && !hovers(bt, u)) bt.land(u, 'stalls without moving')
+  // dangerous terrain: ending a turn in it also requires the (once per round) Engineering check; flyers are above it
+  if (!u.flying) hazardCheck(bt, u)
   // burn
   if (u.burn > 0 && !u.destroyed) {
     if (bt.check(u, 'eng')) { bt.say(`${u.name} clears burn.`); u.burn = 0 }
@@ -211,11 +212,16 @@ export function quickUsed(bt: Battle, u: Unit, action: string): boolean {
 
 export function canSpend(bt: Battle, u: Unit, cost: 'quick' | 'full' | 'protocol' | 'free' | 'reaction' | 'move', action?: string): true | string {
   if (u.destroyed) return 'Destroyed'
+  for (const sc of scriptsFor(u)) { const no = sc.forbidsAction?.(bt, u, cost, action); if (no) return no }
   if (cost === 'reaction') {
-    // one reaction per turn (any character's turn); each reaction type 1/round, refreshing at your own turn start
-    if (u.reactionsLeft <= 0) return 'Already reacted this turn'
-    if (action && u.flags[`react:${action}`] && !(action === 'overwatch' && u.traits?.includes('reflex'))) return `${actionLabel(action)} already used this round`
-    if (bt.has(u, 'grappled') && !(action === 'brace' && u.flags.braceWhileGrappled)) return 'Grappled'
+    // an extra Overwatch only (Tortuga Hyper-Reflex Mode): usable past the per-turn and per-round limits
+    const bonusOw = action === 'overwatch' && (u.flags.extraOverwatch ?? 0) > 0
+    // one reaction per turn (any character's turn); each reaction type 1/round, refreshing at round start (owner ruling)
+    if (u.reactionsLeft <= 0 && !bonusOw) return 'Already reacted this turn'
+    if (action && u.flags[`round:react:${action}`] && !bonusOw && !(action === 'overwatch' && u.traits?.includes('reflex'))) return `${actionLabel(action)} already used this round`
+    // Blackbeard Lock/Kill Subsystem: a grappler (not one being held) can still react
+    const lockKill = u.flags.lockKill && bt.grapples.some(g => g.a === u.id) && !bt.grapples.some(g => g.d === u.id)
+    if (bt.has(u, 'grappled') && !lockKill && !(action === 'brace' && u.flags.braceWhileGrappled)) return 'Grappled'
     if (bt.has(u, 'stunned')) return 'Stunned'
     if (bt.has(u, 'jammed')) return 'Jammed'
     if (bt.has(u, 'bracing_recovery')) return 'Recovering from brace'
@@ -230,6 +236,8 @@ export function canSpend(bt: Battle, u: Unit, cost: 'quick' | 'full' | 'protocol
   if (cost === 'protocol') return u.actedThisTurn ? 'Protocols must be used at the start of a turn' : true
   if (cost === 'free') return true
   if (cost === 'quick') {
+    // a free Ram or Grapple (Titanomachy Mesh) and similar: listed actions cost nothing, once
+    if (action && (u.flags['turn:freeQuick'] ?? []).includes(action)) return true
     if (action && bt.quickUsed(u, action)) return (u.flags.bonusQuick ?? 0) > 0 ? true : `${actionLabel(action)} already taken this turn (repeat it via Overcharge or another free action)`
     return u.actionsLeft >= 1 || (u.flags.bonusQuick ?? 0) > 0 ? true : 'No actions left'
   }
@@ -245,20 +253,26 @@ export function spend(bt: Battle, u: Unit, cost: 'quick' | 'full' | 'protocol' |
   if (ok !== true) throw new Error(ok)
   if (cost === 'reaction') {
     for (const o of bt.alive()) for (const sc of scriptsFor(o)) sc.onAnyAction?.(bt, o, u, 'reaction')
-    u.reactionsLeft--
+    // the extra Overwatch (Hyper-Reflex) is spent only when the normal reaction can't pay for it
+    if (action === 'overwatch' && (u.flags.extraOverwatch ?? 0) > 0 && (u.reactionsLeft <= 0 || u.flags['round:react:overwatch'])) u.flags.extraOverwatch--
+    else u.reactionsLeft--
     if (u.flags.ghostweave && bt.has(u, 'invisible')) bt.removeStatus(u, 'invisible')
-    if (action) u.flags[`react:${action}`] = true
+    if (action) u.flags[`round:react:${action}`] = true
     if (bt.has(u, 'hidden')) bt.removeStatus(u, 'hidden') // taking reactions reveals you
     return
   }
   if (cost !== 'protocol') u.actedThisTurn = true
   ;(u.flags['turn:spent'] ??= []).push(action ?? cost)
   for (const o of bt.alive()) for (const sc of scriptsFor(o)) sc.onAnyAction?.(bt, o, u, cost)
+  if (cost === 'quick' && action && (u.flags['turn:freeQuick'] ?? []).includes(action)) {
+    delete u.flags['turn:freeQuick']
+    return
+  }
   if (cost === 'quick') {
-    // a repeated action must be paid from the free-action pool
-    if ((action && bt.quickUsed(u, action)) || (u.flags.payWithBonus && (u.flags.bonusQuick ?? 0) > 0)) u.flags.bonusQuick--
-    else if (u.actionsLeft >= 1) u.actionsLeft--
-    else u.flags.bonusQuick--
+    // the extra quick actions (Overcharge, ASURA...) pay first, so the turn's two actions stay whole for a full action
+    // (Overcharge → Boost → Barrage works); a repeated action must be paid from that pool anyway
+    if ((u.flags.bonusQuick ?? 0) > 0) u.flags.bonusQuick--
+    else u.actionsLeft--
     delete u.flags.payWithBonus
     if (action) u.flags['turn:quickUsed'] = [...(u.flags['turn:quickUsed'] ?? []), action]
   } else if (cost === 'full') u.actionsLeft = Math.max(0, u.actionsLeft - 2)
