@@ -107,7 +107,6 @@
           "type": "trait",
           "name": "Holy Furnace",
           "resist": [
-            "Energy",
             "Burn"
           ],
           "hooks": [
@@ -137,7 +136,7 @@
           "effects": [
             {
               "do": "burn",
-              "val": 3
+              "val": 1
             }
           ]
         }
@@ -229,6 +228,7 @@
     {
       "name": "Ash Cantor",
       "role": "Controller",
+      "count": 2,
       "color": "#a35bd1",
       "features": [
         {

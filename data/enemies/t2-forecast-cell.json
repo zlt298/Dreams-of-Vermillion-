@@ -6,7 +6,7 @@
   "tier": 2,
   "designedFor": 4,
   "kind": "elite",
-  "description": "Identity: anticipation. Two phasing hunters and a breacher strike where you will be; a veteran archer covers; an engineer keeps them shielded.",
+  "description": "Identity: anticipation. A phasing hunter and a breacher strike where you will be; a veteran archer covers; cheap converts fill the gaps.",
   "units": [
     {
       "name": "Forecast Specter",
@@ -231,73 +231,12 @@
       ]
     },
     {
-      "name": "Forecast Engineer",
-      "role": "Support",
-      "count": 1,
-      "color": "#27ae60",
-      "description": "Patches whoever the forecast says will be hit next.",
-      "features": [
-        {
-          "type": "system",
-          "name": "Pre-emptive Shield",
-          "activation": "quick",
-          "target": "ally",
-          "range": 8,
-          "effects": [
-            {
-              "do": "overshield",
-              "val": 5
-            }
-          ],
-          "recharge": 4
-        },
-        {
-          "type": "system",
-          "name": "Nanite Patch",
-          "activation": "quick",
-          "target": "ally",
-          "range": 6,
-          "effects": [
-            {
-              "do": "heal",
-              "val": "1d6+3"
-            }
-          ],
-          "recharge": 5
-        },
-        {
-          "type": "weapon",
-          "name": "Rivet Gun",
-          "weaponType": "CQB",
-          "range": [
-            {
-              "type": "Range",
-              "val": 6
-            }
-          ],
-          "damage": [
-            {
-              "type": "Kinetic",
-              "val": "1d6+1"
-            }
-          ]
-        },
-        {
-          "type": "trait",
-          "name": "Field Kit",
-          "stats": {
-            "armor": 1
-          }
-        }
-      ]
-    },
-    {
       "name": "Choir Skirmisher",
       "role": "Striker",
       "templates": [
         "Grunt"
       ],
-      "count": 1,
+      "count": 2,
       "color": "#d9534f",
       "description": "Converts in cheap prints, singing on the open channel.",
       "features": [
