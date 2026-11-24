@@ -16,6 +16,7 @@ import * as attacks from './attacks'
 import { useLockOn } from './tech'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
 import { needsBarrage } from './actions'
+import { seesHidden } from './attacks'
 
 /** Damage a terrain block. Every 10 damage knocks one level off; a block with no levels left becomes rubble. */
 export function damageTerrain(bt: Battle, p: Pos, amount: number, opts: { source?: Unit; quiet?: boolean } = {}): boolean {
@@ -146,8 +147,9 @@ export function removeInstances(bt: Battle, u: Unit, drop: StatusInstance[]) {
   }
 }
 
-export function stabilize(bt: Battle, u: Unit, mode: 'cool' | 'repair', clear?: { unit: Unit; status?: StatusId | 'burn' | 'reload' }) {
-  const c = bt.canSpend(u, 'full')
+export function stabilize(bt: Battle, u: Unit, mode: 'cool' | 'repair', clear?: { unit: Unit; status?: StatusId | 'burn' | 'reload' }, opts: { paid?: boolean } = {}) {
+  // `paid`: the action was already paid for (Redundant Systems Upgrade: Stabilize as a quick action)
+  const c = opts.paid ? true : bt.canSpend(u, 'full')
   if (c !== true) throw new Error(c)
   // NPC Stabilize (core p.281): cools and reloads every Loading weapon; NPCs don't repair, clear burn or clear conditions
   if (u.kind === 'npc') {
@@ -176,11 +178,13 @@ export function stabilize(bt: Battle, u: Unit, mode: 'cool' | 'repair', clear?: 
   }
   if (mode === 'repair' && u.repairs <= 0) throw new Error('No repairs left')
   if (mode === 'repair' && u.flags.briareosZero) throw new Error("Can't regain HP until a Full Repair (Briareos Frame)")
-  bt.spend(u, 'full')
+  if (!opts.paid) bt.spend(u, 'full')
   for (const s of scriptsFor(u)) s.onStabilize?.(bt, u)
   if (mode === 'cool') {
+    const hadHeat = u.heat > 0
     u.heat = 0
     bt.removeStatus(u, 'exposed')
+    if (hadHeat) for (const s of scriptsFor(u)) s.onClearHeat?.(bt, u)
     bt.say(`${u.name} STABILIZES: cools reactor.`)
     if (u.flags.adaptiveReactor && u.stress < u.stats.stress && u.repairs >= 2) { u.repairs -= 2; u.stress++; bt.say('  Adaptive Reactor repairs 1 stress.') }
   } else {
@@ -251,8 +255,8 @@ export function search(bt: Battle, u: Unit) {
   bt.spend(u, 'quick', 'search')
   for (const o of bt.alive()) {
     if (!bt.hostile(u, o) || !bt.has(o, 'hidden') || bt.distance(u, o) > u.stats.sensors) continue
-    // contested check (core p.69): ties go to the one who started it
-    const roll = contestTotal(bt, u, 'sys')
+    // contested check (core p.69): ties go to the one who started it; Retractable Profile: +1 difficulty to locate it
+    const roll = contestTotal(bt, u, 'sys') - (o.flags.locateDifficulty ? Math.max(...Array.from({ length: o.flags.locateDifficulty }, () => bt.rng.d(6))) : 0)
     const opp = contestTotal(bt, o, 'agi')
     if (roll >= opp) { bt.removeStatus(o, 'hidden'); bt.say(`${u.name} finds ${o.name}!`) }
   }
@@ -275,7 +279,7 @@ export function meleeTargetValid(bt: Battle, u: Unit, t: Unit): true | string {
   if (t.destroyed) return 'Destroyed'
   if (t === u) return 'Cannot target self'
   if (t.flags.intangible || u.flags.intangible) return 'Intangible'
-  if (bt.has(t, 'hidden') && bt.hostile(u, t)) return 'Hidden'
+  if (bt.has(t, 'hidden') && bt.hostile(u, t) && !seesHidden(bt, u, t)) return 'Hidden'
   return true
 }
 
@@ -335,11 +339,20 @@ export function startGrapple(bt: Battle, a: Unit, d: Unit) {
   bt.syncGrapples()
 }
 
+/**
+ * A grappler's Size against `vs`. Synthetic Muscle Netting: the same Size as a larger opponent, and at least one
+ * Size larger than one of the same Size or smaller.
+ */
+export function grappleSize(u: Unit, vs: Unit): number {
+  if (!u.flags.muscleNet) return u.stats.size
+  return vs.stats.size > u.stats.size ? vs.stats.size : Math.max(u.stats.size, vs.stats.size + 1)
+}
+
 /** Combined Size of everyone grappling `d`, against `d`'s own Size. */
 export function grappleDominance(bt: Battle, g: { a: string; d: string; winner?: string }): 'attackers' | 'defender' {
   const d = bt.unit(g.d)!
   const attackers = bt.grapples.filter(x => x.d === g.d).map(x => bt.unit(x.a)).filter((x): x is Unit => !!x && !x.destroyed)
-  const aSize = attackers.reduce((n, x) => n + x.stats.size, 0)
+  const aSize = attackers.reduce((n, x) => n + grappleSize(x, d), 0)
   if (aSize !== d.stats.size) return aSize > d.stats.size ? 'attackers' : 'defender'
   return g.winner === g.d ? 'defender' : 'attackers'
 }
@@ -383,7 +396,7 @@ export function grappleContest(bt: Battle, u: Unit) {
   for (const g of bt.grapples.filter(x => x.a === u.id || x.d === u.id)) {
     const a = bt.unit(g.a), d = bt.unit(g.d)
     if (!a || !d) continue
-    const attackersSize = bt.grapples.filter(x => x.d === g.d).reduce((n, x) => n + (bt.unit(x.a)?.stats.size ?? 0), 0)
+    const attackersSize = bt.grapples.filter(x => x.d === g.d).reduce((n, x) => { const ax = bt.unit(x.a); return n + (ax ? grappleSize(ax, d) : 0) }, 0)
     if (attackersSize !== d.stats.size) continue
     const iAmAttacker = g.a === u.id
     if ((bt.grappleDominance(g) === 'attackers') === iAmAttacker) continue // already on top
@@ -495,7 +508,9 @@ export function shutDown(bt: Battle, u: Unit) {
   const c = bt.canSpend(u, 'quick', 'shut_down')
   if (c !== true) throw new Error(c)
   bt.spend(u, 'quick', 'shut_down')
+  const hadHeat = u.heat > 0
   u.heat = 0
+  if (hadHeat) for (const s of scriptsFor(u)) s.onClearHeat?.(bt, u)
   bt.removeStatus(u, 'exposed')
   // core p.72: statuses and conditions caused by tech actions end (Lock On always comes from one); others stay.
   // A meltdown already counting down is not stopped.

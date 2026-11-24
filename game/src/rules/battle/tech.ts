@@ -13,6 +13,7 @@ import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, St
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
+import { seesHidden } from './attacks'
 
 export function techTargetValid(bt: Battle, u: Unit, t: Unit, option?: string): true | string {
   if (bt.has(u, 'jammed')) return 'Jammed'
@@ -26,7 +27,7 @@ export function techTargetValid(bt: Battle, u: Unit, t: Unit, option?: string): 
   if (t.role === 'Biological' && option !== 'scan' && option !== 'lock_on') return 'Biological characters are immune to tech actions (except Scan and Lock On)'
   if (t.destroyed) return 'Destroyed'
   if (bt.has(t, 'shutdown')) return 'Target is shut down (immune to tech)'
-  if (bt.hostile(u, t) && bt.has(t, 'hidden')) return 'Hidden'
+  if (bt.hostile(u, t) && bt.has(t, 'hidden') && !seesHidden(bt, u, t)) return 'Hidden'
   // Jammed characters can't benefit from tech actions (core p.78): no Bolster or friendly Invade for them
   if (!bt.hostile(u, t) && bt.has(t, 'jammed') && option !== 'scan' && option !== 'lock_on') return 'Target is Jammed'
   if (bt.distance(u, t) > u.stats.sensors && !bt.viaMetahook(u, t)) return 'Out of sensor range'
@@ -175,7 +176,9 @@ export function invade(bt: Battle, u: Unit, t: Unit, option: 'fragment' | { name
   const v = bt.techTargetValid(u, t)
   if (v !== true) throw new Error(v)
   bt.spendTech(u, 'invade')
-  return withTechScope(bt, () => {
+  const wasActing = u.flags.techActing
+  u.flags.techActing = true // a tech action in progress (//SCORPION, ICEOUT)
+  try { return withTechScope(bt, () => {
     const ctx = bt.invadeRoll(u, t, option === 'fragment' ? 'INVADE: Fragment Signal' : `INVADE: ${option.name}`)
     if (ctx.hit) {
       if (bt.hostile(u, t)) bt.applyDamage(t, [{ type: 'Heat', amount: 2 }], { source: u, attack: ctx })
@@ -186,7 +189,7 @@ export function invade(bt: Battle, u: Unit, t: Unit, option: 'fragment' | { name
       } else bt.runEffects(u, t, option.effects, ctx)
     }
     return ctx
-  })
+  }) } finally { u.flags.techActing = wasActing }
 }
 
 export function lockOn(bt: Battle, u: Unit, t: Unit) {

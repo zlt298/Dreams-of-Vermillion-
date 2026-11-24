@@ -73,6 +73,8 @@ export interface WeaponProfile {
   on_crit?: string | OnEffect
   on_attack?: string | OnEffect
   actions?: ActionData[]
+  /** this profile can be used with Skirmish although the weapon is Superheavy (Leviathan Standard) */
+  skirmish?: boolean
 }
 export interface WeaponData extends WeaponProfile {
   id: string

@@ -51,7 +51,7 @@ Useful commands, all run from `game/`:
   - Grunts die to external heat
   - Ultras refresh reactions every turn
   - NPCs and tech attacks can't crit
-- A quick action can't be repeated in a turn from normal actions. It can be repeated when paid with a free-action quick: Overcharge, Everest Initiative, ASURA. Full Tech still gives two quick techs.
+- A quick action can't be repeated in a turn from normal actions. It can be repeated when paid with a free-action quick: Overcharge, Everest Initiative. (ASURA's extra actions obey the duplicate rule.) Full Tech still gives two quick techs.
 
 ### Stability and performance
 - Caches for the map, line of sight and cover, plus per-unit script lists and single-pass AI pathing. The AI takes about 15 ms per turn on average (p95 about 35 ms).

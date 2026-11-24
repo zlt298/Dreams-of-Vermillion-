@@ -272,7 +272,9 @@ export function useCustom(bt: Battle, u: Unit, a: CustomAction, target?: Unit | 
   const heat = a.heat ?? heatSelfOf(bt, u, a)
   if (heat) bt.addHeat(u, heat, u)
   bt.say(`${u.name} uses ${a.name}.`, 'attack')
-  // a tech action: what it inflicts is marked as from tech (Shut Down ends it)
-  if (a.activation === 'quick_tech' || a.activation === 'full_tech') withTechScope(bt, () => a.run(bt, u, target))
-  else a.run(bt, u, target)
+  // a tech action: what it inflicts is marked as from tech (Shut Down ends it; //SCORPION and ICEOUT read techActing)
+  const tech = a.activation === 'quick_tech' || a.activation === 'full_tech'
+  const was = u.flags.techActing
+  if (tech) u.flags.techActing = true
+  try { if (tech) withTechScope(bt, () => a.run(bt, u, target)); else a.run(bt, u, target) } finally { if (tech) u.flags.techActing = was }
 }

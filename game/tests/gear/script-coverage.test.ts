@@ -14,7 +14,6 @@ const NARRATIVE_ONLY: Record<string, string> = {
   ms_eva_module: 'zero-g / underwater flight; no such environments',
   ms_technophile_1: 'custom NHP personality',
   ms_technophile_2: 'custom NHP personality',
-  ms_external_ammo_feed: 'note-only script: its reload is the plain Reload quick action',
 }
 /** Scripts that still have no behaviour test. Keep this short: write the test, then delete the line. */
 const OFFICIAL_SMOKE = 'official NPC feature: only the official-scripts smoke battle runs it'

@@ -340,6 +340,7 @@ export class Battle {
     // flyers that are Immobilized or Stunned fall (they land; they take off again when they next move)
     if ((id === 'immobilized' || id === 'stunned') && u.flying && !data?.grapple && !data?.lift) this.land(u, `${id}`)
     const inst: StatusInstance = { id, source: source?.id, data }
+    if (source?.flags.techActing) inst.tech = true // from a tech action (ICEOUT)
     if (duration === 'end_of_turn') { inst.clockUnit = this.activeId ?? u.id; inst.turnsLeft = 1 }
     else if (duration === 'next_turn_end_target') { inst.clockUnit = u.id; inst.turnsLeft = u.activeTurn ? 2 : 1 }
     else if (duration === 'next_turn_end_source' && source) { inst.clockUnit = source.id; inst.turnsLeft = source.activeTurn ? 2 : 1 }
@@ -457,6 +458,7 @@ export class Battle {
     }
     let ok = roll()
     if (!ok && this.offerReroll(u, 'save', stat)) ok = roll()
+    for (const o of this.alive()) for (const sc of scriptsFor(o)) sc.onAnySave?.(this, o, u, stat, ok, source)
     if (!ok && source && source !== u && !source.destroyed) for (const sc of scriptsFor(source)) sc.onSaveFailed?.(this, source, u, stat)
     return ok
   }
@@ -707,7 +709,7 @@ export class Battle {
 
   overcharge(u: Unit) { return this.command('overcharge', [u], () => terrain.overcharge(this, u)) }
 
-  stabilize(u: Unit, mode: 'cool' | 'repair', clear?: { unit: Unit; status?: StatusId | 'burn' | 'reload' }) { return this.command('stabilize', [u, mode, clear], () => terrain.stabilize(this, u, mode, clear)) }
+  stabilize(u: Unit, mode: 'cool' | 'repair', clear?: { unit: Unit; status?: StatusId | 'burn' | 'reload' }, opts: { paid?: boolean } = {}) { return this.command('stabilize', [u, mode, clear, opts], () => terrain.stabilize(this, u, mode, clear, opts)) }
 
   disengage(u: Unit) { return this.command('disengage', [u], () => terrain.disengage(this, u)) }
 

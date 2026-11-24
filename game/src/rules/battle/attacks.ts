@@ -147,7 +147,7 @@ export function validTarget(bt: Battle, u: Unit, w: Weapon, t: Unit, from: Pos =
   if (t === u) return 'Cannot target self'
   if (t.flags.intangible) return 'Intangible'
   if (bt.isBlinded(u) && chebyshev(from, t.pos) > 1 && distanceBetween(bt.map, { ...u, pos: from }, t) > 1) return 'Blinded: can only see adjacent spaces'
-  if (bt.has(t, 'hidden') && bt.hostile(u, t)) return 'Hidden'
+  if (bt.has(t, 'hidden') && bt.hostile(u, t) && !seesHidden(bt, u, t)) return 'Hidden'
   if (hasTag(bt.profile(w).tags, 'tg_ordnance') && bt.hostile(u, t) && bt.adjacent({ ...u, pos: from } as Unit, t)) return 'Ordnance can’t target characters engaged with you'
   for (const s of scriptsFor(u)) { const no = s.forbidsTarget?.(bt, u, w, t, from); if (no) return no }
   const pr = bt.profile(w)
@@ -161,6 +161,11 @@ export function validTarget(bt: Battle, u: Unit, w: Weapon, t: Unit, from: Pos =
   // flags.noLos: the weapon needs no line of sight (Phase-Ready Mod)
   if (!hasTag(tags, 'tg_seeking') && !hasTag(tags, 'tg_arcing') && !magRound && !w.flags?.noLos && !bt.los(u, t, from)) return 'No line of sight'
   return true
+}
+
+/** Eye of HORUS: `u` ignores Hidden and Invisible on characters within `u.flags.seeHiddenWithin` spaces. */
+export function seesHidden(bt: Battle, u: Unit, t: Unit): boolean {
+  return u.flags.seeHiddenWithin != null && bt.distance(u, t) <= u.flags.seeHiddenWithin
 }
 
 export function aoeTiles(bt: Battle, u: Unit, w: Weapon, aim: Pos): Pos[] | string {
@@ -177,6 +182,7 @@ export function aoeTiles(bt: Battle, u: Unit, w: Weapon, aim: Pos): Pos[] | stri
   if (shape === 'line') return lineTiles(bt.map, origin, aim, Number(line!.val))
   if (shape === 'cone') return coneTiles(bt.map, origin, aim, Number(cone!.val))
   if (blast) {
+    for (const s of scriptsFor(u)) { const no = s.forbidsAim?.(bt, u, w, aim); if (no) return no }
     const range = rs.find(r => r.type === 'Range')
     const reach = range ? Number(range.val) : 1
     if (distanceToTile(bt.map, u, aim) > reach) return 'Out of range'
@@ -624,7 +630,7 @@ export function rollToHit(bt: Battle, ctx: AttackCtx) {
     bt.emit({ type: 'attack', attackerId: ctx.attacker.id, targetId: t.id, hit: false, crit: false, weapon: ctx.weapon?.name ?? 'tech', total: 0 })
     return
   }
-  const seesThrough = t.flags.trackedBy === ctx.attacker.id || (ctx.attacker.flags.horusUntil && bt.round <= ctx.attacker.flags.horusUntil) || bt.inRevealField(t)
+  const seesThrough = t.flags.trackedBy === ctx.attacker.id || seesHidden(bt, ctx.attacker, t) || bt.inRevealField(t)
   if ((bt.has(t, 'invisible') || ctx.forceInvisible) && !seesThrough && bt.rng.d(6) <= 3) {
     ctx.hit = false
     ctx.crit = false
@@ -668,7 +674,11 @@ export function runEffects(bt: Battle, src: Unit, target: Unit, effects: Effect[
     const who = e.do !== 'text' && e.do !== 'bonus_damage' && e.do !== 'teleport' && (e as any).target === 'self' ? src : target
     if (who.destroyed && e.do !== 'text') continue
     if ('save' in e && e.save && bt.hostile(src, who) && bt.has(src, 'hidden')) bt.removeStatus(src, 'hidden')
-    const saved = 'save' in e && e.save ? bt.save(who, e.save, st, 0, src) : false
+    // what the save avoids, for "+1 Accuracy on saves to avoid Prone or Knockback" (Stable Structure)
+    const avoids = e.do === 'push' ? 'knockback' : e.do === 'status' && e.status === 'prone' ? 'prone' : undefined
+    if (avoids) who.flags.saveAvoid = avoids
+    let saved: boolean
+    try { saved = 'save' in e && e.save ? bt.save(who, e.save, st, 0, src) : false } finally { if (avoids) delete who.flags.saveAvoid }
     switch (e.do) {
       case 'text':
         bt.say(`  ${stripHtml(e.text)}`)

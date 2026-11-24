@@ -45,10 +45,13 @@ describe('Resistance from scripts behaves like Resistance', () => {
     const b = world(a, e)
     tanky(a); a.flags.hyperdense = true
     // Energy: the Black Witch already resists Kinetic
-    expect(b.applyDamage(a, [{ type: 'Energy', amount: 20 }], { source: e, resistAll: true })).toBe(10)
-    expect(b.applyDamage(a, [{ type: 'Energy', amount: 20 }], { source: e })).toBe(10)
+    // "from attacks that originate beyond Range 3"
+    const attack = () => b.newAttackCtx(e, a, {})
+    expect(b.applyDamage(a, [{ type: 'Energy', amount: 20 }], { source: e, attack: attack(), resistAll: true })).toBe(10)
+    expect(b.applyDamage(a, [{ type: 'Energy', amount: 20 }], { source: e, attack: attack() })).toBe(10)
+    expect(b.applyDamage(a, [{ type: 'Energy', amount: 20 }], { source: e })).toBe(20) // not an attack
     e.pos = { x: 5, y: 5 }
-    expect(b.applyDamage(a, [{ type: 'Energy', amount: 20 }], { source: e })).toBe(20)
+    expect(b.applyDamage(a, [{ type: 'Energy', amount: 20 }], { source: e, attack: attack() })).toBe(20)
   })
   // regression: Tormentor Spines stacked with other Resistance and applied at any range
   it('Vlad Tormentor Spines: Resistance within range 3 only, once', () => {
