@@ -20,7 +20,6 @@ export function skirmish(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, aux?: {
   if (c !== true) return { ctxs: [], ok: false, reason: c }
   const pre = bt.weaponUsable(u, w)
   if (pre !== true) return { ctxs: [], ok: false, reason: pre }
-  if (bt.firedThisTurn(u, w)) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
   const refund = bt.checkpoint()
   if (!u.actedThisTurn) u.flags['turn:ordnanceWindow'] = true // nothing came before this attack (see Ordnance)
   try { return skirmishInner(bt, u, w, aim, aux, refund) } finally { delete u.flags['turn:ordnanceWindow'] }
@@ -31,7 +30,7 @@ function skirmishInner(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, aux: { we
   const r = bt.weaponAttack(u, w, aim, 'skirmish')
   // an attack refused before anything was rolled (bad target, out of range...) costs nothing
   if (!r.ok && !r.ctxs.length) { refund(); return r }
-  if (aux && aux.weapon.size === 'Auxiliary' && aux.weapon !== w && aux.weapon.mountIndex === w.mountIndex && w.mountIndex >= 0 && !u.destroyed && !bt.firedThisTurn(u, aux.weapon)) {
+  if (aux && aux.weapon.size === 'Auxiliary' && aux.weapon !== w && aux.weapon.mountIndex === w.mountIndex && w.mountIndex >= 0 && !u.destroyed) {
     bt.markFired(u, aux.weapon)
     const r2 = bt.weaponAttack(u, aux.weapon, aux.aim, 'skirmish', { noBonusDamage: true })
     r.ctxs.push(...r2.ctxs)
@@ -43,7 +42,6 @@ export function barrage(bt: Battle, u: Unit, a: { weapon: Weapon; aim: AttackAim
   const c = bt.canSpend(u, 'full')
   if (c !== true) return { ctxs: [], ok: false, reason: c }
   if (b && a.weapon === b.weapon) return { ctxs: [], ok: false, reason: 'Barrage needs two different weapons' }
-  if (bt.firedThisTurn(u, a.weapon) || (b && bt.firedThisTurn(u, b.weapon))) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
   const ua = bt.weaponUsable(u, a.weapon)
   if (ua !== true) return { ctxs: [], ok: false, reason: ua }
   const refund = bt.checkpoint()
@@ -72,7 +70,7 @@ function barrageInner(bt: Battle, u: Unit, a: { weapon: Weapon; aim: AttackAim }
   for (const x of auxes) {
     if (u.destroyed) break
     const m = x.weapon.mountIndex
-    if (x.weapon.size !== 'Auxiliary' || !mounts.has(m) || usedMounts.has(m) || bt.firedThisTurn(u, x.weapon)) continue
+    if (x.weapon.size !== 'Auxiliary' || !mounts.has(m) || usedMounts.has(m) || x.weapon === a.weapon || x.weapon === b?.weapon) continue
     const rx = bt.weaponAttack(u, x.weapon, x.aim, 'barrage', { noBonusDamage: true })
     if (!rx.ok) continue
     usedMounts.add(m)
@@ -85,9 +83,11 @@ function barrageInner(bt: Battle, u: Unit, a: { weapon: Weapon; aim: AttackAim }
 /** Auxiliary weapons that may follow up a barrage/skirmish with these weapons. */
 export function auxFollowUps(bt: Battle, u: Unit, fired: Weapon[]): Weapon[] {
   const mounts = new Set(fired.map(w => w.mountIndex).filter(m => m >= 0))
-  return u.weapons.filter(w => w.size === 'Auxiliary' && mounts.has(w.mountIndex) && !fired.includes(w) && !bt.firedThisTurn(u, w) && bt.weaponUsable(u, w) === true)
+  return u.weapons.filter(w => w.size === 'Auxiliary' && mounts.has(w.mountIndex) && !fired.includes(w) && bt.weaponUsable(u, w) === true)
 }
 
+/** Has this weapon attacked this turn? A record only: weapons may attack again whenever the action allows it
+ *  (a free Skirmish, Overcharge...). Items whose own text cares (UNCLE) read it. */
 export function firedThisTurn(bt: Battle, u: Unit, w: Weapon): boolean {
   return (u.flags['turn:fired'] ?? []).includes(w.uid)
 }

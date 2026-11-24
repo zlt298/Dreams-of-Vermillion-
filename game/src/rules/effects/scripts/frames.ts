@@ -229,7 +229,7 @@ registerScripts([
     onTurnEnd(b, u) {
       if (u.flags['turn:attacked']) return
       const ws = u.weapons.filter(w => !w.loaded && !w.destroyed)
-      if (ws.length) { ws.forEach(w => (w.loaded = true)); b.say(`${u.name} reloads (Full Metal Jacket).`) }
+      if (ws.length) { ws.forEach(w => (w.loaded = true)); u.flags.reloaded = true; b.say(`${u.name} reloads (Full Metal Jacket).`) }
     },
   },
   // ---------------- IPS-N Tortuga

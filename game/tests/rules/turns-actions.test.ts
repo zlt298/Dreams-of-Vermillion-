@@ -144,7 +144,7 @@ describe('action economy', () => {
     expect(() => b.overcharge(a)).toThrow()
   })
 
-  it('skirmish is once per turn, each weapon once per turn', () => {
+  it('Skirmish is a quick action: a second plain Skirmish in a turn is refused', () => {
     const { a, e, b } = duel()
     b.beginTurn(a)
     const [w1, w2] = a.weapons.filter(w => !b.isAoE(b.profile(w)))
@@ -248,6 +248,56 @@ describe('action economy', () => {
     expect(r.ok).toBe(true)
     expect(b.validTarget(a, aux, e)).toBe(true)
     expect(b.firedThisTurn(a, aux)).toBe(true)
+  })
+
+  it('the same weapon can attack again when the action allows it: Skirmish, then Overcharge and Skirmish again', () => {
+    const { a, e, b } = duel()
+    b.beginTurn(a)
+    const rifle = rifleOf(a)
+    e.stats.hp = 99; e.hp = 99
+    expect(b.skirmish(a, rifle, { targetId: e.id }).ok).toBe(true)
+    expect(b.skirmish(a, rifle, { targetId: e.id }).reason).toMatch(/already taken this turn/) // the action, not the weapon
+    b.overcharge(a)
+    expect(b.skirmish(a, rifle, { targetId: e.id }).ok).toBe(true)
+  })
+
+  it('a weapon used in a Skirmish can be used again in a Barrage the same turn', () => {
+    const { a, e, b } = duel()
+    e.pos = { x: 2, y: 5 }
+    e.stats.hp = 99; e.hp = 99
+    b.beginTurn(a)
+    const [w1, w2] = a.weapons.filter(w => !b.isAoE(b.profile(w)) && w.size !== 'Superheavy' && b.validTarget(a, w, e) === true)
+    expect(b.skirmish(a, w1, { targetId: e.id }).ok).toBe(true)
+    b.overcharge(a) // a full action needs two actions left: use the overcharge quick for something else first
+    a.actionsLeft = 2
+    expect(b.barrage(a, { weapon: w1, aim: { targetId: e.id } }, { weapon: w2, aim: { targetId: e.id } }).ok).toBe(true)
+  })
+
+  it('a Loading weapon still needs reloading between attacks, and there is no quick-action Reload', () => {
+    const { a, e, b } = duel()
+    b.beginTurn(a)
+    const rifle = rifleOf(a)
+    rifle.profiles[rifle.profileIndex].tags.push({ id: 'tg_loading' })
+    e.stats.hp = 99; e.hp = 99
+    expect(b.skirmish(a, rifle, { targetId: e.id }).ok).toBe(true)
+    expect(rifle.loaded).toBe(false)
+    b.overcharge(a)
+    expect(b.skirmish(a, rifle, { targetId: e.id }).ok).toBe(false)
+    expect(() => b.reload(a, rifle)).toThrow(/Stabilize/)
+  })
+
+  it('Stabilize asks which extra option to take when several apply (burn, a condition, reloading)', () => {
+    const { a, b } = duel()
+    b.beginTurn(a)
+    a.weapons.forEach(w => (w.loaded = false))
+    b.applyDamage(a, [{ type: 'Burn', amount: 2 }])
+    let asked: string[] = []
+    b.chooser = q => { asked = q.options.map(o => o.label); return q.options.findIndex(o => o.label.startsWith('Reload')) }
+    b.transaction(() => b.stabilize(a, 'cool'))
+    expect(asked[0]).toMatch(/burn/)
+    expect(a.weapons.every(w => w.loaded)).toBe(true)
+    expect(a.burn).toBeGreaterThan(0)
+    expect(a.flags.reloaded).toBe(true)
   })
 
   it('Stabilize can reload all Loading weapons', () => {

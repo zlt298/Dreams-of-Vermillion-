@@ -177,7 +177,9 @@ describe('systems: damage and attacks', () => {
     const { a, e, b } = setup(['ms_roland_chamber'], { x: 5, y: 5 }, { weapons: 'mw_catalytic_hammer' })
     const hammer = w(a, 'mw_catalytic_hammer')
     hammer.loaded = false
-    b.reload(a, hammer)
+    if (!a.activeTurn) b.beginTurn(a)
+    b.stabilize(a, 'cool', { unit: a, status: 'reload' }) // Stabilize is how a Loading weapon reloads
+    expect(hammer.loaded).toBe(true)
     a.stats.attackBonus = 0
     rigDice(b, 20, 15, 1) // attack roll, then the Hull save
     const r = b.weaponAttack(a, hammer, { targetId: e.id }, 'free')

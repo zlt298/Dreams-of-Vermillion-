@@ -47,7 +47,6 @@ To add fidelity, register a script keyed by the item id in `game/src/rules/effec
 - Destructible terrain is a house rule: each level of a terrain block has 10 HP and Evasion 5, and a block with no levels left becomes rubble.
 - Player decisions (reactions, firing modes, effect choices) appear in an in-HUD picker. Per-mech policies (auto / ask / off) cover Brace, Overwatch and other reactions; the AI and Auto turns take the default.
 - Flight altitude is abstract (one level). Flyers land when Immobilized or Stunned, or when they fail an Agility save after Structure or Stress damage.
-- Each weapon can attack once per turn via Skirmish or Barrage. Reactions and free attacks are exempt.
 - You can INVADE a willing ally: it succeeds automatically, deals no heat and isn't an attack (useful with beneficial invade options).
 - Not implemented (out of scope): pilots on foot (Eject, Mount, Jockey), and narrative skill checks and downtime.
 

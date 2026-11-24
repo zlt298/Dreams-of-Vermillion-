@@ -554,7 +554,7 @@ function restockUse(b: Battle, owner: Unit, user: Unit): CustomAction[] {
       const c = CONDITIONS.find(id => bt.has(me, id))
       if (c) bt.removeStatus(me, c)
       const w = me.weapons.find(x => !x.loaded && !x.destroyed)
-      if (w) w.loaded = true
+      if (w) { w.loaded = true; me.flags.reloaded = true }
       bt.say(`${me.name} uses the restock drone: -${h} heat${c ? `, clears ${c}` : ''}${w ? `, reloads ${w.name}` : ''}.`)
       bt.removeUnit(d, 'disintegrates')
     },
@@ -570,7 +570,7 @@ function autoload(b: Battle, owner: Unit, user: Unit): CustomAction[] {
     run: (bt: Battle, me: Unit) => {
       d.flags['round:autoload'] = true
       const w = me.weapons.find(x => !x.loaded && !x.destroyed)
-      if (w) { w.loaded = true; bt.say(`${me.name} reloads ${w.name} from the autoloader.`) }
+      if (w) { w.loaded = true; me.flags.reloaded = true; bt.say(`${me.name} reloads ${w.name} from the autoloader.`) }
     },
     aiTarget: () => ({ x: user.pos.x, y: user.pos.y }),
     aiScore: () => 2.5,

@@ -310,6 +310,10 @@ Out of the 392 items in lancer-data, all 392 are fully executed. The rest show a
 
 ---
 
+### Rules fixes (owner-reported)
+- **Weapons can attack more than once a turn.** The limit is on actions, not weapons: Skirmish is a quick action, so a second Skirmish needs a free action (Overcharge, Initiative...), but it may use the same weapon. Only item text restricts a weapon (Loading, Limited, Ordnance, UNCLE).
+- **No quick-action Reload.** Loading weapons reload through Stabilize (its extra option, now chosen by the player when several apply) or through specific gear. The Autoloader Drone, Full Metal Jacket and Stabilize now count as reloading for ROLAND Chamber and Mjolnir. The AI Stabilizes to reload when it has nothing loaded left.
+
 ### Rules audit (core book, Mech Combat chapter)
 `game/tests/rules/audit.test.ts` has 69 scenario checks with rigged dice. They cover:
 - turns and actions

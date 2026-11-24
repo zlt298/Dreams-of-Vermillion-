@@ -62,7 +62,6 @@ export function attackTerrain(bt: Battle, u: Unit, w: Weapon, p: Pos): AttackSum
   if (c !== true) return { ctxs: [], ok: false, reason: c }
   const pre = bt.weaponUsable(u, w)
   if (pre !== true) return { ctxs: [], ok: false, reason: pre }
-  if (bt.firedThisTurn(u, w)) return { ctxs: [], ok: false, reason: 'Each weapon can only attack once per turn' }
   if (distanceToTile(bt.map, u, p) > bt.weaponReach(u, w)) return { ctxs: [], ok: false, reason: 'Out of range' }
   bt.spend(u, 'quick', 'skirmish')
   bt.markFired(u, w)
@@ -153,8 +152,18 @@ export function stabilize(bt: Battle, u: Unit, mode: 'cool' | 'repair', clear?: 
   const conditionOf = (x: Unit) => x.statuses.find(s => ['impaired', 'slowed', 'immobilized', 'jammed', 'shredded', 'lockon'].includes(s.id) && s.source !== x.id)?.id
   const unloaded = u.weapons.filter(w => !w.loaded && !w.destroyed)
   let choice = clear?.status
-  if (!choice) choice = tgt.burn > 0 ? 'burn' : conditionOf(tgt) ? conditionOf(tgt) : unloaded.length ? 'reload' : undefined
-  if (choice === 'reload') { unloaded.forEach(w => (w.loaded = true)); if (unloaded.length) bt.say(`${u.name} reloads all Loading weapons.`) }
+  if (!choice) {
+    // more than one useful option: the player picks (the AI and autoplay take the first)
+    const opts: { id: StatusId | 'burn' | 'reload'; label: string }[] = []
+    if (tgt.burn > 0) opts.push({ id: 'burn', label: `Clear burn (${tgt.burn})` })
+    const cond = conditionOf(tgt)
+    if (cond) opts.push({ id: cond, label: `Clear ${cond}` })
+    if (unloaded.length) opts.push({ id: 'reload', label: `Reload ${unloaded.map(w => w.name).join(', ')}` })
+    choice = opts.length > 1
+      ? opts[bt.choose({ kind: 'stabilize_option', unit: u, title: 'Stabilize', text: 'Also choose one:', options: opts.map(o => ({ label: o.label })), defaultIndex: 0 })]?.id
+      : opts[0]?.id
+  }
+  if (choice === 'reload') { unloaded.forEach(w => (w.loaded = true)); if (unloaded.length) { u.flags.reloaded = true; bt.say(`${u.name} reloads all Loading weapons.`) } }
   else if (tgt.side === u.side && bt.distance(u, tgt) <= 1) {
     if (choice === 'burn') { tgt.burn = 0; bt.say(`${tgt.name}'s burn is extinguished.`) }
     else if (choice) bt.removeStatus(tgt, choice as StatusId)
@@ -409,13 +418,12 @@ export function improvisedAttack(bt: Battle, u: Unit, t: Unit) {
   if (!r.ok && !r.ctxs.length) { refund(); throw new Error(r.reason ?? 'Cannot attack') }
 }
 
-export function reload(bt: Battle, u: Unit, w: Weapon) {
-  const c = bt.canSpend(u, 'quick', 'reload')
-  if (c !== true) throw new Error(c)
-  bt.spend(u, 'quick', 'reload')
-  w.loaded = true
-  u.flags.reloaded = true
-  bt.say(`${u.name} reloads ${w.name}.`)
+/**
+ * There is no Reload action in LANCER: a mech reloads its Loading weapons with Stabilize (a full action) or
+ * through specific gear and talents. Kept as a refusing stub so old replay files fail with a clear reason.
+ */
+export function reload(_bt: Battle, _u: Unit, _w: Weapon) {
+  throw new Error('No quick-action reload: Stabilize reloads all Loading weapons')
 }
 
 export function shutDown(bt: Battle, u: Unit) {

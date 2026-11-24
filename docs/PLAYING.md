@@ -77,7 +77,8 @@ It uses the pilot's favourite mech and its active loadout: frame, weapons, mods,
 - **Progression.** Each act is fought at a fixed License Level: act 1 LL0, act 2 LL5, act 3 LL10, matching the core book NPC tiers. After an act boss the squad goes up to the next level, and the run continues only once every build is legal with all points spent. Spend them with **Level up** on the level-up screen, or re-import updated COMP/CON builds.
 - **Battles:**
   - Initiative alternates between sides: pick any ready lancer to activate.
-  - Every lancer action is supported. Standard move (it can be split), Boost, Skirmish (plus an aux on the same mount), Barrage, Quick/Full Tech (Invade, Lock On, Bolster, Scan), Overcharge, Stabilize, CORE power, Hide/Search, Ram/Grapple/Improvised, Disengage, Reload, Shut Down/Boot Up, Self-Destruct.
+  - Every lancer action is supported. Standard move (it can be split), Boost, Skirmish (plus an aux on the same mount), Barrage, Quick/Full Tech (Invade, Lock On, Bolster, Scan), Overcharge, Stabilize, CORE power, Hide/Search, Ram/Grapple/Improvised, Disengage, Shut Down/Boot Up, Self-Destruct.
+  - **Weapons and reloading.** A weapon can attack again in the same turn whenever an action allows it (for example Skirmish, then Overcharge and Skirmish again with the same weapon), unless its own tags say otherwise. There is no Reload action: **Stabilize** (a full action) reloads all Loading weapons as its extra option, and some gear (the Autoloader Drone, the Raleigh's Full Metal Jacket) reloads too. When Stabilize could do more than one extra thing (clear burn, clear a condition or reload), you choose.
   - Systems, traits and talents add their own actions.
   - Hovering a target shows the hit chance, cover, and every accuracy and difficulty source.
   - **Auto (AI)** lets the tactical AI take a lancer's turn.

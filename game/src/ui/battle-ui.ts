@@ -383,7 +383,7 @@ export class BattleScreen {
 
   /** Prompt the optional auxiliary follow-up attacks (no bonus damage); Esc skips. */
   private offerAux(a: Unit, queue: Weapon[], via: 'skirmish' | 'barrage') {
-    const usable = queue.filter(w => this.b.weaponUsable(a, w) === true && !this.b.firedThisTurn(a, w))
+    const usable = queue.filter(w => this.b.weaponUsable(a, w) === true)
     if (!usable.length || a.destroyed) return
     const [aux, ...rest] = usable
     this.mode = { k: 'attack', action: 'aux', weapon: aux, via, queue: rest }
@@ -483,7 +483,7 @@ export class BattleScreen {
           // barrage: continue with the remaining mounts' auxiliaries (one per mount)
           if (m.action === 'aux' && m.queue?.length) this.offerAux(a, m.queue.filter(w => w.mountIndex !== m.weapon.mountIndex), 'barrage')
           if (m.action === 'skirmish') {
-            const aux = a.weapons.find(w => w !== m.weapon && w.size === 'Auxiliary' && w.mountIndex === m.weapon.mountIndex && m.weapon.mountIndex >= 0 && this.b.weaponUsable(a, w) === true && !this.b.firedThisTurn(a, w))
+            const aux = a.weapons.find(w => w !== m.weapon && w.size === 'Auxiliary' && w.mountIndex === m.weapon.mountIndex && m.weapon.mountIndex >= 0 && this.b.weaponUsable(a, w) === true)
             if (aux && !a.destroyed) { this.mode = { k: 'attack', action: 'aux', weapon: aux }; this.toast(`Optional: fire ${aux.name} (same mount, no bonus damage) — Esc to skip`) }
           }
         })
@@ -580,7 +580,6 @@ export class BattleScreen {
       case 'shape': if (w && a) { this.b.setWeaponFlag(a, w, 'shape', w.flags?.shape === 'line' ? 'cone' : 'line'); this.opts.onSaved?.(this.b); this.previewCache.clear(); this.render() } return
       case 'throughbolt': if (w && a) { this.b.setWeaponFlag(a, w, 'throughbolt', !w.flags?.throughbolt); this.opts.onSaved?.(this.b); this.render() } return
       case 'profile': if (w && arg && a) { const i = Number(el.dataset.i); this.cmd(() => { this.b.setProfile(a, w, i) }) } return
-      case 'reload': if (w) this.cmd(() => this.b.reload(a, w)); return
       case 'boost': this.cmd(() => this.b.boost(a)); return
       case 'overcharge': this.cmd(() => this.b.overcharge(a)); return
       case 'stab-cool': this.cmd(() => this.b.stabilize(a, 'cool')); return
@@ -878,15 +877,14 @@ export class BattleScreen {
     const dmg = pr.damage.map(d => `${d.val} ${d.type}`).join(' + ')
     const tags = pr.tags.filter(t => !['tg_npc_weapon', 'tg_npc_trait', 'tg_npc_system'].includes(t.id)).map(t => tagChip(t.id, t.val, `${TAG_NAMES[t.id] ?? tagInfo(t.id, t.val).name}${TAG_NAMES[t.id] && t.val != null && t.val !== '' ? ' ' + t.val : ''}`)).join(', ')
     const usable = b.weaponUsable(u, w)
-    const fired = b.firedThisTurn(u, w) ? 'Already attacked this turn' : true
     const q = b.canSpend(u, 'quick'), fu = b.canSpend(u, 'full')
     const all = (...xs: (true | string)[]) => xs.find(x => x !== true) ?? true
     let btns = ''
     if (active && u.side === 'player') {
-      if (this.mode.k === 'barrage-pick') btns = this.btn('barrage', `Barrage #2${kb('')}`, all(usable, fired), w.uid, 'primary')
+      if (this.mode.k === 'barrage-pick') btns = this.btn('barrage', `Barrage #2${kb('')}`, usable, w.uid, 'primary')
       else {
-        btns = (w.size !== 'Superheavy' ? this.btn('skirmish', `Skirmish [Q]${kb('')}`, all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable, fired), w.uid) : '') + this.btn('barrage', `Barrage [F]${kb('⇧')}`, all(fu, usable, fired), w.uid)
-        if (!w.loaded && !w.destroyed) btns += this.btn('reload', 'Reload [Q]', b.canSpend(u, 'quick', 'reload'), w.uid)
+        btns = (w.size !== 'Superheavy' ? this.btn('skirmish', `Skirmish [Q]${kb('')}`, all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable), w.uid) : '') + this.btn('barrage', `Barrage [F]${kb('⇧')}`, all(fu, usable), w.uid)
+        if (!w.loaded && !w.destroyed) btns += '<span class="muted small" title="Stabilize (full action) reloads all Loading weapons">Unloaded — Stabilize to reload</span>'
         if (w.profiles.length > 1) btns += w.profiles.map((p, i) => (i === w.profileIndex ? '' : `<button data-act="profile" data-arg="${w.uid}" data-i="${i}" title="Switch profile">${esc(p.name)}</button>`)).join('')
         if (pr.range.some(r => r.type === 'Line') && pr.range.some(r => r.type === 'Cone')) btns += `<button data-act="shape" data-arg="${w.uid}" title="Fire as a Cone or a Line">${w.flags?.shape === 'line' ? 'Line' : 'Cone'} (switch)</button>`
         if (w.modId === 'wm_throughbolt_rounds') btns += `<button data-act="throughbolt" data-arg="${w.uid}" class="${w.flags?.throughbolt ? 'on' : ''}" title="Throughbolt round: punch a Line 3 path through terrain (2 AP kinetic to everything on it), then attack from its end">Throughbolt: ${w.flags?.throughbolt ? 'ON' : 'off'}</button>`

@@ -23,7 +23,6 @@ type Option =
   | { kind: 'custom'; action: CustomAction; target?: Unit | Pos; value: number; cost: 'quick' | 'full' | 'protocol' | 'free' }
   | { kind: 'invade'; target: Unit; value: number; cost: 'quick' }
   | { kind: 'lockon'; target: Unit; value: number; cost: 'quick' }
-  | { kind: 'reload'; weapon: Weapon; value: number; cost: 'quick' }
   | { kind: 'stabilize'; value: number; cost: 'full' }
   | { kind: 'core'; value: number; cost: 'quick' | 'full' | 'protocol' | 'free' }
 
@@ -286,10 +285,7 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
   const opts: Option[] = []
   const hostiles = b.alive().filter(t => b.hostile(u, t))
   for (const w of u.weapons) {
-    if (b.weaponUsable(u, w) !== true) {
-      if (!w.loaded && !w.destroyed) opts.push({ kind: 'reload', weapon: w, value: 1, cost: 'quick' })
-      continue
-    }
+    if (b.weaponUsable(u, w) !== true) continue
     const pr = b.profile(w)
     let best: { value: number; aim: { targetId?: string; tile?: Pos } } | null = null
     if (b.isAoE(pr)) {
@@ -344,7 +340,11 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
       } finally { u.pos = saved }
     }
   }
-  if (u.stats.heatcap > 0 && (b.has(u, 'exposed') || u.heat >= u.stats.heatcap - 1)) opts.push({ kind: 'stabilize', value: 3 + (b.has(u, 'exposed') ? 4 : 0) + u.heat * 0.5, cost: 'full' })
+  // Stabilize: cool down when hot or Exposed; it is also the only general way to reload Loading weapons
+  const unloaded = u.weapons.filter(w => !w.loaded && !w.destroyed).length
+  const loadedLeft = u.weapons.filter(w => !w.destroyed && w.loaded && b.weaponUsable(u, w) === true).length
+  if (u.stats.heatcap > 0 && (b.has(u, 'exposed') || u.heat >= u.stats.heatcap - 1)) opts.push({ kind: 'stabilize', value: 3 + (b.has(u, 'exposed') ? 4 : 0) + u.heat * 0.5 + unloaded, cost: 'full' })
+  else if (unloaded && !loadedLeft) opts.push({ kind: 'stabilize', value: 1.5 + unloaded, cost: 'full' })
   if (u.kind === 'mech' && u.coreAvailable && u.frameId) {
     const act = (Lancer.frames.get(u.frameId)?.core_system.activation ?? 'Quick').toLowerCase()
     const near = hostiles.filter(h => (h.kind === 'mech' || h.kind === 'npc') && Math.max(Math.abs(h.pos.x - p.x), Math.abs(h.pos.y - p.y)) <= 10).length
@@ -422,7 +422,6 @@ function execute(b: Battle, u: Unit, o: Option) {
       return b.useCustom(u, o.action, o.target)
     case 'invade': return b.invade(u, o.target)
     case 'lockon': return b.lockOn(u, o.target)
-    case 'reload': return b.reload(u, o.weapon)
     case 'stabilize': return b.stabilize(u, 'cool')
     case 'core': return b.activateCore(u)
   }

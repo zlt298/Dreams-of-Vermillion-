@@ -129,7 +129,7 @@ registerScripts([
       return [action({
         key: 'pinaka_delay', name: 'Pinaka: Delayed Strike', activation: 'quick', target: 'tile', range: 20, area: { shape: 'blast', size: 1 }, sourceUid: w.uid,
         text: 'Skirmish: mark up to two Blast 1 areas; the missiles land at the end of the next round for 3d6 explosive. You are Slowed until the end of your next turn.',
-        usable: (bt, self) => (bt.firedThisTurn(self, w) ? 'Already fired this turn' : bt.weaponUsable(self, w) !== true ? bt.weaponUsable(self, w) : bt.canSpend(self, 'quick', 'skirmish')),
+        usable: (bt, self) => (bt.weaponUsable(self, w) !== true ? bt.weaponUsable(self, w) : bt.canSpend(self, 'quick', 'skirmish')),
         run: (bt, self, t) => {
           const c = t && 'x' in t ? t : (t as Unit).pos
           if (distanceToTile(bt.map, self, c) > 20) throw new Error('Out of range')

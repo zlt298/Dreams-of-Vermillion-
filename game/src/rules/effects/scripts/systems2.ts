@@ -120,7 +120,7 @@ export function sekhmetTurn(b: Battle, u: Unit) {
   const melee = () => u.weapons.filter(w => !w.destroyed && !w.tech && b.isMelee(w))
   const visible = (o: Unit) => o !== u && !o.destroyed && (o.kind === 'mech' || o.kind === 'npc') && !o.flags.intangible && !b.has(o, 'hidden') && (b.distance(u, o) <= 1 || b.los(u, o))
   const target = () => b.alive().filter(visible).sort((x, y) => b.distance(u, x) - b.distance(u, y))[0]
-  const ready = (t: Unit) => melee().find(w => b.weaponUsable(u, w) === true && !b.firedThisTurn(u, w) && b.validTarget(u, w, t) === true)
+  const ready = (t: Unit) => melee().find(w => b.weaponUsable(u, w) === true && b.validTarget(u, w, t) === true)
   const approach = () => {
     const t = target()
     if (!t || u.moveLeft <= 0 || b.canMove(u, 'standard') !== true) return
