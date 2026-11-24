@@ -12,6 +12,7 @@ import { hasTag, tagVal, nextUid, isWeaponType } from '../stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
+import { withTechScope } from './tech'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
 
 /** Every persistent zone on the map (terrain areas, drone and system fields), for overlays and tooltips. */
@@ -243,7 +244,9 @@ export function useCustom(bt: Battle, u: Unit, a: CustomAction, target?: Unit | 
   // ACTIVATE: any number per turn, but not the same SYSTEM more than once (unless free)
   else bt.spend(u, cost as any, cost === 'quick' || cost === 'full' ? `activate:${a.sourceUid ?? a.key}` : undefined)
   const heat = a.heat ?? heatSelfOf(bt, u, a)
-  if (heat) bt.addHeat(u, heat)
+  if (heat) bt.addHeat(u, heat, u)
   bt.say(`${u.name} uses ${a.name}.`, 'attack')
-  a.run(bt, u, target)
+  // a tech action: what it inflicts is marked as from tech (Shut Down ends it)
+  if (a.activation === 'quick_tech' || a.activation === 'full_tech') withTechScope(bt, () => a.run(bt, u, target))
+  else a.run(bt, u, target)
 }

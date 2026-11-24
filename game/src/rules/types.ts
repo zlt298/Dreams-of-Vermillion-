@@ -134,6 +134,8 @@ export interface UnitPolicies {
   overwatch: ReactionPolicy
   /** scripted reactions from systems, weapons and talents (Vorpal Gun, Intercede...); unset = ask */
   reactions?: ReactionPolicy
+  /** spending a target's Lock On on an attack (core p.70: optional): unset = 'auto' (always use), 'off' = never, 'ask' */
+  lockOn?: ReactionPolicy
 }
 
 export type UnitKind = 'mech' | 'npc' | 'deployable' | 'drone'

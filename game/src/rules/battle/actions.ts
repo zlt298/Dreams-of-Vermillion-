@@ -12,10 +12,17 @@ import { hasTag, tagVal, nextUid, isWeaponType } from '../stats'
 import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
+import { withTechScope } from './tech'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
 
+/** Superheavy weapons attack only with Barrage, except the Leviathan Heavy Assault Cannon ("Unlike other Superheavy
+ *  weapons, the Leviathan can be used with Skirmish"). */
+export function barrageOnly(w: Weapon): boolean {
+  return w.size === 'Superheavy' && w.dataId !== 'mw_leviathan_heavy_assault_cannon'
+}
+
 export function skirmish(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, aux?: { weapon: Weapon; aim: AttackAim }): AttackSummary {
-  if (w.size === 'Superheavy') return { ctxs: [], ok: false, reason: 'Superheavy weapons require Barrage' }
+  if (barrageOnly(w)) return { ctxs: [], ok: false, reason: 'Superheavy weapons require Barrage' }
   const c = bt.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish')
   if (c !== true) return { ctxs: [], ok: false, reason: c }
   const pre = bt.weaponUsable(u, w)
@@ -27,7 +34,7 @@ export function skirmish(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, aux?: {
 function skirmishInner(bt: Battle, u: Unit, w: Weapon, aim: AttackAim, aux: { weapon: Weapon; aim: AttackAim } | undefined, refund: () => void): AttackSummary {
   bt.spend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish')
   bt.markFired(u, w)
-  const r = bt.weaponAttack(u, w, aim, 'skirmish')
+  const r = w.tech ? withTechScope(bt, () => bt.weaponAttack(u, w, aim, 'skirmish')) : bt.weaponAttack(u, w, aim, 'skirmish')
   // an attack refused before anything was rolled (bad target, out of range...) costs nothing
   if (!r.ok && !r.ctxs.length) { refund(); return r }
   if (aux && aux.weapon.size === 'Auxiliary' && aux.weapon !== w && aux.weapon.mountIndex === w.mountIndex && w.mountIndex >= 0 && !u.destroyed) {
@@ -42,6 +49,8 @@ export function barrage(bt: Battle, u: Unit, a: { weapon: Weapon; aim: AttackAim
   const c = bt.canSpend(u, 'full')
   if (c !== true) return { ctxs: [], ok: false, reason: c }
   if (b && a.weapon === b.weapon) return { ctxs: [], ok: false, reason: 'Barrage needs two different weapons' }
+  // core p.71: two weapons, or one Superheavy weapon (which takes the whole Barrage); one ordinary weapon is allowed
+  if (b && (a.weapon.size === 'Superheavy' || b.weapon.size === 'Superheavy')) return { ctxs: [], ok: false, reason: 'A Superheavy weapon takes the whole Barrage' }
   const ua = bt.weaponUsable(u, a.weapon)
   if (ua !== true) return { ctxs: [], ok: false, reason: ua }
   const refund = bt.checkpoint()
@@ -51,13 +60,11 @@ export function barrage(bt: Battle, u: Unit, a: { weapon: Weapon; aim: AttackAim
 function barrageInner(bt: Battle, u: Unit, a: { weapon: Weapon; aim: AttackAim }, b: { weapon: Weapon; aim: AttackAim } | undefined, auxes: { weapon: Weapon; aim: AttackAim }[], refund: () => void): AttackSummary {
   bt.markFired(u, a.weapon)
   if (b) bt.markFired(u, b.weapon)
-  if (a.weapon.size !== 'Superheavy' && !b) {
-    // allowed but wasteful: barrage with one weapon
-  }
   bt.spend(u, 'full')
-  const r = bt.weaponAttack(u, a.weapon, a.aim, 'barrage')
-  if (b && a.weapon.size !== 'Superheavy' && !u.destroyed) {
-    const r2 = bt.weaponAttack(u, b.weapon, b.aim, 'barrage')
+  const fire = (w: Weapon, aim: AttackAim) => w.tech ? withTechScope(bt, () => bt.weaponAttack(u, w, aim, 'barrage')) : bt.weaponAttack(u, w, aim, 'barrage')
+  const r = fire(a.weapon, a.aim)
+  if (b && !u.destroyed) {
+    const r2 = fire(b.weapon, b.aim)
     r.ctxs.push(...r2.ctxs)
     if (r2.ok) r.ok = true
     else if (!r.ok && !r2.ok) r.reason = r.reason ?? r2.reason

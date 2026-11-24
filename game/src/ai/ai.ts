@@ -8,6 +8,7 @@ import type { CustomAction } from '../rules/effects/registry'
 import { averageDice } from '../rules/rng'
 import { hasTag, tagVal } from '../rules/stats'
 import { sekhmetTurn } from '../rules/effects/scripts/systems2'
+import { barrageOnly } from '../rules/battle/actions'
 
 const STATUS_VALUE: Record<string, number> = {
   stunned: 9, exposed: 6, immobilized: 3.5, impaired: 3, jammed: 3, shredded: 3, slowed: 2, prone: 2.5, lockon: 1.5,
@@ -296,11 +297,11 @@ function optionsAt(b: Battle, u: Unit, p: Pos): Option[] {
       if (v > 0 && (!best || v > best.value)) best = { value: v, aim: { targetId: t.id } }
     }
     if (!best) continue
-    if (w.size === 'Superheavy' || w.activation === 'full') opts.push({ kind: 'barrage', a: { weapon: w, aim: best.aim }, value: best.value, cost: 'full' })
+    if (barrageOnly(w) || w.activation === 'full') opts.push({ kind: 'barrage', a: { weapon: w, aim: best.aim }, value: best.value, cost: 'full' })
     else opts.push({ kind: 'skirmish', weapon: w, aim: best.aim, value: best.value, cost: 'quick' })
   }
   // barrage: best two skirmish-capable weapons
-  const sk = opts.filter((o): o is Extract<Option, { kind: 'skirmish' }> => o.kind === 'skirmish' && !o.weapon.tech).sort((a, b) => b.value - a.value)
+  const sk = opts.filter((o): o is Extract<Option, { kind: 'skirmish' }> => o.kind === 'skirmish' && !o.weapon.tech && o.weapon.size !== 'Superheavy').sort((a, b) => b.value - a.value)
   if (sk.length >= 2) opts.push({ kind: 'barrage', a: { weapon: sk[0].weapon, aim: sk[0].aim }, b: { weapon: sk[1].weapon, aim: sk[1].aim }, value: sk[0].value + sk[1].value, cost: 'full' })
   for (const a of b.customActions(u)) {
     const c = costOf(a)

@@ -9,7 +9,7 @@ import {
 } from '../grid'
 import { parseDice, Rng, rollDice, rollAccuracy, averageDice } from '../rng'
 import { hasTag, tagVal, nextUid, isWeaponType, dropSystemBonuses } from '../stats'
-import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, Unit, UnitPolicies, Weapon } from '../types'
+import type { Duration, Effect, LogEntry, Pos, Profile, Side, Stat, StatusId, StatusInstance, SystemInst, Unit, UnitPolicies, Weapon } from '../types'
 import { type FieldOverlay, type AttackCtx, type CustomAction, type DamageCtx, scriptsFor } from '../effects/registry'
 import { genericActionsFor } from '../effects/generic'
 import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, MoveOpts, NEGATIVE, NO_NORMAL_ATTACK, PendingChoice, ReactionQuestion, Sitrep, actionLabel, averageRoll, fmtAcc, hitChance, maxOf, other, stripHtml } from './core'
@@ -17,7 +17,8 @@ import { AttackAim, AttackSummary, Battle, BattleEvent, ChoiceQuestion, Mine, Mo
 export function addHeat(bt: Battle, u: Unit, amount: number, source?: Unit) {
   if (amount <= 0 || u.destroyed) return
   if (u.stats.heatcap <= 0) { bt.applyDamage(u, [{ type: 'Energy', amount }], { source }); return }
-  if (u.isGrunt && source && source !== u) { bt.say(`${u.name} burns out under the heat.`, 'damage'); bt.destroy(u, 'heat'); return }
+  // Grunts (core p.327, Weak): heat from anything but their own systems destroys them; heat with no source is external
+  if (u.isGrunt && source !== u) { bt.say(`${u.name} burns out under the heat.`, 'damage'); bt.destroy(u, 'heat'); return }
   u.heat += amount
   bt.emit({ type: 'damage', unitId: u.id, amount, kind: 'heat' })
   for (const s of scriptsFor(u)) s.onHeat?.(bt, u, amount)
@@ -26,10 +27,12 @@ export function addHeat(bt: Battle, u: Unit, amount: number, source?: Unit) {
     if (scriptsFor(u).some(s => s.beforeOverheat?.(bt, u))) break
     const excess = u.heat - u.stats.heatcap
     if (u.kind === 'npc' && u.stats.stress <= 1) {
-      u.heat = Math.max(0, u.heat - u.stats.heatcap)
+      // 1-Stress NPCs (core p.281) become Exposed instead of checking; heat clears like a mech's (p.81): only what
+      // went beyond cap + 1 carries over, repeating while still over the cap
+      u.heat = Math.max(0, excess - 1)
       bt.say(`${u.name} overheats and vents violently!`, 'damage')
       bt.addStatus(u, 'exposed', 'until_cleared', source)
-      break
+      continue
     }
     if (u.stress <= 0) { u.heat = Math.min(u.heat, u.stats.heatcap); break }
     u.stress--
@@ -43,10 +46,15 @@ export function addHeat(bt: Battle, u: Unit, amount: number, source?: Unit) {
   }
 }
 
+/** Start a meltdown countdown; one already running is never lengthened by a later result (core p.81). */
+function setMeltdown(u: Unit, turns: number) {
+  u.meltdownTurns = Math.min(u.meltdownTurns ?? Infinity, turns)
+}
+
 export function overheatCheck(bt: Battle, u: Unit) {
   if (u.stress <= 0) {
     // out of stress: the reactor melts down at the end of the mech's next turn
-    if (u.meltdownTurns == null) u.meltdownTurns = u.activeTurn ? 2 : 1
+    setMeltdown(u, u.activeTurn ? 2 : 1)
     bt.say(`${u.name}'s REACTOR IS CRITICAL — meltdown at the end of its next turn!`, 'warn')
     return
   }
@@ -63,7 +71,7 @@ export function overheatCheck(bt: Battle, u: Unit) {
   const ones = dice.filter(d => d === 1).length
   const low = Math.min(...dice)
   bt.say(`Overheating check [${dice.join(', ')}]`)
-  if (ones >= 2) { bt.say('IRREVERSIBLE MELTDOWN!', 'warn'); u.meltdownTurns = u.activeTurn ? 2 : 1; return }
+  if (ones >= 2) { bt.say('IRREVERSIBLE MELTDOWN!', 'warn'); setMeltdown(u, u.activeTurn ? 2 : 1); return }
   if (low >= 5) { bt.say('Emergency Shunt.'); bt.addStatus(u, 'impaired', 'next_turn_end_target') }
   else if (low >= 2) { bt.say('Destabilized Power Plant.'); bt.addStatus(u, 'exposed') }
   else {
@@ -71,8 +79,8 @@ export function overheatCheck(bt: Battle, u: Unit) {
     if (u.stress >= 3) bt.addStatus(u, 'exposed')
     else if (u.stress === 2) {
       if (bt.check(u, 'eng')) bt.addStatus(u, 'exposed')
-      else { u.meltdownTurns = bt.rng.d(6) + (u.activeTurn ? 1 : 0); bt.say(`${u.name}'s reactor is going critical (${u.meltdownTurns} turns)!`, 'warn') }
-    } else { u.meltdownTurns = u.activeTurn ? 2 : 1; bt.say(`${u.name}'s reactor will melt down at the end of its next turn!`, 'warn') }
+      else { setMeltdown(u, bt.rng.d(6) + (u.activeTurn ? 1 : 0)); bt.say(`${u.name}'s reactor is going critical (${u.meltdownTurns} turns)!`, 'warn') }
+    } else { setMeltdown(u, u.activeTurn ? 2 : 1); bt.say(`${u.name}'s reactor will melt down at the end of its next turn!`, 'warn') }
   }
 }
 
@@ -109,21 +117,47 @@ export function directHit(bt: Battle, u: Unit) {
   } else bt.destroy(u, 'direct hit')
 }
 
+/**
+ * Weapons and systems System Trauma may take (core p.80): not integrated weapons (mountIndex -1) or the Integrated Weapon
+ * core bonus mount (`flags.cbIntegrated`), not systems integrated by the frame or a talent, and never an NPC's traits or
+ * reactions (`npc_feature` systems whose feature type isn't 'system').
+ */
+export function traumaTargets(u: Unit): { mounts: { mount: number; weapons: Weapon[]; value: number }[]; systems: { sys: SystemInst; value: number }[] } {
+  const integratedSys = new Set<string>(u.frameId ? (Lancer.frames.get(u.frameId)?.core_system.integrated ?? []) : [])
+  for (const t of u.talents ?? []) {
+    const td = Lancer.talents.get(t.id)
+    for (let i = 0; i < Math.min(t.rank, td?.ranks.length ?? 0); i++) for (const id of td!.ranks[i].integrated ?? []) integratedSys.add(id)
+  }
+  const avg = (w: Weapon) => w.profiles.reduce((m, p) => Math.max(m, p.damage.reduce((n, d) => n + averageDice(d.val), 0)), 0) + 1
+  const byMount = new Map<number, Weapon[]>()
+  for (const w of u.weapons) {
+    if (w.destroyed || w.mountIndex < 0 || w.usesLeft === 0 || w.flags?.cbIntegrated) continue
+    byMount.set(w.mountIndex, [...(byMount.get(w.mountIndex) ?? []), w])
+  }
+  const mounts = [...byMount].map(([mount, weapons]) => ({ mount, weapons, value: weapons.reduce((n, w) => n + avg(w), 0) }))
+  const systems = u.systems
+    .filter(s => !s.destroyed && s.usesLeft !== 0 && !s.dataId.startsWith('npc_trait') && !integratedSys.has(s.dataId) && !(s.dataId === 'npc_feature' && s.feature?.type !== 'system'))
+    .map(sys => ({ sys, value: (Lancer.systems.get(sys.dataId)?.sp ?? 1) + (sys.usesLeft ?? 0) * 0.1 }))
+  return { mounts, systems }
+}
+
 export function systemTrauma(bt: Battle, u: Unit) {
-  const validMounts = [...new Set(u.weapons.filter(w => !w.destroyed && w.mountIndex >= 0 && !(w.usesLeft === 0)).map(w => w.mountIndex))]
-  const validSystems = u.systems.filter(s => !s.destroyed && !(s.usesLeft === 0) && !s.dataId.startsWith('npc_trait'))
+  const { mounts, systems } = traumaTargets(u)
   const r = bt.rng.d(6)
   let doMount = r <= 3
-  if (doMount && !validMounts.length) doMount = false
-  if (!doMount && !validSystems.length) doMount = validMounts.length > 0
-  if (!validMounts.length && !validSystems.length) { bt.directHit(u); return }
+  if (doMount && !mounts.length) doMount = false
+  if (!doMount && !systems.length) doMount = mounts.length > 0
+  if (!mounts.length && !systems.length) { bt.directHit(u); return }
+  // the player chooses which (core p.80); the default, and the AI's pick, is the least valuable
+  const cheapest = (xs: { value: number }[]) => xs.reduce((best, x, i) => (x.value < xs[best].value ? i : best), 0)
   if (doMount) {
-    const m = bt.rng.pick(validMounts)
-    const ws = u.weapons.filter(w => w.mountIndex === m && !w.destroyed)
+    const i = bt.choose({ kind: 'system_trauma', unit: u, title: 'System Trauma', text: 'All weapons on one mount are destroyed. Choose the mount:', options: mounts.map(m => ({ label: m.weapons.map(w => w.name).join(' + ') })), defaultIndex: cheapest(mounts) })
+    const ws = mounts[i].weapons
     ws.forEach(w => (w.destroyed = true))
     bt.say(`System Trauma: ${ws.map(w => w.name).join(', ')} destroyed!`, 'damage')
   } else {
-    const s = bt.rng.pick(validSystems)
+    const i = bt.choose({ kind: 'system_trauma', unit: u, title: 'System Trauma', text: 'One system is destroyed. Choose it:', options: systems.map(s => ({ label: s.sys.name })), defaultIndex: cheapest(systems) })
+    const s = systems[i].sys
     s.destroyed = true
     dropSystemBonuses(u, s)
     bt.say(`System Trauma: ${s.name} destroyed!`, 'damage')
@@ -145,18 +179,22 @@ export function reactorExplosion(bt: Battle, u: Unit, why: string) {
   }
 }
 
-/** Half damage on a successful save (Napoleon's Heavy Shielding reduces it to 1). */
+/** Half damage on a successful save (Napoleon's Heavy Shielding reduces it to 1). Grunts take none (core p.327, Chaff). */
 export function halfOnSave(bt: Battle, t: Unit, amount: number): number {
+  if (t.isGrunt) return 0
   return t.flags.heavyShielding ? Math.min(1, amount) : Math.ceil(amount / 2)
 }
 
 export function destroy(bt: Battle, u: Unit, why: string) {
   if (u.destroyed) return
-  // Veteran trait Feign Death: the first time it would be destroyed it survives on 1 HP, apparently dead (Hidden)
-  if (u.traits?.includes('feign_death') && !u.flags.feignUsed && !/meltdown|self-destruct|crushing/.test(why)) {
+  // Veteran trait Feign Death (core p.332): the first time it is destroyed, however, it survives on 1 HP, apparently dead (Hidden)
+  if (u.traits?.includes('feign_death') && !u.flags.feignUsed) {
     u.flags.feignUsed = true
     u.hp = 1
     u.structure = Math.max(1, u.structure)
+    // a reactor that already blew doesn't blow again
+    u.meltdownTurns = undefined
+    u.selfDestructTurns = undefined
     bt.addStatus(u, 'hidden', 'until_cleared')
     bt.say(`${u.name} goes down… (feigning death)`, 'damage')
     return
@@ -221,7 +259,7 @@ export function applyDamage(bt: Battle, t: Unit, parts: { type: string; amount: 
   let hpDmg = 0, heat = 0, burn = 0
   const exposed = bt.has(t, 'exposed')
   // Grunts are destroyed by heat from any source other than their own systems
-  if (t.isGrunt && opts.source && opts.source !== t && parts.some(p => p.type === 'Heat' && p.amount > 0)) {
+  if (t.isGrunt && opts.source !== t && parts.some(p => p.type === 'Heat' && p.amount > 0)) {
     bt.say(`${t.name} burns out under the heat.`, 'damage')
     bt.destroy(t, 'heat')
     return 0
@@ -243,7 +281,8 @@ export function applyDamage(bt: Battle, t: Unit, parts: { type: string; amount: 
   for (const p of parts) {
     if (p.type === 'Heat' && !noHeatCap) heat += resists('Heat') ? Math.ceil(p.amount / 2) : p.amount
     if (p.type === 'Burn') burn += resists('Burn') ? Math.ceil(p.amount / 2) : p.amount
-    if (p.type === 'Burn-tick') hpDmg += p.amount
+    // the end-of-turn burn is burn damage too: Resistance to burn halves it
+    if (p.type === 'Burn-tick') hpDmg += resists('Burn') ? Math.ceil(p.amount / 2) : p.amount
   }
   const dctx: DamageCtx = { source: opts.source, attack: opts.attack, amount: hpDmg, kind: 'hp', types: parts.filter(p => p.amount > 0).map(p => p.type) }
   for (const s of scriptsFor(t)) s.modifyIncoming?.(bt, t, dctx)
@@ -264,7 +303,8 @@ export function applyDamage(bt: Battle, t: Unit, parts: { type: string; amount: 
 
 export function loseHp(bt: Battle, t: Unit, amount: number, _source?: Unit) {
   if (t.destroyed) return
-  if (t.overshield > 0) {
+  // Grunts ignore Overshield (core p.327: 1 HP, can't gain more): any damage still destroys them
+  if (t.overshield > 0 && !t.isGrunt) {
     const a = Math.min(t.overshield, amount)
     t.overshield -= a
     amount -= a
@@ -295,7 +335,10 @@ export function loseHp(bt: Battle, t: Unit, amount: number, _source?: Unit) {
     bt.emit({ type: 'damage', unitId: t.id, amount: 1, kind: 'structure' })
     bt.say(`${t.name} takes STRUCTURE damage (${t.structure} left).`, 'damage')
     t.hp = t.stats.hp - excess
+    const structureNow = t.structure
     for (const s of scriptsFor(t)) s.onStructureDamage?.(bt, t)
+    // the structure was given back (Custom Paint Job, Hive Frenzy): the hit never happened, so no structure check
+    if (t.destroyed || t.structure > structureNow) continue
     if (t.flying && !t.destroyed && !bt.save(t, 'agi', 10)) bt.land(t, 'loses control')
     bt.structureCheck(t)
   }

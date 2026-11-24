@@ -4,6 +4,7 @@ import { Lancer } from '../data/lancer'
 import { pickNextUnit, runAiTurn } from '../ai/ai'
 import { annotateTags, rangeChip, tagChip, tagInfo } from './tags'
 import { type Battle, type ChoiceQuestion, stripHtml } from '../rules/battle'
+import { barrageOnly } from '../rules/battle/actions'
 import { exportBattle, isAction, type BattleExport } from '../replay/replay'
 export { isAction }
 import { portraitImg } from '../render/portrait'
@@ -883,7 +884,7 @@ export class BattleScreen {
     if (active && u.side === 'player') {
       if (this.mode.k === 'barrage-pick') btns = this.btn('barrage', `Barrage #2${kb('')}`, usable, w.uid, 'primary')
       else {
-        btns = (w.size !== 'Superheavy' ? this.btn('skirmish', `Skirmish [Q]${kb('')}`, all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable), w.uid) : '') + this.btn('barrage', `Barrage [F]${kb('⇧')}`, all(fu, usable), w.uid)
+        btns = (!barrageOnly(w) ? this.btn('skirmish', `Skirmish [Q]${kb('')}`, all(b.canSpend(u, 'quick', w.tech ? `tech:${w.uid}` : 'skirmish'), usable), w.uid) : '') + this.btn('barrage', `Barrage [F]${kb('⇧')}`, all(fu, usable), w.uid)
         if (!w.loaded && !w.destroyed) btns += '<span class="muted small" title="Stabilize (full action) reloads all Loading weapons">Unloaded — Stabilize to reload</span>'
         if (w.profiles.length > 1) btns += w.profiles.map((p, i) => (i === w.profileIndex ? '' : `<button data-act="profile" data-arg="${w.uid}" data-i="${i}" title="Switch profile">${esc(p.name)}</button>`)).join('')
         if (pr.range.some(r => r.type === 'Line') && pr.range.some(r => r.type === 'Cone')) btns += `<button data-act="shape" data-arg="${w.uid}" title="Fire as a Cone or a Line">${w.flags?.shape === 'line' ? 'Line' : 'Cone'} (switch)</button>`

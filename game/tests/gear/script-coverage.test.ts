@@ -47,7 +47,6 @@ const NOT_YET_TESTED: Record<string, string> = {
   mw_arc_projector: WEAPON,
   mw_autogun: WEAPON,
   mw_shatterhead_colony_missiles: WEAPON,
-  mw_tachyon_lance: WEAPON,
   mw_annihilator: WEAPON,
   mw_fuel_rod_gun: WEAPON,
   mw_lancaster_integrated: 'Lancaster integrated weapon (Latch Drone): only the stress battle runs it',
