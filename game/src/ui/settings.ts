@@ -26,10 +26,25 @@ export function motionReduced(): boolean {
 }
 export const colourBlind = () => prefs.palette === 'cb'
 
+/** A touch-first device (coarse pointer): tap-based tooltips, touch copy, larger targets. */
+export function isTouch(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+}
+/**
+ * A phone: touch-first with a short side under about 500 px (landscape phones are up to ~932 px
+ * wide). Turns on the compact phone layout; tablets and narrow desktop windows keep the desktop one.
+ */
+export function isPhone(): boolean {
+  return isTouch() && Math.min(window.innerWidth, window.innerHeight) <= 500 && Math.max(window.innerWidth, window.innerHeight) <= 1000
+}
+
 export function applyPrefs() {
   const h = document.documentElement
   h.dataset.motion = motionReduced() ? 'reduce' : 'full'
   h.dataset.palette = prefs.palette
+  h.toggleAttribute('data-touch', isTouch())
+  h.toggleAttribute('data-phone', isPhone())
+  h.toggleAttribute('data-portrait', window.innerHeight > window.innerWidth)
 }
 
 /** The settings form (shared by the title screen and the in-battle settings dialog). */
@@ -38,7 +53,7 @@ export function settingsForm(): string {
     `<div class="setting"><div><b>${label}</b><div class="muted small">${help}</div></div><div class="seg" role="radiogroup" aria-label="${label}">${opts.map(([v, l]) => `<button data-set="${name}" data-v="${v}" role="radio" aria-checked="${v === cur}" class="${v === cur ? 'on' : ''}">${l}</button>`).join('')}</div></div>`
   return `<div class="settings">
     ${row('speed', 'Animation speed', 'How fast moves and attacks play. Skip jumps straight to the result.', [['1', '×1'], ['2', '×2'], ['4', '×4'], ['0', 'Skip']], String(prefs.speed))}
-    ${row('gfx', 'Graphics quality', 'High adds bloom, film grain, ambient particles and practical lights. Auto picks low on software rendering.', [['auto', 'Auto'], ['high', 'High'], ['low', 'Low']], prefs.gfx)}
+    ${row('gfx', 'Graphics quality', 'High adds bloom, film grain, ambient particles and practical lights. Auto picks low on phones, tablets and software rendering.', [['auto', 'Auto'], ['high', 'High'], ['low', 'Low']], prefs.gfx)}
     ${row('motion', 'Motion', 'Reduce turns off camera shake, pulsing, wipes and flashes.', [['system', 'System'], ['reduce', 'Reduce'], ['full', 'Full']], prefs.motion)}
     ${row('palette', 'Colour palette', 'Colour-blind swaps red/green for orange/blue in health, routes and field overlays.', [['standard', 'Standard'], ['cb', 'Colour-blind']], prefs.palette)}
   </div>`

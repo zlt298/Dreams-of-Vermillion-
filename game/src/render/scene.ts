@@ -7,7 +7,7 @@ import type { Pos, Unit } from '../rules/types'
 import { buildUnitModel, MODEL_GEOMETRIES } from './models'
 import { Atmosphere, radialTexture } from './atmosphere'
 import { PostFX, type GradeLook } from './post'
-import { resolveQuality, saveQuality, reducedMotion, type Quality } from './quality'
+import { resolveQuality, saveQuality, reducedMotion, coarsePointer, type Quality } from './quality'
 import { FX, attackStyle } from './fx'
 
 export const LEVEL = 0.55 // world units per elevation level
@@ -133,7 +133,8 @@ export class BattleView {
     this.battle = battle
     this.map = battle.map
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio))
+    // phones: a lower pixel ratio and shadow map keep frame times and heat down
+    this.renderer.setPixelRatio(Math.min(coarsePointer() ? 1.5 : 2, window.devicePixelRatio))
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -153,7 +154,8 @@ export class BattleView {
     const sun = new THREE.DirectionalLight(look.sun, look.sunIntensity)
     sun.position.set(-20, 40, 15)
     sun.castShadow = true
-    sun.shadow.mapSize.set(this.map.h > 24 || this.map.w > 24 ? 4096 : 2048, this.map.h > 24 || this.map.w > 24 ? 4096 : 2048)
+    const shadow = (this.map.h > 24 || this.map.w > 24) && !coarsePointer() ? 4096 : 2048
+    sun.shadow.mapSize.set(shadow, shadow)
     const s = Math.max(this.map.w, this.map.h)
     Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 1, far: 120 })
     sun.target.position.set(this.map.w / 2, 0, this.map.h / 2)

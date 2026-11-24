@@ -6,6 +6,9 @@ import { applyPrefs } from './ui/settings'
 
 applyPrefs()
 try { matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', applyPrefs) } catch { /* old browsers */ }
+// device flags (touch / phone / portrait) follow rotation and resizing
+window.addEventListener('resize', applyPrefs)
+window.addEventListener('orientationchange', applyPrefs)
 installTagTips()
 
 const app = new App(document.getElementById('app')!)

@@ -1,6 +1,6 @@
 // Graphics quality: 'high' (post-processing, ambient particles, practical lights) or 'low'.
-// Stored in localStorage; without a stored choice, software GL (SwiftShader, llvmpipe) defaults
-// to low so headless tests and weak machines stay fast.
+// Stored in localStorage; without a stored choice, software GL (SwiftShader, llvmpipe) and touch
+// devices default to low so headless tests, weak machines and phones stay fast and cool.
 export type Quality = 'high' | 'low'
 const KEY = 'dov.gfx'
 
@@ -18,8 +18,10 @@ export function isSoftwareGL(gl: WebGLRenderingContext | WebGL2RenderingContext)
     return /swiftshader|llvmpipe|software|softpipe/i.test(name)
   } catch { return false }
 }
+/** Touch-first devices (phones, tablets): start on low to spare battery and heat. */
+export const coarsePointer = (): boolean => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
 export function resolveQuality(gl: WebGLRenderingContext | WebGL2RenderingContext): Quality {
-  return storedQuality() ?? (isSoftwareGL(gl) ? 'low' : 'high')
+  return storedQuality() ?? (isSoftwareGL(gl) || coarsePointer() ? 'low' : 'high')
 }
 /** Reduced motion, from the Motion setting or the system preference (see ui/settings.ts). */
 export const reducedMotion = (): boolean => {
