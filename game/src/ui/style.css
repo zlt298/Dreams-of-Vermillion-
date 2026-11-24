@@ -548,3 +548,55 @@ html[data-motion="reduce"] .title-eye { animation: none !important; opacity: 0.0
 .battle .topbar { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); padding-top: max(6px, env(safe-area-inset-top)); }
 .battle .panel.bottom { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); }
 .app-toast { bottom: max(24px, calc(env(safe-area-inset-bottom) + 12px)); }
+
+/* ================================================================ mobile: menus and screens */
+/* grids never ask for more than the screen is wide */
+.pilots { grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); }
+.squad { grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+.teams { grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
+.reward { width: min(280px, 100%); }
+.title h1 { font-size: clamp(30px, min(10vw, 11vh), 64px); text-align: center; }
+.title .menu { min-width: min(320px, 100%); }
+/* campaign map: each act's route graph scrolls sideways instead of wrapping its columns */
+.runmap .layers { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; padding: 6px 4px 10px; scrollbar-width: thin; }
+
+/* touch: comfortable targets, no keyboard hints */
+html[data-touch] .screen button, html[data-touch] .screen .filebtn, html[data-touch] .screen select { min-height: 44px; }
+html[data-touch] kbd { display: none; }
+html[data-touch] .runmap .node { width: 48px; height: 48px; }
+html[data-touch] .runmap .node.boss { width: 58px; height: 58px; }
+
+/* phones */
+html[data-phone] .screen { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+/* centred screens never cut off their top when they are taller than the screen (landscape) */
+html[data-phone] .screen.center, html[data-phone] .screen.title { justify-content: flex-start; }
+html[data-phone] .screen.center > :first-child, html[data-phone] .screen.title > :first-child:not(.title-eye), html[data-phone] .screen.title > .title-eye + * { margin-top: auto; }
+html[data-phone] .screen.center > :last-child, html[data-phone] .screen.title > :last-child { margin-bottom: auto; }
+html[data-phone] h2 { font-size: 20px; }
+html[data-phone] .title .menu { margin: 14px 0; width: min(420px, 100%); }
+html[data-phone]:not([data-portrait]) .title .menu { display: grid; grid-template-columns: 1fr 1fr; width: min(640px, 100%); }
+html[data-phone]:not([data-portrait]) .title .sub, html[data-phone]:not([data-portrait]) .title .band { margin: 0; }
+html[data-phone] .title .menu button { padding: 6px; }
+html[data-phone] .hhead > div:last-child { display: flex; flex-wrap: wrap; gap: 4px; }
+html[data-phone] .hhead button, html[data-phone] .hhead .filebtn { margin: 0; }
+html[data-phone] .hhead select { max-width: 100%; }
+html[data-phone] .drop { display: none; } /* no drag-and-drop on phones: the Import button opens the file picker */
+html[data-phone] .pilot > .portrait { width: 72px; height: 72px; }
+html[data-phone] .pilot .ph { flex-wrap: wrap; gap: 4px; }
+html[data-phone] .runmap h2 .loc { display: block; margin: 2px 0 0; }
+html[data-phone] .opsboard { flex-direction: column; }
+html[data-phone] .telemetry { position: static; width: 100%; display: grid; grid-template-columns: 1fr 1fr; column-gap: 14px; line-height: 1.5; }
+html[data-phone] .telemetry .thead { grid-column: 1 / -1; }
+html[data-phone] .dossier > .portrait.sm { width: 52px; height: 52px; }
+html[data-phone] .event .evtext, html[data-phone] .event .eveffect { max-width: 100%; }
+html[data-phone] .menu.row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+html[data-phone] .builder .budget { display: flex; flex-wrap: wrap; gap: 2px 10px; top: -12px; }
+html[data-phone] .builder .meter { margin-right: 0; }
+html[data-phone] .builder .bgrid { grid-template-columns: 1fr; }
+html[data-phone] .builder input, html[data-phone] .builder select { min-height: 40px; }
+html[data-phone] .settings { margin: 8px 0; }
+html[data-phone] .help ol, html[data-phone] .help ul { padding-left: 18px; }
+html[data-phone] .hhead > div:last-child { flex: 1 1 100%; min-width: 0; }
+html[data-phone] .hhead select { width: 100%; }
+html[data-phone] .opsboard, html[data-phone] .opsmain, html[data-phone] .runmap .act { width: 100%; max-width: 100%; min-width: 0; }
+html[data-phone] .opsmain { flex: none; }
