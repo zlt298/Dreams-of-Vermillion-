@@ -188,7 +188,7 @@
             },
             {
               "do": "heal",
-              "val": "1d6+2"
+              "val": "1d6"
             }
           ],
           "recharge": 4
@@ -204,7 +204,8 @@
               "do": "overshield",
               "val": 4
             }
-          ]
+          ],
+          "recharge": 5
         },
         {
           "type": "weapon",

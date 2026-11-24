@@ -170,7 +170,7 @@
           "effects": [
             {
               "do": "overshield",
-              "val": 2,
+              "val": 3,
               "target": "self"
             }
           ]
